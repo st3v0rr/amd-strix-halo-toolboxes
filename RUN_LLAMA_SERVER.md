@@ -91,7 +91,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-6.4.4
@@ -104,7 +103,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.1.1
@@ -117,7 +115,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.2
@@ -130,7 +127,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm7-nightlies
@@ -146,7 +142,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
   -v /path/to/models:/workspace/models \
@@ -164,7 +159,6 @@ docker run -it --rm \
   --device /dev/kfd \
   --group-add video \
   --group-add render \
-  --group-add sudo \
   --security-opt seccomp=unconfined \
   -p 8080:8080 \
   -v /path/to/models:/workspace/models \
