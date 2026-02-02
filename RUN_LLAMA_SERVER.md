@@ -207,7 +207,7 @@ curl http://localhost:11434/v1/chat/completions \
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 
-# With custom API key
+# With custom API key 
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer my-secret-key" \
