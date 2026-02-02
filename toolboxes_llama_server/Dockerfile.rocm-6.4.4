@@ -1,0 +1,79 @@
+# build stage
+FROM registry.fedoraproject.org/fedora:43 AS builder
+
+# deps + rocm toolchain (native fedora packages)
+RUN dnf -y --nodocs --setopt=install_weak_deps=False \
+  install \
+  make gcc cmake lld clang clang-devel compiler-rt libcurl-devel \
+  rocminfo radeontop 'rocm-*' 'rocblas-*' hipblas 'hipblas-*' \
+  git vim rsync sudo tar xz \
+  && dnf clean all && rm -rf /var/cache/dnf/*
+
+# llama.cpp
+WORKDIR /opt/llama.cpp
+RUN git clone --recursive https://github.com/ggerganov/llama.cpp.git .
+
+# build + install
+RUN git clean -xdf \
+  && git submodule update --recursive \
+  && HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
+  cmake -S . -B build \
+  -DGGML_HIP=ON \
+  -DAMDGPU_TARGETS=gfx1151 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_RPC=ON \
+  -DLLAMA_HIP_UMA=ON \
+  && cmake --build build --config Release -- -j$(nproc) \
+  && cmake --install build --config Release
+
+# libs
+RUN find /opt/llama.cpp/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; \
+  && ldconfig
+
+# runtime stage
+FROM registry.fedoraproject.org/fedora-minimal:43
+
+# runtime deps (native fedora rocm + utilities)
+RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
+  install \
+  bash ca-certificates libatomic libstdc++ libgcc libgomp sudo \
+  rocminfo radeontop 'rocm-*' 'rocblas-*' hipblas 'hipblas-*' \
+  procps-ng \
+  && microdnf clean all && rm -rf /var/cache/dnf/*
+
+# copy
+COPY --from=builder /usr/local/ /usr/local/
+COPY --from=builder /usr/include/rocwmma /usr/include/rocwmma
+COPY --from=builder /opt/llama.cpp/build/bin/rpc-* /usr/local/bin/
+
+# ld
+RUN echo "/usr/local/lib"  > /etc/ld.so.conf.d/local.conf \
+  && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+  && ldconfig \
+  && cp -n /usr/local/lib/libllama*.so* /usr/lib64/ 2>/dev/null || true \
+  && ldconfig
+
+# helper
+COPY gguf-vram-estimator.py /usr/local/bin/gguf-vram-estimator.py
+RUN chmod +x /usr/local/bin/gguf-vram-estimator.py
+
+# Llama Server Configuration
+ENV MODEL_PATH=/workspace/models/gpt-oss-120b-F16/gpt-oss-120b-F16.gguf
+ENV PORT=11434
+ENV CTX_SIZE=90000
+ENV GPU_LAYERS=999
+ENV THREADS=16
+ENV API_KEY=abcde
+
+WORKDIR /workspace
+
+EXPOSE 11434
+
+CMD llama-server -m ${MODEL_PATH} \
+    --jinja \
+    --port ${PORT} \
+    --host 0.0.0.0 \
+    --ctx-size ${CTX_SIZE} \
+    --n-gpu-layers ${GPU_LAYERS} \
+    --threads ${THREADS} \
+    --api-key ${API_KEY}
