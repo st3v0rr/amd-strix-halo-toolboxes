@@ -11,7 +11,7 @@ on:
         default: all
 
 env:
-  DOCKERHUB_REPO: docker.io/kyuz0/amd-strix-halo-toolboxes
+  DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
   LOCAL_PREFIX: llama
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
         run: echo "BUILD_TS=$(date +%Y%m%dT%H%M%S)" >> $GITHUB_ENV
 
       - name: Build & push ${{ matrix.backend }}
-        working-directory: toolboxes
+        working-directory: toolboxes_llama_server
         shell: bash
         run: |
           set -euo pipefail

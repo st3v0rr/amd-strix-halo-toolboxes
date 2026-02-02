@@ -12,13 +12,13 @@ on:
   workflow_run:
     workflows: ["Build & Publish AMD Strix Halo Toolboxes"]
     types: [completed]   # runs after success/failure/cancel
-    branches: [main]     
+    branches: [main]
 
 jobs:
   prune:
     runs-on: ubuntu-latest
     env:
-      NS: kyuz0
+      NS: st3v0rr
       REPO: amd-strix-halo-toolboxes
     steps:
       - name: Install jq
