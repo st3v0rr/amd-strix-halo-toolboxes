@@ -33,7 +33,7 @@ ENV ROCM_PATH=/opt/rocm-7.0 \
   LD_LIBRARY_PATH=/opt/rocm-7.0/lib:/opt/rocm-7.0/lib64:/opt/rocm-7.0/llvm/lib \
   LIBRARY_PATH=/opt/rocm-7.0/lib:/opt/rocm-7.0/lib64 \
   CPATH=/opt/rocm-7.0/include \
-  PKG_CONFIG_PATH=/opt/rocm-7.0/lib/pkgconfig
+  PKG_CONFIG_PATH=/opt/rocm-7.0/lib/pkgconfig 
 
 RUN printf '%s\n' \
   'export ROCM_PATH=/opt/rocm-7.0' \
@@ -57,8 +57,11 @@ RUN git clone --recursive https://github.com/ggerganov/llama.cpp.git . \
   && git clean -xdf \
   && git submodule update --recursive
 
+
+
 RUN cmake -S . -B build \
   -DGGML_HIP=ON \
+  -DCMAKE_HIP_FLAGS="-mllvm --amdgpu-unroll-threshold-local=600" \
   -DAMDGPU_TARGETS=gfx1151 \
   -DCMAKE_BUILD_TYPE=Release \
   -DGGML_RPC=ON \
