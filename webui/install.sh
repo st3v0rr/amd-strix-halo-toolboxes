@@ -19,7 +19,6 @@ BIND="0.0.0.0"
 MODELS_DIR="$HOME/models"
 OPEN_FIREWALL=0
 START=1
-ASSUME_YES=0
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -35,7 +34,6 @@ Usage: $(basename "$0") [OPTIONS]
   --models-dir DIR      Modellverzeichnis (Default: $MODELS_DIR)
   --open-firewall       firewall-cmd fuer den Port ausfuehren (fragt nach sudo)
   --no-start            Unit installieren, aber nicht starten
-  --yes                 Rueckfragen ueberspringen
   --help                Diese Hilfe
 EOF
 }
@@ -47,7 +45,6 @@ while [[ $# -gt 0 ]]; do
     --models-dir)   MODELS_DIR="$2"; shift 2 ;;
     --open-firewall) OPEN_FIREWALL=1; shift ;;
     --no-start)     START=0; shift ;;
-    --yes|-y)       ASSUME_YES=1; shift ;;
     --help|-h)      usage; exit 0 ;;
     *)              echo "Unbekannte Option: $1"; usage; exit 1 ;;
   esac
