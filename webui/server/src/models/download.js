@@ -99,7 +99,11 @@ export async function startDownload(ctx, { repo, revision = 'main', include, tar
   const hf = await which('hf', ['--version'])
   if (!hf.available) {
     throw failedDependency(
-      'Die Hugging-Face-CLI (hf) ist nicht installiert. Nachinstallieren mit: pipx install "huggingface_hub[cli]"',
+      'Die Hugging-Face-CLI (hf) wurde nicht gefunden. Falls sie installiert ist, liegt sie ' +
+        'vermutlich in einem Verzeichnis, das der Dienst nicht durchsucht — trage den vollen ' +
+        'Pfad als SHX_HF_BIN in ~/.config/strix-halo-webui/env ein und starte den Dienst neu ' +
+        '(hf findest du mit "command -v hf"). Andernfalls installieren mit: ' +
+        'pipx install "huggingface_hub[cli]"',
     )
   }
 
