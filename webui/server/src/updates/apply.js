@@ -9,6 +9,15 @@ import { log } from '../lib/log.js'
 import { updateStatus } from './git.js'
 
 const SERVICE = process.env.SHX_SERVICE_NAME || 'strix-halo-webui.service'
+
+/**
+ * `--user` for a systemd --user unit, nothing for a system unit. Set by the
+ * unit file; falling back to uid lets a manually started process still guess
+ * correctly.
+ */
+const SYSTEMD_SCOPE =
+  process.env.SHX_SYSTEMD_SCOPE || (typeof process.getuid === 'function' && process.getuid() === 0 ? 'system' : 'user')
+const SCOPE_ARGS = SYSTEMD_SCOPE === 'system' ? [] : ['--user']
 const TAIL_INTERVAL_MS = 500
 
 /**
@@ -34,8 +43,12 @@ export async function startUpdate(ctx) {
 
   const systemdRun = await which('systemd-run', ['--version'])
   if (!systemdRun.available) {
+    const restart =
+      SYSTEMD_SCOPE === 'system'
+        ? 'systemctl restart strix-halo-webui'
+        : 'systemctl --user restart strix-halo-webui'
     throw failedDependency(
-      'systemd-run steht nicht zur Verfügung. Aktualisiere von Hand: cd webui && git pull && npm ci && npm run build && systemctl --user restart strix-halo-webui',
+      `systemd-run steht nicht zur Verfügung. Aktualisiere von Hand: cd webui && git pull && npm ci && npm run build && ${restart}`,
     )
   }
 
@@ -70,11 +83,12 @@ async function runUpdate({ appendLog, setMessage, setProgress }, { logFile, stat
   setProgress({ pct: null, done: null, total: null, rate: null, eta: null })
 
   const argv = [
-    '--user',
+    ...SCOPE_ARGS,
     '--collect',
     `--unit=shx-self-update-${Date.now()}`,
     `--setenv=SHX_UPDATE_LOG=${logFile}`,
     `--setenv=SHX_SERVICE_NAME=${SERVICE}`,
+    `--setenv=SHX_SYSTEMD_SCOPE=${SYSTEMD_SCOPE}`,
     `--setenv=SHX_SKIP_INSTALL=${status.needsInstall ? '0' : '1'}`,
     `--setenv=SHX_SKIP_BUILD=${status.needsBuild ? '0' : '1'}`,
     `--working-directory=${webuiRoot}`,

@@ -1,16 +1,21 @@
 [Unit]
 Description=Strix Halo Toolboxes Web UI
 Documentation=file://%REPO_WEBUI%/README.md
-# Deliberately no Wants=network-online.target: it is not reliably available in
-# the user manager. The app retries network-dependent work (registry checks)
-# instead, and binds regardless.
-After=default.target
+# For a --user unit this is default.target; for a system unit,
+# network-online.target. The app retries network-dependent work (registry
+# checks) either way, so it never blocks startup on connectivity.
+After=%AFTER%
 
 [Service]
 Type=simple
 WorkingDirectory=%REPO_WEBUI%
 Environment=NODE_ENV=production
-EnvironmentFile=-%h/.config/strix-halo-webui/env
+Environment=HOME=%SERVICE_HOME%
+# Tells the self-updater whether systemd-run and systemctl need --user.
+Environment=SHX_SYSTEMD_SCOPE=%SCOPE%
+Environment=SHX_CONFIG_DIR=%CONFIG_DIR%
+Environment=SHX_STATE_DIR=%STATE_DIR%
+EnvironmentFile=-%CONFIG_DIR%/env
 ExecStart=%NODE_BIN% server/src/index.js
 Restart=always
 RestartSec=3
@@ -24,4 +29,4 @@ StandardError=journal
 SyslogIdentifier=strix-halo-webui
 
 [Install]
-WantedBy=default.target
+WantedBy=%WANTED_BY%
