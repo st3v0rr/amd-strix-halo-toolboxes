@@ -98,10 +98,19 @@ command -v npm >/dev/null 2>&1 || die "npm fehlt."
 command -v git >/dev/null 2>&1 || die "git fehlt."
 command -v podman >/dev/null 2>&1 || die "podman fehlt. Auf Fedora: sudo dnf install podman"
 ok "podman $(podman --version | awk '{print $3}')"
-command -v python3 >/dev/null 2>&1 || warn "python3 fehlt — der VRAM-Schaetzer bleibt deaktiviert."
+# Absolute Pfade merken: systemd gibt dem Dienst eine minimale PATH ohne
+# ~/.local/bin, wo pipx die hf-CLI ablegt.
+PYTHON_BIN="$(command -v python3 2>/dev/null || true)"
+HF_BIN="$(command -v hf 2>/dev/null || true)"
 
-if command -v hf >/dev/null 2>&1; then
-  ok "hf $(hf --version 2>/dev/null | head -n1)"
+if [[ -n "$PYTHON_BIN" ]]; then
+  ok "python3 ($PYTHON_BIN)"
+else
+  warn "python3 fehlt — der VRAM-Schaetzer bleibt deaktiviert."
+fi
+
+if [[ -n "$HF_BIN" ]]; then
+  ok "hf $(hf --version 2>/dev/null | head -n1) ($HF_BIN)"
 else
   warn "hf fehlt — Modell-Downloads bleiben deaktiviert."
   warn "  Nachinstallieren mit: pipx install 'huggingface_hub[cli]'"
@@ -163,6 +172,23 @@ else
   ok "config.json existierte bereits — Zugangsdaten bleiben unveraendert."
 fi
 chmod 600 "$CONFIG_FILE"
+
+# systemd hands the service a minimal PATH that excludes ~/.local/bin, where
+# pipx puts hf. Pinning the paths we resolved here means the service finds the
+# same tools this shell just did.
+ENV_FILE="$CONFIG_DIR/env"
+{
+  echo "# Von install.sh erzeugt. Wird von der systemd-Unit eingelesen."
+  echo "# Nach dem Nachinstallieren eines Werkzeugs: install.sh erneut ausfuehren"
+  echo "# oder die Zeile von Hand anpassen und den Dienst neu starten."
+  [[ -n "$HF_BIN" ]]     && echo "SHX_HF_BIN=$HF_BIN"
+  [[ -n "$PYTHON_BIN" ]] && echo "SHX_PYTHON_BIN=$PYTHON_BIN"
+  true
+} > "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+if [[ -n "$HF_BIN" || -n "$PYTHON_BIN" ]]; then
+  ok "Werkzeugpfade in $ENV_FILE festgeschrieben."
+fi
 
 bold "5/7  systemd-Unit installieren"
 mkdir -p "$UNIT_DIR"

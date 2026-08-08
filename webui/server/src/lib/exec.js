@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -29,12 +30,74 @@ const BINARIES = {
   'systemd-run': process.env.SHX_SYSTEMD_RUN_BIN || 'systemd-run',
 }
 
+/**
+ * Directories to search beyond the inherited PATH.
+ *
+ * systemd hands a service a minimal PATH that does not include `~/.local/bin`
+ * — which is exactly where `pipx install "huggingface_hub[cli]"` puts `hf`.
+ * Without this the app reports the CLI as missing while the user's shell finds
+ * it perfectly well.
+ */
+function extraPathDirs() {
+  const home = process.env.HOME || ''
+  return [
+    home ? path.join(home, '.local', 'bin') : null,
+    home ? path.join(home, 'bin') : null,
+    '/usr/local/bin',
+    '/usr/local/sbin',
+    '/opt/homebrew/bin',
+    '/var/lib/flatpak/exports/bin',
+  ].filter(Boolean)
+}
+
+/** The inherited PATH plus the extra directories, deduplicated, order kept. */
+function searchDirs() {
+  const fromEnv = (process.env.PATH || '/usr/local/bin:/usr/bin:/bin').split(path.delimiter)
+  const seen = new Set()
+  const out = []
+  for (const dir of [...fromEnv, ...extraPathDirs()]) {
+    if (!dir || seen.has(dir)) continue
+    seen.add(dir)
+    out.push(dir)
+  }
+  return out
+}
+
+/** Positive lookups only — caching a miss would hide a later installation. */
+const resolvedBinaries = new Map()
+
 export function binaryPath(key) {
   const bin = BINARIES[key]
   if (!bin) throw new Error(`Unknown binary key: ${key}`)
-  // A relative override is resolved against webui/ so dev/bin/podman works
-  // regardless of the process's working directory.
-  return bin.includes('/') && !path.isAbsolute(bin) ? path.join(webuiRoot, bin) : bin
+
+  // An explicit override wins. A relative one resolves against webui/, so
+  // dev/bin/podman works regardless of the working directory.
+  if (bin.includes('/')) {
+    return path.isAbsolute(bin) ? bin : path.join(webuiRoot, bin)
+  }
+
+  const cached = resolvedBinaries.get(key)
+  if (cached) return cached
+
+  for (const dir of searchDirs()) {
+    const candidate = path.join(dir, bin)
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK)
+      resolvedBinaries.set(key, candidate)
+      return candidate
+    } catch {
+      // not here, keep looking
+    }
+  }
+
+  // Not found anywhere; hand back the bare name so spawn produces a plain
+  // ENOENT rather than us inventing an error here.
+  return bin
+}
+
+/** Drop the resolution cache, e.g. after the user installs a missing tool. */
+export function forgetBinaryPaths() {
+  resolvedBinaries.clear()
 }
 
 export const isMock = process.env.SHX_MOCK === '1'
@@ -46,7 +109,9 @@ export const isMock = process.env.SHX_MOCK === '1'
  */
 function baseEnv(extra = {}) {
   const env = {
-    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+    // The augmented PATH, so a tool we launch can find its own helpers too —
+    // `hf` shelling out to python being the obvious case.
+    PATH: searchDirs().join(path.delimiter),
     HOME: process.env.HOME || '',
     LANG: 'C.UTF-8',
     LC_ALL: 'C.UTF-8',
