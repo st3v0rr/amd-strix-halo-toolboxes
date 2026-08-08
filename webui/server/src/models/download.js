@@ -15,18 +15,45 @@ const EWMA_ALPHA = 0.2
 /**
  * Turn the user's file selection into `--include` patterns.
  *
- * Explicit paths are unambiguous but the flag list gets unwieldy past a couple
- * of dozen, so beyond that we fall back to one glob per directory — which is
- * exactly how these repos are laid out (one folder per quantisation).
+ * A directory collapses to a glob only when *every* GGUF in it was selected.
+ * Otherwise the patterns stay explicit, however many there are.
+ *
+ * The earlier version globbed purely on count, which quietly over-fetched:
+ * these repos keep two dozen quants flat in the root, so selecting 21 of them
+ * produced `*.gguf` and downloaded all of them — tens of gigabytes nobody
+ * asked for.
+ *
+ * @param {string[]} paths selected file paths
+ * @param {string[]} [allPaths] every GGUF in the repo, for the "whole folder" test
  */
-export function buildIncludes(paths) {
-  if (paths.length <= 20) return [...paths]
-  const dirs = new Set()
-  for (const p of paths) {
+export function buildIncludes(paths, allPaths = null) {
+  const selected = [...paths]
+  if (!allPaths || allPaths.length === 0) return selected
+
+  const byDir = new Map()
+  for (const p of allPaths) {
     const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''
-    dirs.add(dir ? `${dir}/*` : '*.gguf')
+    if (!byDir.has(dir)) byDir.set(dir, new Set())
+    byDir.get(dir).add(p)
   }
-  return [...dirs]
+
+  const selectedSet = new Set(selected)
+  const includes = []
+  const covered = new Set()
+
+  for (const [dir, all] of byDir) {
+    // The repository root is never globbed: `*.gguf` there would also catch
+    // every other quant sitting next to the selected one.
+    if (!dir) continue
+    const everySelected = [...all].every((p) => selectedSet.has(p))
+    if (everySelected && all.size > 1) {
+      includes.push(`${dir}/*.gguf`)
+      for (const p of all) covered.add(p)
+    }
+  }
+
+  for (const p of selected) if (!covered.has(p)) includes.push(p)
+  return includes
 }
 
 /** Sum of finished files plus in-flight partials under `dir`. */
@@ -95,7 +122,10 @@ export async function startDownload(ctx, { repo, revision = 'main', include, tar
   const subdir = targetSubdir || repo.split('/').pop()
   const targetDir = safeResolve(ctx.settings.modelsDir, subdir)
 
-  const includes = buildIncludes(selected.map((f) => f.path))
+  const includes = buildIncludes(
+    selected.map((f) => f.path),
+    listing.files.map((f) => f.path),
+  )
 
   return ctx.jobs.start(
     {

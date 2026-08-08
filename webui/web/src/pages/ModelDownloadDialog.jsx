@@ -36,17 +36,11 @@ export function ModelDownloadDialog({ onClose }) {
     retry: false,
   })
 
-  const folders = useMemo(() => {
-    const map = new Map()
-    for (const file of files.data?.files ?? []) {
-      const key = file.dir || '(Wurzel)'
-      const group = map.get(key) ?? { dir: key, files: [], totalBytes: 0 }
-      group.files.push(file)
-      group.totalBytes += file.size
-      map.set(key, group)
-    }
-    return [...map.values()].sort((a, b) => a.dir.localeCompare(b.dir))
-  }, [files.data])
+  // Grouped by quantisation, not by folder: these repos keep most quants flat
+  // in the root, so folders would collapse two dozen choices into one row.
+  const groups = files.data?.groups ?? []
+  const models = useMemo(() => groups.filter((g) => !g.projector), [groups])
+  const projectors = useMemo(() => groups.filter((g) => g.projector), [groups])
 
   const selectedBytes = useMemo(() => {
     let sum = 0
@@ -60,13 +54,15 @@ export function ModelDownloadDialog({ onClose }) {
     onError: (err) => toast.error(err),
   })
 
-  function toggleFolder(folder) {
+  // Selecting a group always takes all of its files: a shard set is unusable
+  // unless it is complete.
+  function toggleGroup(group) {
     setSelected((prev) => {
       const next = new Set(prev)
-      const allIn = folder.files.every((f) => next.has(f.path))
-      for (const file of folder.files) {
-        if (allIn) next.delete(file.path)
-        else next.add(file.path)
+      const allIn = group.files.every((f) => next.has(f))
+      for (const file of group.files) {
+        if (allIn) next.delete(file)
+        else next.add(file)
       }
       return next
     })
@@ -194,37 +190,75 @@ export function ModelDownloadDialog({ onClose }) {
             {files.isLoading ? <div className="empty small">Dateien werden gelesen …</div> : null}
             {files.isError ? <div className="alert alert-danger small">{files.error.message}</div> : null}
 
-            {files.data && folders.length === 0 ? (
+            {files.data && groups.length === 0 ? (
               <div className="empty small">Dieses Repository enthält keine GGUF-Dateien.</div>
             ) : null}
 
-            {folders.map((folder) => {
-              const allIn = folder.files.every((f) => selected.has(f.path))
-              const someIn = !allIn && folder.files.some((f) => selected.has(f.path))
-              return (
-                <label key={folder.dir} className={`picker-item${allIn ? ' selected' : ''}`}>
-                  <input
-                    type="checkbox"
-                    style={{ width: 'auto', marginTop: 4 }}
-                    checked={allIn}
-                    ref={(el) => el && (el.indeterminate = someIn)}
-                    onChange={() => toggleFolder(folder)}
-                  />
-                  <span className="grow truncate">
-                    <strong>{folder.dir}</strong>
-                    <br />
-                    <span className="mono">
-                      {folder.files.length} Datei(en)
-                      {folder.files.length > 1 ? ' — mehrteiliges Modell' : ''}
-                    </span>
-                  </span>
-                  <span className="small nowrap right">{formatBytes(folder.totalBytes)}</span>
-                </label>
-              )
-            })}
+            {models.length ? (
+              <>
+                <span className="small faint">Quantisierungen</span>
+                <div className="picker">
+                  {models.map((group) => (
+                    <GroupRow
+                      key={group.key}
+                      group={group}
+                      selected={selected}
+                      onToggle={toggleGroup}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {projectors.length ? (
+              <>
+                <span className="small faint">
+                  Multimodal-Projektoren — kein eigenständiges Modell, sondern Zubehör für
+                  Bildeingabe (llama-server: <code>--mmproj</code>)
+                </span>
+                <div className="picker">
+                  {projectors.map((group) => (
+                    <GroupRow
+                      key={group.key}
+                      group={group}
+                      selected={selected}
+                      onToggle={toggleGroup}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
         ) : null}
       </div>
     </Modal>
+  )
+}
+
+/** One selectable quantisation (single file or a complete shard set). */
+function GroupRow({ group, selected, onToggle }) {
+  const allIn = group.files.every((f) => selected.has(f))
+  const someIn = !allIn && group.files.some((f) => selected.has(f))
+
+  return (
+    <label className={`picker-item${allIn ? ' selected' : ''}`}>
+      <input
+        type="checkbox"
+        style={{ width: 'auto', marginTop: 4 }}
+        checked={allIn}
+        ref={(el) => el && (el.indeterminate = someIn)}
+        onChange={() => onToggle(group)}
+      />
+      <span className="grow truncate">
+        <strong>{group.quant}</strong>
+        <br />
+        <span className="mono">
+          {group.expectedShards > 1
+            ? `${group.shardCount} Teile${group.complete ? '' : ` von ${group.expectedShards} — unvollständig`}`
+            : group.files[0]?.split('/').pop()}
+        </span>
+      </span>
+      <span className="small nowrap right">{formatBytes(group.totalBytes)}</span>
+    </label>
   )
 }
