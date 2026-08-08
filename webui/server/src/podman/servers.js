@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import net from 'node:net'
 import { randomBytes } from 'node:crypto'
 
 import {
@@ -27,6 +28,42 @@ import {
 } from './client.js'
 import { resolveExtraArgs } from './features.js'
 import { closeLogSession } from './logstream.js'
+
+/** States in which a container actually holds its published ports. */
+const HOLDS_PORTS = new Set(['running', 'paused'])
+
+/**
+ * The container currently occupying `port`, or null.
+ *
+ * Only running (or paused) containers count. A stopped container still lists
+ * its port mapping in `podman ps -a`, but the port is free — blocking on that
+ * refused starts for a container the user had already shut down.
+ *
+ * @param {any[]} containers entries from `podman ps -a --format json`
+ * @param {number} port host port
+ * @param {string} [ignoreName] container we are about to replace
+ */
+export function findPortConflict(containers, port, ignoreName) {
+  for (const entry of containers ?? []) {
+    const name = (entry.Names ?? [])[0]
+    if (name === ignoreName) continue
+    if (!HOLDS_PORTS.has(String(entry.State ?? '').toLowerCase())) continue
+
+    const taken = (entry.Ports ?? []).some(
+      (p) => Number(p.host_port) === Number(port) && (p.protocol ?? 'tcp') === 'tcp',
+    )
+    if (taken) return name ?? entry.Id?.slice(0, 12) ?? 'unbekannt'
+  }
+  return null
+}
+
+/** Whether `ignoreName` is the one holding the port (so freeing it is imminent). */
+function replacedContainerHoldsPort(containers, port, ignoreName) {
+  if (!ignoreName) return false
+  const entry = (containers ?? []).find((c) => (c.Names ?? [])[0] === ignoreName)
+  if (!entry || !HOLDS_PORTS.has(String(entry.State ?? '').toLowerCase())) return false
+  return (entry.Ports ?? []).some((p) => Number(p.host_port) === Number(port))
+}
 
 /** Shape a `podman ps` entry into what the UI needs. */
 export function describeContainer(entry) {
@@ -76,6 +113,41 @@ export function generateApiKey() {
 }
 
 /**
+ * Try to bind the port ourselves to see whether it is free.
+ *
+ * Cheaper and more truthful than parsing `ss`: it answers exactly the question
+ * podman is about to ask. Anything other than a clear "in use" is treated as
+ * free — a probe that fails for its own reasons must not block a start.
+ *
+ * @returns {Promise<string|null>} a short reason when occupied, else null
+ */
+export function portInUse(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    const done = (result) => {
+      server.removeAllListeners()
+      try {
+        server.close()
+      } catch {
+        /* already closed */
+      }
+      resolve(result)
+    }
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') done('EADDRINUSE')
+      else if (err.code === 'EACCES') done('keine Berechtigung')
+      else done(null)
+    })
+    server.once('listening', () => done(null))
+    try {
+      server.listen({ port, host: '0.0.0.0', exclusive: true })
+    } catch {
+      done(null)
+    }
+  })
+}
+
+/**
  * Validate a start request before anything is spawned.
  *
  * Two of these checks exist because the script learned them the hard way: a
@@ -114,12 +186,20 @@ export async function validateSpec(ctx, spec, { ignoreName } = {}) {
   }
 
   const all = await listAll()
-  for (const entry of all) {
-    const entryName = (entry.Names ?? [])[0]
-    if (entryName === ignoreName) continue
-    const taken = (entry.Ports ?? []).some((p) => p.host_port === port)
-    if (taken) {
-      throw conflict(`Port ${port} ist bereits von Container '${entryName}' belegt.`)
+  const blocker = findPortConflict(all, port, ignoreName)
+  if (blocker) {
+    throw conflict(`Port ${port} ist bereits vom laufenden Container '${blocker}' belegt.`)
+  }
+
+  // Containers are not the only thing that can hold a port. Probing catches a
+  // native process too — but not when the port belongs to the very container
+  // we are about to stop and replace.
+  if (!replacedContainerHoldsPort(all, port, ignoreName)) {
+    const occupant = await portInUse(port)
+    if (occupant) {
+      throw conflict(
+        `Port ${port} ist bereits belegt (${occupant}), aber von keinem Container. Beende den Prozess oder wähle einen anderen Port.`,
+      )
     }
   }
 
