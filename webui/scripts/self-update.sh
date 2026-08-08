@@ -17,6 +17,14 @@ REPO_DIR="$(cd "$WEBUI_DIR/.." && pwd)"
 SERVICE="${SHX_SERVICE_NAME:-strix-halo-webui.service}"
 LOG="${SHX_UPDATE_LOG:-/dev/stdout}"
 
+# A --user unit restarts with `systemctl --user`; a system unit must not pass
+# it. The scope is handed down from the unit file.
+if [[ "${SHX_SYSTEMD_SCOPE:-user}" == "system" ]]; then
+  SYSTEMCTL=(systemctl)
+else
+  SYSTEMCTL=(systemctl --user)
+fi
+
 exec >>"$LOG" 2>&1
 
 step() { printf '\n=== %s ===\n' "$*"; }
@@ -62,7 +70,7 @@ else
 fi
 
 step "Dienst neu starten"
-systemctl --user restart "$SERVICE" || fail "Neustart des Dienstes schlug fehl"
+"${SYSTEMCTL[@]}" restart "$SERVICE" || fail "Neustart des Dienstes schlug fehl"
 
 printf '\nUpdate abgeschlossen: %s -> %s\n' "${BEFORE:0:7}" "${AFTER:0:7}"
 printf 'Fertig: %s\n' "$(date -Is)"

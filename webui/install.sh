@@ -1,22 +1,45 @@
 #!/usr/bin/env bash
 #
-# Installs the Strix Halo WebUI as a systemd --user service.
+# Installs the Strix Halo WebUI as a systemd service.
 #
-# Deliberately runs as the normal user, never as root: podman here is rootless,
-# and containers created by root would be invisible to (and unmanageable from)
-# the user's session.
+# Two scopes, chosen by who runs this:
+#
+#   normal user -> `systemd --user` unit + lingering. Podman is rootless, and
+#                  the containers belong to that user's session.
+#   root        -> system unit in /etc/systemd/system. Podman is rootful, so
+#                  the app must run as root too, or it would not see the images
+#                  and containers root already has.
+#
+# The scope is threaded through to the self-updater, which has to know whether
+# to pass --user to systemd-run and systemctl.
 #
 set -euo pipefail
 
 WEBUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="strix-halo-webui"
-UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-CONFIG_DIR="${SHX_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/strix-halo-webui}"
-STATE_DIR="${SHX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/strix-halo-webui}"
+
+if [[ "${EUID}" -eq 0 ]]; then
+  SCOPE="system"
+  SYSTEMCTL=(systemctl)
+  UNIT_DIR="/etc/systemd/system"
+  WANTED_BY="multi-user.target"
+  AFTER="network-online.target"
+  SERVICE_HOME="${HOME:-/root}"
+else
+  SCOPE="user"
+  SYSTEMCTL=(systemctl --user)
+  UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  WANTED_BY="default.target"
+  AFTER="default.target"
+  SERVICE_HOME="$HOME"
+fi
+
+CONFIG_DIR="${SHX_CONFIG_DIR:-${XDG_CONFIG_HOME:-$SERVICE_HOME/.config}/strix-halo-webui}"
+STATE_DIR="${SHX_STATE_DIR:-${XDG_STATE_HOME:-$SERVICE_HOME/.local/state}/strix-halo-webui}"
 
 PORT=8420
 BIND="0.0.0.0"
-MODELS_DIR="$HOME/models"
+MODELS_DIR="$SERVICE_HOME/models"
 OPEN_FIREWALL=0
 START=1
 
@@ -50,7 +73,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${EUID}" -eq 0 ]] && die "Bitte NICHT mit sudo ausfuehren. Der Dienst laeuft als dein Benutzer, weil podman rootless laeuft."
+bold "0/7  Betriebsart"
+if [[ "$SCOPE" == "system" ]]; then
+  warn "Du bist root. Der Dienst wird als System-Unit installiert und laeuft als root."
+  warn "  Das passt zu rootful podman, bedeutet aber: wer das Webinterface uebernimmt, ist root."
+  warn "  Alternative: als normaler Benutzer installieren (rootless podman, eigene Images)."
+  ok "Betriebsart: system (/etc/systemd/system)"
+else
+  ok "Betriebsart: user (systemd --user, rootless podman)"
+fi
 
 bold "1/7  Voraussetzungen pruefen"
 
@@ -76,19 +107,25 @@ else
   warn "  Nachinstallieren mit: pipx install 'huggingface_hub[cli]'"
 fi
 
-if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
-  die "XDG_RUNTIME_DIR ist nicht gesetzt — 'systemctl --user' funktioniert so nicht. Melde dich richtig an (nicht via 'su')."
-fi
-systemctl --user show-environment >/dev/null 2>&1 || die "Der systemd-User-Manager ist nicht erreichbar."
-ok "systemd --user erreichbar"
-
-GROUPS_LIST="$(id -nG)"
-for grp in video render; do
-  if [[ " $GROUPS_LIST " != *" $grp "* ]]; then
-    warn "Du bist nicht in der Gruppe '$grp'. Container mit /dev/kfd starten sonst nicht."
-    warn "  Beheben mit: sudo usermod -aG video,render $USER   (danach neu anmelden)"
+if [[ "$SCOPE" == "user" ]]; then
+  if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
+    die "XDG_RUNTIME_DIR ist nicht gesetzt — 'systemctl --user' funktioniert so nicht. Melde dich richtig an (nicht via 'su')."
   fi
-done
+  systemctl --user show-environment >/dev/null 2>&1 || die "Der systemd-User-Manager ist nicht erreichbar."
+  ok "systemd --user erreichbar"
+
+  # Als root sind diese Gruppen bedeutungslos — /dev/kfd ist ohnehin zugreifbar.
+  GROUPS_LIST="$(id -nG)"
+  for grp in video render; do
+    if [[ " $GROUPS_LIST " != *" $grp "* ]]; then
+      warn "Du bist nicht in der Gruppe '$grp'. Container mit /dev/kfd starten sonst nicht."
+      warn "  Beheben mit: sudo usermod -aG video,render $USER   (danach neu anmelden)"
+    fi
+  done
+else
+  systemctl show-environment >/dev/null 2>&1 || die "Der systemd-Manager ist nicht erreichbar."
+  ok "systemd erreichbar"
+fi
 
 # Same amdgpu probe the gpu-workload-watch installer uses.
 FOUND_GPU=0
@@ -129,24 +166,33 @@ chmod 600 "$CONFIG_FILE"
 
 bold "5/7  systemd-Unit installieren"
 mkdir -p "$UNIT_DIR"
-sed -e "s|%REPO_WEBUI%|$WEBUI_DIR|g" -e "s|%NODE_BIN%|$NODE_BIN|g" \
+sed -e "s|%REPO_WEBUI%|$WEBUI_DIR|g" \
+    -e "s|%NODE_BIN%|$NODE_BIN|g" \
+    -e "s|%CONFIG_DIR%|$CONFIG_DIR|g" \
+    -e "s|%STATE_DIR%|$STATE_DIR|g" \
+    -e "s|%SERVICE_HOME%|$SERVICE_HOME|g" \
+    -e "s|%SCOPE%|$SCOPE|g" \
+    -e "s|%WANTED_BY%|$WANTED_BY|g" \
+    -e "s|%AFTER%|$AFTER|g" \
   "$WEBUI_DIR/systemd/$SERVICE_NAME.service.in" > "$UNIT_DIR/$SERVICE_NAME.service"
-systemctl --user daemon-reload
+"${SYSTEMCTL[@]}" daemon-reload
 ok "$UNIT_DIR/$SERVICE_NAME.service"
 
 if [[ $START -eq 1 ]]; then
-  systemctl --user enable --now "$SERVICE_NAME.service"
+  "${SYSTEMCTL[@]}" enable --now "$SERVICE_NAME.service"
   sleep 1
-  systemctl --user --no-pager --lines=5 status "$SERVICE_NAME.service" || true
+  "${SYSTEMCTL[@]}" --no-pager --lines=5 status "$SERVICE_NAME.service" || true
 else
-  systemctl --user enable "$SERVICE_NAME.service"
+  "${SYSTEMCTL[@]}" enable "$SERVICE_NAME.service"
   ok "Unit aktiviert, aber nicht gestartet (--no-start)."
 fi
 
 bold "6/7  Autostart beim Boot"
+if [[ "$SCOPE" == "system" ]]; then
+  ok "System-Unit ist mit WantedBy=$WANTED_BY beim Boot aktiv. Kein Lingering noetig."
 # Ohne Lingering beendet systemd den User-Manager beim Abmelden — der Dienst
 # wuerde dann beim Boot nie starten.
-if loginctl show-user "$USER" --property=Linger 2>/dev/null | grep -q 'Linger=yes'; then
+elif loginctl show-user "$USER" --property=Linger 2>/dev/null | grep -q 'Linger=yes'; then
   ok "Lingering ist bereits aktiv."
 elif loginctl enable-linger "$USER" 2>/dev/null; then
   ok "Lingering aktiviert."
@@ -159,7 +205,11 @@ fi
 
 bold "7/7  Firewall"
 if [[ $OPEN_FIREWALL -eq 1 ]]; then
-  sudo firewall-cmd --add-port="$PORT/tcp" --permanent && sudo firewall-cmd --reload
+  if [[ "$SCOPE" == "system" ]]; then
+    firewall-cmd --add-port="$PORT/tcp" --permanent && firewall-cmd --reload
+  else
+    sudo firewall-cmd --add-port="$PORT/tcp" --permanent && sudo firewall-cmd --reload
+  fi
   ok "Port $PORT/tcp freigegeben."
 else
   warn "Port $PORT ist moeglicherweise durch die Firewall blockiert. Freigeben mit:"
@@ -181,7 +231,12 @@ if [[ -n "$GENERATED_PASSWORD" ]]; then
   printf '  \033[1;33m└────────────────────────────────────────────┘\033[0m\n'
 fi
 echo
-echo "  Logs:     journalctl --user -u $SERVICE_NAME -f"
-echo "  Neustart: systemctl --user restart $SERVICE_NAME"
+if [[ "$SCOPE" == "system" ]]; then
+  echo "  Logs:     journalctl -u $SERVICE_NAME -f"
+  echo "  Neustart: systemctl restart $SERVICE_NAME"
+else
+  echo "  Logs:     journalctl --user -u $SERVICE_NAME -f"
+  echo "  Neustart: systemctl --user restart $SERVICE_NAME"
+fi
 echo "  Passwort: $WEBUI_DIR/scripts/shx-passwd"
 echo

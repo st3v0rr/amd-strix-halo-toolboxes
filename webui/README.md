@@ -19,9 +19,25 @@ Der Installer prüft die Voraussetzungen, baut das Frontend, legt die
 Konfiguration an, installiert die systemd-Unit und aktiviert Lingering. Am Ende
 gibt er die URL und ein **einmalig angezeigtes** Passwort aus.
 
-**Nicht mit `sudo` ausführen.** Podman läuft hier rootless; ein als root
-angelegter Dienst würde Container erzeugen, die dein Benutzer nicht verwalten
-kann.
+### Als normaler Benutzer oder als root?
+
+Der Installer erkennt beides und wählt die passende Betriebsart:
+
+| | als normaler Benutzer | als root |
+|---|---|---|
+| Unit | `systemd --user` + Lingering | System-Unit in `/etc/systemd/system` |
+| Podman | rootless | rootful |
+| Konfiguration | `~/.config/strix-halo-webui/` | `/root/.config/strix-halo-webui/` |
+| Autostart | über Lingering | über `WantedBy=multi-user.target` |
+
+Entscheidend ist, **wem deine Podman-Images und Container gehören**. Wer die Box
+bisher als root bedient hat, sollte auch so installieren — sonst sieht die App
+die vorhandenen Images nicht und müsste alles neu ziehen.
+
+Der Preis der root-Variante: Wer das Webinterface übernimmt, ist root. Im LAN
+hinter einer Firewall ist das für viele akzeptabel; wer es strenger mag, legt
+einen eigenen Benutzer an, fügt ihn den Gruppen `video` und `render` hinzu und
+installiert als dieser Benutzer.
 
 Optionen:
 
@@ -54,10 +70,20 @@ sudo usermod -aG video,render "$USER"   # danach neu anmelden
 
 ## Betrieb
 
+Als normaler Benutzer:
+
 ```bash
 systemctl --user status  strix-halo-webui
 systemctl --user restart strix-halo-webui
 journalctl --user -u strix-halo-webui -f
+```
+
+Als root (System-Unit — ohne `--user`):
+
+```bash
+systemctl status  strix-halo-webui
+systemctl restart strix-halo-webui
+journalctl -u strix-halo-webui -f
 ```
 
 Passwort vergessen:
@@ -161,9 +187,11 @@ Die Updates-Seite zeigt neue Commits des getrackten Branches und wendet sie an:
 Bei lokalen Änderungen wird das Update **abgelehnt** — auf der Box wird an den
 Skripten gearbeitet, und ein Update darf das nicht überfahren.
 
-Der Updater läuft über `systemd-run --user` in einer eigenen transienten Unit.
-Ein normales Kind läge in der cgroup unseres Dienstes und würde vom
-abschließenden `systemctl restart` mitten im `npm ci` erschlagen.
+Der Updater läuft über `systemd-run` in einer eigenen transienten Unit (mit
+`--user`, wenn der Dienst als User-Unit läuft). Ein normales Kind läge in der
+cgroup unseres Dienstes und würde vom abschließenden `systemctl restart` mitten
+im `npm ci` erschlagen. Die Betriebsart reicht die Unit über
+`SHX_SYSTEMD_SCOPE` durch.
 
 ## Entwicklung
 
