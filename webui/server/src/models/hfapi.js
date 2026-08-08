@@ -1,3 +1,4 @@
+import { groupByQuant } from '../../../shared/quant.js'
 import { AppError } from '../lib/errors.js'
 import { log } from '../lib/log.js'
 
@@ -62,11 +63,14 @@ export async function searchRepos(query, token, limit = 30) {
 }
 
 /**
- * List a repository's GGUF files with exact byte sizes.
+ * List a repository's GGUF files with exact byte sizes, grouped by quant.
  *
  * The sizes are the whole point: knowing the total up front is what lets the
  * download job report byte-accurate progress by watching the target directory,
  * instead of screen-scraping tqdm output whose format is not a contract.
+ *
+ * Grouping happens here rather than in the browser so there is one definition
+ * of "a thing you can download" and it can be tested.
  */
 export async function listGgufFiles(repo, token, revision = 'main') {
   const url = new URL(`${API}/models/${repo}/tree/${revision}`)
@@ -84,5 +88,11 @@ export async function listGgufFiles(repo, token, revision = 'main') {
     }))
     .sort((a, b) => a.path.localeCompare(b.path))
 
-  return { repo, revision, files, totalBytes: files.reduce((sum, f) => sum + f.size, 0) }
+  return {
+    repo,
+    revision,
+    files,
+    groups: groupByQuant(files),
+    totalBytes: files.reduce((sum, f) => sum + f.size, 0),
+  }
 }
