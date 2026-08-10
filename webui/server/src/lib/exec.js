@@ -122,7 +122,7 @@ function baseEnv(extra = {}) {
   // Mock shims need to find their own fixtures.
   if (isMock) {
     env.SHX_MOCK = '1'
-    for (const key of ['SHX_MOCK_STATE', 'SHX_MOCK_FIXTURES', 'SHX_MOCK_HELP_VARIANT']) {
+    for (const key of ['SHX_MOCK_STATE', 'SHX_MOCK_FIXTURES', 'SHX_MOCK_HELP_VARIANT', 'SHX_MOCK_XET']) {
       if (process.env[key]) env[key] = process.env[key]
     }
   }

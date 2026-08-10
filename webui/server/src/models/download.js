@@ -5,6 +5,7 @@ import { AppError, badRequest, failedDependency } from '../lib/errors.js'
 import { stream, which } from '../lib/exec.js'
 import { log } from '../lib/log.js'
 import { listGgufFiles } from './hfapi.js'
+import { HfProgress } from './hfprogress.js'
 import { safeResolve } from './paths.js'
 import { diskUsage, invalidateModelCache } from './scan.js'
 
@@ -90,10 +91,18 @@ async function bytesOnDisk(dir) {
 /**
  * Start a model download as a job.
  *
- * Progress is derived from bytes actually on disk against a total fetched from
- * the HF API up front — precise, format-independent, and immune to any change
- * in the CLI's output. The tqdm lines are still captured into the job log for
- * the details panel, but nothing depends on parsing them.
+ * The total is fetched from the HF API up front, so it is exact from the first
+ * tick. Progress against it comes from two sources, whichever is further along:
+ *
+ *  - bytes on disk in the target directory — precise and independent of the
+ *    CLI's output format, but stuck at zero when Xet storage is in play,
+ *    because chunks land in a cache elsewhere and the file only materialises
+ *    at the end;
+ *  - the CLI's own tqdm percentages (see hfprogress.js), which cover exactly
+ *    that case.
+ *
+ * Relying on the first alone is what made a 6 GB Xet download show no progress
+ * at all and then jump straight to done.
  */
 export async function startDownload(ctx, { repo, revision = 'main', include, targetSubdir }) {
   const hf = await which('hf', ['--version'])
@@ -138,12 +147,16 @@ export async function startDownload(ctx, { repo, revision = 'main', include, tar
       title: `${repo} (${fmt(totalBytes)})`,
       meta: { repo, revision, include, targetSubdir: subdir, totalBytes, files: selected.length },
     },
-    (jobCtx) => runDownload(ctx, jobCtx, { repo, revision, includes, targetDir, totalBytes }),
+    (jobCtx) =>
+      runDownload(ctx, jobCtx, { repo, revision, includes, targetDir, totalBytes, selected }),
   )
 }
 
 function runDownload(ctx, { setProgress, appendLog, setMessage, onCancel, signal }, params) {
-  const { repo, revision, includes, targetDir, totalBytes } = params
+  const { repo, revision, includes, targetDir, totalBytes, selected } = params
+
+  // Two independent progress sources; see hfprogress.js for why.
+  const cliProgress = new HfProgress(selected)
 
   return new Promise((resolve, reject) => {
     const argv = ['download', repo, '--revision', revision, '--local-dir', targetDir]
@@ -163,7 +176,10 @@ function runDownload(ctx, { setProgress, appendLog, setMessage, onCancel, signal
       // just the wrapper.
       detached: true,
       onStdout: (line) => line.trim() && appendLog(line),
-      onStderr: (line) => line.trim() && appendLog(line),
+      onStderr: (line) => {
+        cliProgress.push(line)
+        if (line.trim()) appendLog(line)
+      },
       onExit: (code, sig) => {
         clearInterval(timer)
         if (signal.aborted) {
@@ -176,7 +192,11 @@ function runDownload(ctx, { setProgress, appendLog, setMessage, onCancel, signal
         if (code === 0) {
           invalidateModelCache()
           setProgress({ pct: 100, done: totalBytes, total: totalBytes, rate: null, eta: 0 })
-          appendLog('Download abgeschlossen.')
+          appendLog(
+            cliProgress.xet
+              ? 'Download abgeschlossen (Xet-Storage: Teile kamen aus dem lokalen Cache).'
+              : 'Download abgeschlossen.',
+          )
           resolve({ repo, targetDir, totalBytes })
         } else {
           reject(
@@ -209,8 +229,14 @@ function runDownload(ctx, { setProgress, appendLog, setMessage, onCancel, signal
     let lastAt = Date.now()
     let rate = null
 
+    let maxDone = 0
     const timer = setInterval(async () => {
-      const done = await bytesOnDisk(targetDir)
+      // Bytes on disk are precise but stay at zero under Xet; the CLI's own
+      // reporting covers that case. Whichever is further along is the truth,
+      // and the figure never moves backwards.
+      const measured = Math.max(await bytesOnDisk(targetDir), cliProgress.doneBytes)
+      maxDone = Math.max(maxDone, measured)
+      const done = maxDone
       const now = Date.now()
       const elapsed = (now - lastAt) / 1000
       if (elapsed > 0 && done >= lastBytes) {

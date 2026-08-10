@@ -47,6 +47,17 @@ const TOTAL_PER_FILE = 48 * 1024 * 1024
 const CHUNK = 2 * 1024 * 1024
 const CHUNK_MS = 60
 
+/**
+ * Xet mode: chunks land in a cache elsewhere and the file appears in one go at
+ * the very end, so the target directory stays empty while tqdm counts up. This
+ * is what made the byte-counting progress source read zero for a whole 6 GB
+ * download.
+ */
+const XET = process.env.SHX_MOCK_XET === '1'
+if (XET) {
+  process.stderr.write('Xet Storage is enabled for this repo, downloading using Xet Storage.\n')
+}
+
 let fileIndex = 0
 let written = 0
 
@@ -62,22 +73,25 @@ function step() {
   const partial = `${target}.incomplete`
   fs.mkdirSync(path.dirname(target), { recursive: true })
 
-  if (written === 0) process.stderr.write(`Downloading '${rel}' to '${partial}'\n`)
+  if (written === 0 && !XET) process.stderr.write(`Downloading '${rel}' to '${partial}'\n`)
 
   const chunk = Math.min(CHUNK, TOTAL_PER_FILE - written)
-  fs.appendFileSync(partial, Buffer.alloc(chunk))
+  // Under Xet nothing is written to the target until the file is complete.
+  if (!XET) fs.appendFileSync(partial, Buffer.alloc(chunk))
   written += chunk
 
   const pct = Math.round((written / TOTAL_PER_FILE) * 100)
   const mb = (written / 1024 / 1024).toFixed(1)
   const totalMb = (TOTAL_PER_FILE / 1024 / 1024).toFixed(1)
   // tqdm redraws with \r; the server captures these as secondary log lines.
+  const base = rel.split('/').pop()
   process.stderr.write(
-    `${rel}: ${String(pct).padStart(3)}%|${'█'.repeat(Math.floor(pct / 4))}${' '.repeat(25 - Math.floor(pct / 4))}| ${mb}M/${totalMb}M [00:0${fileIndex}<00:01, 33.4MB/s]\r`,
+    `${base}: ${String(pct).padStart(3)}%|${'█'.repeat(Math.floor(pct / 4))}${' '.repeat(25 - Math.floor(pct / 4))}| ${mb}MB/${totalMb}MB [00:0${fileIndex}<00:01, 33.4MB/s]\r`,
   )
 
   if (written >= TOTAL_PER_FILE) {
-    fs.renameSync(partial, target)
+    if (XET) fs.writeFileSync(target, Buffer.alloc(TOTAL_PER_FILE))
+    else fs.renameSync(partial, target)
     fileIndex += 1
     written = 0
     process.stderr.write('\n')
