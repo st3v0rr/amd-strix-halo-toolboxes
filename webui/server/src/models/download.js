@@ -165,7 +165,13 @@ function runDownload(ctx, { setProgress, appendLog, setMessage, onCancel, signal
     const env = {}
     if (ctx.config.data.hfToken) env.HF_TOKEN = ctx.config.data.hfToken
     env.HF_HUB_ENABLE_HF_TRANSFER = ctx.settings.useHfTransfer ? '1' : '0'
-    env.HF_XET_HIGH_PERFORMANCE = '1'
+    if (ctx.settings.disableXet) {
+      // Falls back to plain HTTPS range requests. Slower when the Xet cache
+      // would have had the chunks, but it does not stall.
+      env.HF_HUB_DISABLE_XET = '1'
+    } else {
+      env.HF_XET_HIGH_PERFORMANCE = '1'
+    }
 
     appendLog(`hf download ${repo} → ${targetDir}`)
     setMessage('Download läuft …')
