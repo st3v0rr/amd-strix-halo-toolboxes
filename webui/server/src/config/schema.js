@@ -31,6 +31,12 @@ export const configSchema = z.object({
   passwordHash: z.string().default(''),
   jwtSecret: z.string().default(''),
   hfToken: z.string().default(''),
+  /**
+   * When the credentials last changed, as epoch seconds. Tokens issued before
+   * this are rejected — without it, changing a password because you suspect a
+   * compromise would leave the attacker's session valid for up to 12 hours.
+   */
+  credentialsChangedAt: z.number().int().min(0).default(0),
   settings: settingsSchema.default({}),
 })
 

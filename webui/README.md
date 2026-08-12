@@ -86,11 +86,17 @@ systemctl restart strix-halo-webui
 journalctl -u strix-halo-webui -f
 ```
 
-Passwort vergessen:
+Benutzername und Passwort ändern: in der Weboberfläche unter **Einstellungen →
+Konto**. Beides braucht das aktuelle Passwort als Bestätigung; andere
+angemeldete Sitzungen werden dabei abgemeldet.
+
+Zugang verloren? Auf der Box:
 
 ```bash
-webui/scripts/shx-passwd              # interaktiv
-webui/scripts/shx-passwd --generate   # neues erzeugen und anzeigen
+webui/scripts/shx-passwd                      # Passwort interaktiv setzen
+webui/scripts/shx-passwd --generate           # neues erzeugen und anzeigen
+webui/scripts/shx-passwd --username steve     # nur umbenennen
+webui/scripts/shx-passwd --username steve --generate   # beides
 ```
 
 Funktionsprüfung einer laufenden Instanz:
@@ -122,6 +128,10 @@ Was sie tut:
 
 - Ein Admin-Konto, Passwort per scrypt gehasht, JWT in einem
   httpOnly-Cookie (`SameSite=Strict`, 12 h).
+- Eine Änderung von Benutzername oder Passwort beendet alle anderen Sitzungen
+  sofort. Ohne das bliebe ein fremder Zugriff nach einem Passwortwechsel noch
+  bis zu 12 Stunden bestehen — genau der Fall, für den man das Passwort
+  wechselt.
 - CSRF-Schutz dreifach: SameSite, Origin-Abgleich und ein Pflicht-Header
   `X-Requested-With`. CORS ist gar nicht erst aktiviert.
 - Login-Drosselung: 5 Versuche je 15 Minuten und IP.

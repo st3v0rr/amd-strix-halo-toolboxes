@@ -68,6 +68,21 @@ export function requireAuth(getConfig) {
     const payload = await verifyToken(config.jwtSecret, token)
     if (!payload) return next(unauthorized())
 
+    // A token minted before the credentials last changed is dead, even though
+    // its signature is still good. This is what makes changing the password
+    // actually end other sessions.
+    if ((payload.iat ?? 0) < (config.credentialsChangedAt ?? 0)) {
+      res.clearCookie(AUTH_COOKIE, { ...cookieOptions(req), maxAge: undefined })
+      return next(unauthorized('Die Zugangsdaten wurden geändert. Bitte neu anmelden.'))
+    }
+
+    // The username lives in the token's subject, so a rename would otherwise
+    // leave stale sessions claiming the old name.
+    if (payload.sub !== config.username) {
+      res.clearCookie(AUTH_COOKIE, { ...cookieOptions(req), maxAge: undefined })
+      return next(unauthorized('Der Benutzername wurde geändert. Bitte neu anmelden.'))
+    }
+
     req.user = { username: payload.sub, expiresAt: payload.exp }
 
     // Sliding session: refresh a token that is more than an hour old so an
