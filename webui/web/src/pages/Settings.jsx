@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { MIN_PASSWORD_LENGTH, USERNAME_RE } from '../../../shared/constants.js'
-import { get, post, put } from '../api/client.js'
+import { del, get, post, put } from '../api/client.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { PageHead } from '../components/Layout.jsx'
 import { useToast } from '../components/Toast.jsx'
@@ -18,6 +18,16 @@ export function Settings() {
   useEffect(() => {
     if (data?.settings) setForm(data.settings)
   }, [data])
+
+  const clearToken = useMutation({
+    mutationFn: () => del('/settings/hf-token'),
+    onSuccess: (result) => {
+      toast.success(result.wasSet ? 'Token entfernt.' : 'Es war kein Token gesetzt.')
+      setHfToken('')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (err) => toast.error(err),
+  })
 
   const save = useMutation({
     mutationFn: (patch) => put('/settings', patch),
@@ -193,22 +203,49 @@ export function Settings() {
           <h2>Hugging Face</h2>
           <div className="field">
             <label htmlFor="hfToken">Zugriffstoken</label>
-            <input
-              id="hfToken"
-              type="password"
-              autoComplete="off"
-              placeholder={
-                data.hfToken.configured
-                  ? `gesetzt (${data.hfToken.hint}) — zum Ändern neu eingeben`
-                  : 'nicht gesetzt'
-              }
-              value={hfToken}
-              onChange={(e) => setHfToken(e.target.value)}
-            />
+            <div className="row">
+              <input
+                id="hfToken"
+                className="grow"
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  data.hfToken.configured
+                    ? `gesetzt (${data.hfToken.hint}) — zum Ändern neu eingeben`
+                    : 'nicht gesetzt'
+                }
+                value={hfToken}
+                onChange={(e) => setHfToken(e.target.value)}
+              />
+              {data.hfToken.configured ? (
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={clearToken.isPending}
+                  onClick={() => clearToken.mutate()}
+                >
+                  {clearToken.isPending ? 'Entfernt …' : 'Token entfernen'}
+                </button>
+              ) : null}
+            </div>
             <span className="hint">
               Nur für gated Repositories nötig. Wird gespeichert, aber nie wieder ausgegeben.
             </span>
           </div>
+
+          <label className="row small">
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={form.disableXet}
+              onChange={(e) => field('disableXet', e.target.checked)}
+            />
+            Xet-Übertragung deaktivieren (einfaches HTTPS erzwingen)
+          </label>
+          <span className="hint">
+            Mit gesetztem Token laufen Downloads über Xet. Bleibt ein Download bei 0 % stehen,
+            behebt diese Option das meist — der Token bleibt für gated Repositories nutzbar.
+          </span>
         </section>
 
         <div className="row">
@@ -217,6 +254,8 @@ export function Settings() {
           </button>
         </div>
       </form>
+
+      <ServiceCard />
 
       <AccountCard username={data.username} />
     </>
@@ -372,4 +411,66 @@ function AccountCard({ username }) {
       </p>
     </section>
   )
+}
+
+/** Restart the service from the browser — the counterpart to systemctl restart. */
+function ServiceCard() {
+  const toast = useToast()
+  const [restarting, setRestarting] = useState(false)
+
+  const restart = useMutation({
+    mutationFn: () => post('/system/restart'),
+    onSuccess: (result) => {
+      setRestarting(true)
+      if (result.interruptedJobs?.length) {
+        toast.info(`Neustart läuft. Abgebrochen: ${result.interruptedJobs.join(', ')}`)
+      } else {
+        toast.success('Neustart läuft …')
+      }
+      waitForService().then(() => window.location.reload())
+    },
+    onError: (err) => toast.error(err),
+  })
+
+  return (
+    <section className="card stack">
+      <div>
+        <h2>Dienst</h2>
+        <p className="small muted">
+          Startet die Anwendung neu. Laufende llama.cpp-Container sind davon nicht betroffen —
+          ein laufender Download bricht ab und lässt sich danach fortsetzen.
+        </p>
+      </div>
+      <div className="row">
+        <button
+          type="button"
+          className="btn"
+          disabled={restart.isPending || restarting}
+          onClick={() => restart.mutate()}
+        >
+          {restarting ? 'Startet neu …' : 'Dienst neu starten'}
+        </button>
+        {restarting ? (
+          <span className="small faint">Die Seite lädt neu, sobald der Dienst wieder antwortet.</span>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+/** Poll until the service answers again, then give up after two minutes. */
+async function waitForService(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs
+  // Give it a moment to actually go down, or the first probe hits the old
+  // process and reports success immediately.
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+  while (Date.now() < deadline) {
+    try {
+      await get('/health')
+      return true
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+  return false
 }

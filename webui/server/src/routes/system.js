@@ -35,6 +35,44 @@ export function systemRoutes(ctx) {
     req.on('close', unsubscribe)
   })
 
+  /**
+   * Restart the service.
+   *
+   * Just exits: the unit carries `Restart=always`, so systemd brings us back
+   * within seconds. Calling `systemctl restart` from inside the unit would
+   * work too, but this needs no scope handling and no second binary — and it
+   * cannot leave the service stopped if the call itself fails.
+   *
+   * Running containers are unaffected; they are separate processes. In-flight
+   * download jobs do die, and are marked `interrupted` on the way back up.
+   */
+  router.post('/restart', (req, res) => {
+    // systemd sets INVOCATION_ID. Without a supervisor, exiting would simply
+    // take the app down for good.
+    const supervised = Boolean(process.env.INVOCATION_ID)
+    const running = ctx.jobs.list({ status: 'running' })
+
+    if (!supervised) {
+      return res.status(424).json({
+        error: {
+          code: 'not_supervised',
+          message:
+            'Der Dienst läuft nicht unter systemd — ein Neustart über die Oberfläche würde ihn beenden. Starte ihn von Hand neu.',
+        },
+      })
+    }
+
+    ctx.log.info(`Neustart über die Oberfläche angefordert (${running.length} laufende Jobs).`)
+    res.json({ ok: true, interruptedJobs: running.map((j) => j.title) })
+
+    // Let the response reach the browser before the process goes away.
+    setTimeout(() => {
+      Promise.allSettled([ctx.config.flush(), ctx.profiles.flush(), ctx.state.flush()]).then(() => {
+        process.exit(0)
+      })
+    }, 250).unref?.()
+  })
+
   router.get('/info', async (req, res, next) => {
     try {
       const [podman, python, hf, git] = await Promise.all([

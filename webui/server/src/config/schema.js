@@ -23,6 +23,12 @@ export const settingsSchema = z.object({
   allowCustomImages: z.boolean().default(false),
   imageCheckIntervalHours: z.number().int().min(1).max(168).default(6),
   useHfTransfer: z.boolean().default(false),
+  /**
+   * Force plain HTTP downloads instead of Xet. Authenticated Xet transfers
+   * have been observed to stall outright on some networks — this is the
+   * escape hatch that keeps the token usable for gated repos.
+   */
+  disableXet: z.boolean().default(false),
 })
 
 export const configSchema = z.object({

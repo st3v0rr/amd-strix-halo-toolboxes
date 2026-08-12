@@ -56,5 +56,30 @@ export function settingsRoutes(ctx) {
     }
   })
 
+  /**
+   * Remove the stored token.
+   *
+   * A separate route rather than `PUT {hfToken: ''}`: the settings form treats
+   * an empty password field as "leave unchanged", so there would otherwise be
+   * no way to express "clear it" at all.
+   */
+  router.delete('/hf-token', async (req, res, next) => {
+    try {
+      const previous = ctx.config.data.hfToken
+      if (!previous) return res.json({ ok: true, wasSet: false })
+
+      await ctx.config.update((c) => {
+        c.hfToken = ''
+        return c
+      })
+      await ctx.config.flush()
+      unregisterSecret(previous)
+      ctx.log.info('Hugging-Face-Token entfernt.')
+      res.json({ ok: true, wasSet: true })
+    } catch (err) {
+      next(err)
+    }
+  })
+
   return router
 }

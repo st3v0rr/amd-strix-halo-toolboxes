@@ -61,6 +61,18 @@ Ein erneuter Lauf ist idempotent und überschreibt die Zugangsdaten nicht.
 | python3 | VRAM-Schätzer | Schätzung bleibt deaktiviert |
 | `hf` | Modell-Downloads | `pipx install "huggingface_hub[cli]"` |
 
+### Download bleibt bei 0 % stehen
+
+Mit gesetztem Token lädt `huggingface_hub` über **Xet**, und dieser Weg bleibt
+in manchen Netzen ohne Fehlermeldung hängen — auch auf der Konsole, unabhängig
+von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
+**Einstellungen → Hugging Face**:
+
+- **Xet-Übertragung deaktivieren** — erzwingt einfaches HTTPS
+  (`HF_HUB_DISABLE_XET=1`). Der Token bleibt nutzbar, gated Repositories also
+  weiterhin erreichbar. Das ist meist die bessere Wahl.
+- **Token entfernen** — öffentliche Repos laden dann wieder ohne Xet.
+
 Der Benutzer muss in den Gruppen `video` und `render` sein, sonst schlägt
 `--device /dev/kfd` fehl:
 
@@ -98,6 +110,10 @@ webui/scripts/shx-passwd --generate           # neues erzeugen und anzeigen
 webui/scripts/shx-passwd --username steve     # nur umbenennen
 webui/scripts/shx-passwd --username steve --generate   # beides
 ```
+
+Neu starten geht auch aus der Oberfläche: **Einstellungen → Dienst → Dienst neu
+starten**. Laufende Container bleiben davon unberührt; ein laufender Download
+bricht ab und lässt sich danach fortsetzen.
 
 Funktionsprüfung einer laufenden Instanz:
 
