@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { MIN_PASSWORD_LENGTH, USERNAME_RE } from '../../../shared/constants.js'
 import { get, post, put } from '../api/client.js'
+import { useAuth } from '../auth/AuthContext.jsx'
 import { PageHead } from '../components/Layout.jsx'
 import { useToast } from '../components/Toast.jsx'
 
@@ -216,68 +218,158 @@ export function Settings() {
         </div>
       </form>
 
-      <PasswordCard />
+      <AccountCard username={data.username} />
     </>
   )
 }
 
-function PasswordCard() {
+/**
+ * Username and password in one form: both are proven by the same current
+ * password, so splitting them would mean typing it twice to change both.
+ */
+function AccountCard({ username }) {
   const toast = useToast()
+  const queryClient = useQueryClient()
+  const { refresh } = useAuth()
+
+  const [name, setName] = useState(username ?? '')
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
+  const [repeat, setRepeat] = useState('')
 
-  const change = useMutation({
-    mutationFn: () => post('/auth/password', { currentPassword: current, newPassword: next }),
-    onSuccess: () => {
-      toast.success('Passwort geändert.')
+  // Adopt the stored name once it arrives, without discarding an edit.
+  const [touched, setTouched] = useState(false)
+  useEffect(() => {
+    if (!touched && username) setName(username)
+  }, [username, touched])
+
+  const nameChanged = name.trim() !== '' && name.trim() !== username
+  const passwordChanged = next.length > 0
+  const mismatch = passwordChanged && repeat !== next
+  const tooShort = passwordChanged && next.length < MIN_PASSWORD_LENGTH
+  const nameInvalid = nameChanged && !USERNAME_RE.test(name.trim())
+
+  const canSubmit =
+    current.length > 0 && (nameChanged || passwordChanged) && !mismatch && !tooShort && !nameInvalid
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = { currentPassword: current }
+      if (nameChanged) body.username = name.trim()
+      if (passwordChanged) body.newPassword = next
+      return post('/auth/account', body)
+    },
+    onSuccess: async (result) => {
+      toast.success(`${result.changed.join(' und ')} geändert.`)
       setCurrent('')
       setNext('')
+      setRepeat('')
+      setTouched(false)
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      await refresh()
     },
     onError: (err) => toast.error(err),
   })
 
   return (
     <section className="card stack">
-      <h2>Passwort ändern</h2>
+      <div>
+        <h2>Konto</h2>
+        <p className="small muted">
+          Benutzername und Passwort ändern. Andere angemeldete Sitzungen werden dabei
+          abgemeldet.
+        </p>
+      </div>
+
       <form
-        className="form-grid"
+        className="stack"
         onSubmit={(e) => {
           e.preventDefault()
-          change.mutate()
+          save.mutate()
         }}
       >
         <div className="field">
-          <label htmlFor="current">Aktuelles Passwort</label>
+          <label htmlFor="acc-name">Benutzername</label>
           <input
-            id="current"
+            id="acc-name"
+            type="text"
+            autoComplete="username"
+            value={name}
+            onChange={(e) => {
+              setTouched(true)
+              setName(e.target.value)
+            }}
+          />
+          {nameInvalid ? (
+            <span className="hint" style={{ color: 'var(--danger)' }}>
+              Erlaubt sind Buchstaben, Ziffern und . _ - @ + (max. 64 Zeichen, keine
+              Leerzeichen).
+            </span>
+          ) : null}
+        </div>
+
+        <div className="form-grid">
+          <div className="field">
+            <label htmlFor="acc-next">Neues Passwort</label>
+            <input
+              id="acc-next"
+              type="password"
+              autoComplete="new-password"
+              placeholder="leer lassen, um es zu behalten"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+            {tooShort ? (
+              <span className="hint" style={{ color: 'var(--danger)' }}>
+                Mindestens {MIN_PASSWORD_LENGTH} Zeichen.
+              </span>
+            ) : null}
+          </div>
+
+          <div className="field">
+            <label htmlFor="acc-repeat">Neues Passwort wiederholen</label>
+            <input
+              id="acc-repeat"
+              type="password"
+              autoComplete="new-password"
+              disabled={!passwordChanged}
+              value={repeat}
+              onChange={(e) => setRepeat(e.target.value)}
+            />
+            {mismatch ? (
+              <span className="hint" style={{ color: 'var(--danger)' }}>
+                Die Passwörter stimmen nicht überein.
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="acc-current">Aktuelles Passwort zur Bestätigung</label>
+          <input
+            id="acc-current"
             type="password"
             autoComplete="current-password"
+            required
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor="next">Neues Passwort</label>
-          <input
-            id="next"
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
-          <span className="hint">Mindestens 8 Zeichen.</span>
-        </div>
-        <div className="field" style={{ justifyContent: 'flex-end' }}>
-          <button
-            className="btn"
-            type="submit"
-            disabled={change.isPending || !current || next.length < 8}
-          >
-            Ändern
+
+        <div className="row">
+          <button className="btn btn-primary" type="submit" disabled={!canSubmit || save.isPending}>
+            {save.isPending ? 'Wird gespeichert …' : 'Konto ändern'}
           </button>
+          {!nameChanged && !passwordChanged ? (
+            <span className="small faint">Nichts geändert.</span>
+          ) : null}
         </div>
       </form>
+
+      <p className="small faint">
+        Zugang verloren? Auf der Box: <code>webui/scripts/shx-passwd --generate</code> setzt ein
+        neues Passwort, <code>--username &lt;name&gt;</code> den Benutzernamen.
+      </p>
     </section>
   )
 }

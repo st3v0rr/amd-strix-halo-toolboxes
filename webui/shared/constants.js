@@ -60,6 +60,16 @@ export const SERVER_DEFAULTS = {
 export const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/
 
 /**
+ * Login names. Deliberately roomier than NAME_RE — `@` and `+` let people use
+ * an email address — but still free of whitespace and control characters, so a
+ * name cannot be visually confused with another one.
+ */
+export const USERNAME_RE = /^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$/
+
+/** Shortest password we accept when it is set through the API. */
+export const MIN_PASSWORD_LENGTH = 8
+
+/**
  * Multi-part GGUF files, e.g. `model-00001-of-00003.gguf`. Only the first shard
  * is ever passed to `-m`.
  */

@@ -5,15 +5,17 @@
  * endpoint that anyone on the LAN could reach first.
  *
  * Usage:
- *   shx-passwd                 prompt for a new password
- *   shx-passwd --generate      generate one and print it
- *   shx-passwd --stdin         read it from stdin (for scripting)
+ *   shx-passwd                     prompt for a new password
+ *   shx-passwd --generate          generate one and print it
+ *   shx-passwd --stdin             read it from stdin (for scripting)
+ *   shx-passwd --username <name>   also (or only) change the login name
  */
 import readline from 'node:readline'
 
 import { configFile, ensureDirs } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
 import { JsonStore } from '../config/store.js'
+import { USERNAME_RE } from '../../../shared/constants.js'
 import { generatePassword, hashPassword } from '../auth/password.js'
 import { generateSecret } from '../auth/tokens.js'
 
@@ -54,9 +56,25 @@ async function main() {
   const store = new JsonStore({ file: configFile, schema: configSchema, mode: 0o600 })
   store.load()
 
+  // --username alone is a valid invocation: rename without touching the
+  // password.
+  const nameIndex = args.indexOf('--username')
+  const newUsername = nameIndex >= 0 ? args[nameIndex + 1] : null
+  if (nameIndex >= 0) {
+    if (!newUsername || !USERNAME_RE.test(newUsername)) {
+      process.stderr.write(
+        'Ungültiger Benutzername. Erlaubt sind Buchstaben, Ziffern und . _ - @ + (max. 64 Zeichen).\n',
+      )
+      process.exit(1)
+    }
+  }
+  const onlyRename = nameIndex >= 0 && !args.includes('--generate') && !args.includes('--stdin')
+
   let password
   let generated = false
-  if (args.includes('--generate')) {
+  if (onlyRename) {
+    password = null
+  } else if (args.includes('--generate')) {
     password = generatePassword()
     generated = true
   } else if (args.includes('--stdin')) {
@@ -70,14 +88,17 @@ async function main() {
     }
   }
 
-  if (!password || password.length < 8) {
+  if (password !== null && (!password || password.length < 8)) {
     process.stderr.write('Das Passwort muss mindestens 8 Zeichen haben.\n')
     process.exit(1)
   }
 
-  const hash = await hashPassword(password)
+  const hash = password === null ? null : await hashPassword(password)
   await store.update((c) => {
-    c.passwordHash = hash
+    if (hash) c.passwordHash = hash
+    if (newUsername) c.username = newUsername
+    // Any change here ends existing sessions; see auth/middleware.js.
+    c.credentialsChangedAt = Math.floor(Date.now() / 1000)
     // Bootstrap a secret too, so a fresh config is immediately usable.
     if (!c.jwtSecret) c.jwtSecret = generateSecret()
     return c
@@ -87,7 +108,11 @@ async function main() {
   if (generated) {
     process.stdout.write(`\n  Neues Passwort: ${password}\n\n`)
   }
-  process.stdout.write(`Passwort für '${store.data.username}' gesetzt (${configFile}).\n`)
+  const what = [newUsername ? 'Benutzername' : null, hash ? 'Passwort' : null]
+    .filter(Boolean)
+    .join(' und ')
+  process.stdout.write(`${what} für '${store.data.username}' gesetzt (${configFile}).\n`)
+  process.stdout.write('Angemeldete Sitzungen wurden beendet.\n')
 }
 
 main().catch((err) => {
