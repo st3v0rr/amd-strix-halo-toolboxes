@@ -89,20 +89,54 @@ export function ServerDetail() {
               <span className={`badge ${s.running ? 'badge-ok' : 'badge-warn'}`}>{s.state}</span>
             </div>
             <dl className="kv">
-              <dt>Modell</dt>
-              <dd>{s.modelPath ?? '–'}</dd>
+              <dt>Rolle</dt>
+              <dd>{s.role === 'rpc' ? 'RPC-Worker (stellt GPU bereit)' : 'llama-server'}</dd>
+              {s.role === 'rpc' ? null : (
+                <>
+                  <dt>Modell</dt>
+                  <dd>{s.modelPath ?? '–'}</dd>
+                </>
+              )}
               <dt>Image</dt>
               <dd>{s.image ?? '–'}</dd>
               <dt>Host-Port</dt>
-              <dd>{s.hostPort ?? '–'} → 11434</dd>
-              <dt>Context Size</dt>
-              <dd>{s.ctxSize ?? '–'}</dd>
-              <dt>GPU Layers</dt>
-              <dd>{s.gpuLayers ?? '–'}</dd>
-              <dt>Threads</dt>
-              <dd>{s.threads ?? '–'}</dd>
-              <dt>Zusatzargumente</dt>
-              <dd>{s.extraArgs || '–'}</dd>
+              <dd>
+                {s.hostPort ?? '–'} → {s.role === 'rpc' ? 50052 : 11434}
+              </dd>
+              {s.role === 'rpc' ? null : (
+                <>
+                  <dt>Context Size</dt>
+                  <dd>{s.ctxSize ?? '–'}</dd>
+                  <dt>GPU Layers</dt>
+                  <dd>{s.gpuLayers ?? '–'}</dd>
+                  <dt>Threads</dt>
+                  <dd>{s.threads ?? '–'}</dd>
+                  <dt>Zusatzargumente</dt>
+                  <dd>{s.extraArgs || '–'}</dd>
+                </>
+              )}
+              {s.rpcPeers?.length ? (
+                <>
+                  <dt>RPC-Knoten</dt>
+                  <dd>
+                    {s.rpcPeers.map((peer) => {
+                      const probe = health.data?.peers?.find((p) => p.peer === peer)
+                      return (
+                        <div key={peer} className="row">
+                          <span className="mono">{peer}</span>
+                          {probe ? (
+                            <span
+                              className={`badge ${probe.reachable ? 'badge-ok' : 'badge-danger'}`}
+                            >
+                              {probe.reachable ? 'erreichbar' : (probe.reason ?? 'weg')}
+                            </span>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </dd>
+                </>
+              ) : null}
               <dt>Angelegt</dt>
               <dd>{formatDate(s.createdAt)}</dd>
               {s.exitCode !== null && s.exitCode !== undefined && !s.running ? (
@@ -126,7 +160,11 @@ export function ServerDetail() {
             {s.running ? (
               <dl className="kv">
                 <dt>Endpunkt</dt>
-                <dd>http://&lt;host&gt;:{s.hostPort}/v1</dd>
+                <dd>
+                  {s.role === 'rpc'
+                    ? `${s.hostPort} (RPC, kein HTTP)`
+                    : `http://<host>:${s.hostPort}/v1`}
+                </dd>
                 <dt>Status</dt>
                 <dd>{health.data?.status ?? health.data?.reason ?? 'wird geprüft …'}</dd>
               </dl>

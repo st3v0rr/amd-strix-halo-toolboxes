@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { get, post } from '../api/client.js'
+import { normalizeRpcPeers } from '../../../shared/rpc.js'
 import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
 import { VramEstimate } from '../components/VramEstimate.jsx'
@@ -37,6 +38,12 @@ export function StartServerDialog({ onClose, initial }) {
   })
   const [replace, setReplace] = useState(false)
   const [conflictName, setConflictName] = useState(null)
+  // Kept as raw text so typing a partial address does not get rewritten under
+  // the cursor; it is only normalised on submit.
+  const [peerText, setPeerText] = useState(
+    Array.isArray(initial?.rpcPeers) ? initial.rpcPeers.join('\n') : '',
+  )
+  const { peers: rpcPeers, invalid: invalidPeers } = normalizeRpcPeers(peerText)
 
   // Seed from the saved defaults once they arrive, without clobbering edits.
   useEffect(() => {
@@ -78,6 +85,7 @@ export function StartServerDialog({ onClose, initial }) {
     const body = { ...form, replace }
     if (!body.apiKey) delete body.apiKey
     if (!body.extraArgs) delete body.extraArgs
+    if (rpcPeers.length) body.rpcPeers = rpcPeers
     start.mutate(body)
   }
 
@@ -192,6 +200,32 @@ export function StartServerDialog({ onClose, initial }) {
             <label htmlFor="threads">Threads</label>
             <input id="threads" type="number" value={form.threads} onChange={set('threads')} />
           </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="rpcPeers">RPC-Knoten (optional)</label>
+          <textarea
+            id="rpcPeers"
+            rows={3}
+            placeholder={'192.168.100.11\n192.168.100.12'}
+            value={peerText}
+            onChange={(e) => setPeerText(e.target.value)}
+          />
+          <span className="hint">
+            Eine Adresse pro Zeile. Ohne Port wird 50052 angenommen. Auf jedem dieser Rechner muss
+            vorher ein RPC-Worker laufen — die Knoten werden vor dem Start geprüft. Alle Knoten
+            müssen denselben Image-Build fahren wie dieser hier.
+          </span>
+          {invalidPeers.length ? (
+            <span className="hint" style={{ color: 'var(--danger)' }}>
+              Unlesbar: {invalidPeers.join(', ')}
+            </span>
+          ) : null}
+          {rpcPeers.length ? (
+            <span className="hint">
+              {rpcPeers.length} Knoten: <code>{rpcPeers.join(', ')}</code>
+            </span>
+          ) : null}
         </div>
 
         <div className="field">

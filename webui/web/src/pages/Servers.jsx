@@ -7,12 +7,14 @@ import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatDate, shortImage } from '../components/format.js'
+import { StartRpcWorkerDialog } from './StartRpcWorkerDialog.jsx'
 import { StartServerDialog } from './StartServerDialog.jsx'
 
 export function Servers() {
   const toast = useToast()
   const queryClient = useQueryClient()
   const [starting, setStarting] = useState(false)
+  const [startingRpc, setStartingRpc] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
 
   const servers = useQuery({
@@ -49,6 +51,9 @@ export function Servers() {
         title="Server"
         description="llama.cpp-Container, die über dieses Interface angelegt wurden."
       >
+        <button className="btn" type="button" onClick={() => setStartingRpc(true)}>
+          RPC-Worker starten
+        </button>
         <button className="btn btn-primary" type="button" onClick={() => setStarting(true)}>
           Server starten
         </button>
@@ -85,13 +90,27 @@ export function Servers() {
                         title={server.status}
                       />
                       <Link to={`/servers/${encodeURIComponent(server.name)}`}>{server.name}</Link>
+                      {server.role === 'rpc' ? <span className="badge badge-info">RPC</span> : null}
                     </div>
                     <span className="small faint">{server.status}</span>
                   </td>
                   <td className="small mono" style={{ maxWidth: 280 }}>
-                    <span className="truncate" title={server.modelPath} style={{ display: 'block' }}>
-                      {server.modelPath ?? '–'}
-                    </span>
+                    {server.role === 'rpc' ? (
+                      <span className="faint">GPU-Worker</span>
+                    ) : (
+                      <span
+                        className="truncate"
+                        title={server.modelPath}
+                        style={{ display: 'block' }}
+                      >
+                        {server.modelPath ?? '–'}
+                      </span>
+                    )}
+                    {server.rpcPeers?.length ? (
+                      <span className="small faint" title={server.rpcPeers.join(', ')}>
+                        + {server.rpcPeers.length} RPC-Knoten
+                      </span>
+                    ) : null}
                   </td>
                   <td className="small">{shortImage(server.image)}</td>
                   <td className="small mono">{server.hostPort ?? '–'}</td>
@@ -134,6 +153,7 @@ export function Servers() {
       )}
 
       {starting ? <StartServerDialog onClose={() => setStarting(false)} /> : null}
+      {startingRpc ? <StartRpcWorkerDialog onClose={() => setStartingRpc(false)} /> : null}
 
       {pendingDelete ? (
         <ConfirmDialog

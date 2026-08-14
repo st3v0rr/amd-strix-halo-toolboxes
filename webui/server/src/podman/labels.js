@@ -1,4 +1,4 @@
-import { LABEL, LABEL_VERSION } from '../../../shared/constants.js'
+import { LABEL, LABEL_VERSION, ROLE } from '../../../shared/constants.js'
 
 /**
  * Ownership is recorded on the container itself rather than in our state file.
@@ -12,6 +12,7 @@ export function buildLabels(spec) {
   return {
     [LABEL.managed]: 'true',
     [LABEL.version]: LABEL_VERSION,
+    [LABEL.role]: spec.role ?? ROLE.server,
     [LABEL.profile]: spec.profileId ?? '',
     [LABEL.model]: spec.modelPath,
     [LABEL.image]: spec.image,
@@ -20,6 +21,25 @@ export function buildLabels(spec) {
     [LABEL.threads]: String(spec.threads),
     [LABEL.port]: String(spec.hostPort),
     [LABEL.extraArgs]: spec.extraArgs ?? '',
+    [LABEL.rpcPeers]: (spec.rpcPeers ?? []).join(','),
+    [LABEL.created]: new Date().toISOString(),
+  }
+}
+
+/**
+ * Labels for an RPC worker.
+ *
+ * The server-shaped fields (model, ctx, gpu layers, threads) have no meaning
+ * here, and writing empty strings for them would make the UI show blanks where
+ * it should show nothing. So the worker carries only what it actually has.
+ */
+export function buildRpcLabels(spec) {
+  return {
+    [LABEL.managed]: 'true',
+    [LABEL.version]: LABEL_VERSION,
+    [LABEL.role]: ROLE.rpc,
+    [LABEL.image]: spec.image,
+    [LABEL.port]: String(spec.hostPort),
     [LABEL.created]: new Date().toISOString(),
   }
 }
@@ -32,6 +52,9 @@ export function parseLabels(labels = {}) {
   }
   return {
     managed: labels[LABEL.managed] === 'true',
+    // Containers created before the role label existed are llama-servers.
+    // Defaulting rather than reporting null keeps them in the servers list.
+    role: labels[LABEL.role] === ROLE.rpc ? ROLE.rpc : ROLE.server,
     profileId: labels[LABEL.profile] || null,
     modelPath: labels[LABEL.model] || null,
     image: labels[LABEL.image] || null,
@@ -40,6 +63,7 @@ export function parseLabels(labels = {}) {
     threads: num(LABEL.threads, null),
     hostPort: num(LABEL.port, null),
     extraArgs: labels[LABEL.extraArgs] ?? '',
+    rpcPeers: (labels[LABEL.rpcPeers] || '').split(',').filter(Boolean),
     createdAt: labels[LABEL.created] || null,
   }
 }

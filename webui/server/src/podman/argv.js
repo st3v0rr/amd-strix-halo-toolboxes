@@ -2,7 +2,9 @@ import {
   CONTAINER_MODELS_DIR,
   CONTAINER_PORT,
   EXTRA_ARGS_OLD,
+  RPC_PORT,
 } from '../../../shared/constants.js'
+import { rpcArgument } from '../../../shared/rpc.js'
 
 /**
  * Builds the `podman run` argv for a llama-server container.
@@ -52,6 +54,7 @@ export function splitExtraArgs(extraArgs) {
  * @param {number} spec.threads
  * @param {string} spec.apiKey
  * @param {string} [spec.extraArgs] empty means "autodetected upstream"
+ * @param {string[]} [spec.rpcPeers] `host:port` workers to distribute layers over
  * @param {Record<string,string>} [spec.labels]
  * @returns {string[]}
  */
@@ -67,6 +70,7 @@ export function buildRunArgv(spec) {
     threads,
     apiKey,
     extraArgs = EXTRA_ARGS_OLD,
+    rpcPeers = [],
     labels = {},
   } = spec
 
@@ -120,10 +124,100 @@ export function buildRunArgv(spec) {
     String(threads),
     '--api-key',
     apiKey,
-    ...splitExtraArgs(extraArgs),
+  )
+
+  // Only emitted for a cluster run. Without peers the argv must stay byte-for-byte
+  // what run-llama-server.sh produces, which is what dev/parity checks.
+  if (rpcPeers.length) argv.push('--rpc', rpcArgument(rpcPeers))
+
+  argv.push(...splitExtraArgs(extraArgs))
+
+  return argv
+}
+
+/**
+ * Builds the `podman run` argv for a ggml-rpc-server worker.
+ *
+ * Deliberately a sibling of buildRunArgv rather than a branch inside it: that
+ * function is a faithful transcription of run-llama-server.sh and is diffed
+ * against the real script by dev/parity. A worker has no counterpart there, so
+ * folding it in would mean the parity harness no longer covers the whole
+ * function.
+ *
+ * A worker needs no model mount and takes no API key — the RPC protocol has
+ * no authentication of any kind, which is why the caller must be deliberate
+ * about which address it publishes on.
+ *
+ * @param {object} spec
+ * @param {string} spec.containerName
+ * @param {string} spec.image
+ * @param {number} spec.hostPort published port on the host
+ * @param {string} [spec.bindAddress] host interface to publish on; '' means all
+ * @param {string} [spec.cacheVolume] named volume for the local tensor cache
+ * @param {Record<string,string>} [spec.labels]
+ * @returns {string[]}
+ */
+export function buildRpcRunArgv(spec) {
+  const {
+    containerName,
+    image,
+    hostPort,
+    bindAddress = '',
+    cacheVolume,
+    labels = {},
+  } = spec
+
+  // podman reads `ip:host:container`; omitting the ip means every interface.
+  const publish = bindAddress
+    ? `${bindAddress}:${hostPort}:${RPC_PORT}`
+    : `${hostPort}:${RPC_PORT}`
+
+  const argv = [
+    'run',
+    '-d',
+    '--restart',
+    'unless-stopped',
+    '--device',
+    '/dev/dri',
+    '--device',
+    '/dev/kfd',
+    '--group-add',
+    'video',
+    '--group-add',
+    'render',
+    '--security-opt',
+    'seccomp=unconfined',
+    '-p',
+    publish,
+    '--name',
+    containerName,
+  ]
+
+  for (const [key, value] of Object.entries(labels)) {
+    argv.push('--label', `${key}=${value}`)
+  }
+
+  // `-c` makes the worker cache tensors on disk, which is the difference
+  // between a fast and a very slow second start. Without a volume that cache
+  // lives in the container's writable layer and dies with `podman rm`.
+  if (cacheVolume) argv.push('-v', `${cacheVolume}:/root/.cache:z`)
+
+  argv.push(
+    image,
+    'ggml-rpc-server',
+    '-H',
+    '0.0.0.0',
+    '-p',
+    String(RPC_PORT),
+    '-c',
   )
 
   return argv
+}
+
+/** Name of the per-worker cache volume. Derived so two workers never share one. */
+export function rpcCacheVolume(containerName) {
+  return `shx-rpc-cache-${containerName}`
 }
 
 /** The host-side path the model must exist at before we start the container. */

@@ -20,6 +20,7 @@ const profileBody = z.object({
   threads: z.number().int().min(1).max(512),
   apiKey: z.string().max(512).optional(),
   extraArgs: z.string().max(1024).default(''),
+  rpcPeers: z.array(z.string().min(1).max(300)).max(32).default([]),
   autostart: z.boolean().default(false),
 })
 
@@ -132,6 +133,7 @@ export function profileRoutes(ctx) {
           threads: profile.threads,
           apiKey: profile.apiKey,
           extraArgs: profile.extraArgs,
+          rpcPeers: profile.rpcPeers,
           profileId: profile.id,
         },
         { replace: req.body?.replace === true, onLog: (l) => logs.push(l) },
