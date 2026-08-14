@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { LoginPage } from './auth/LoginPage.jsx'
 import { useAuth } from './auth/AuthContext.jsx'
 import { Layout } from './components/Layout.jsx'
+import { useDocumentTitle } from './components/useDocumentTitle.js'
 import { Dashboard } from './pages/Dashboard.jsx'
 import { Images } from './pages/Images.jsx'
 import { Models } from './pages/Models.jsx'
@@ -14,6 +15,10 @@ import { Updates } from './pages/Updates.jsx'
 
 export function App() {
   const { status } = useAuth()
+
+  // Above the auth branch on purpose: hooks may not be conditional, and the
+  // login page should carry the hostname too.
+  useDocumentTitle()
 
   if (status === 'loading') {
     return (
