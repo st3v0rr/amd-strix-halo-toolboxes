@@ -10,6 +10,10 @@ import { monitor } from '../system/monitor.js'
 export function systemRoutes(ctx) {
   const router = express.Router()
 
+  // The monitor is a process-wide singleton and has no ctx of its own; this is
+  // where the two meet. A resolver keeps it correct after a settings change.
+  monitor.setDiskPath(() => ctx.settings.modelsDir)
+
   router.get('/', async (req, res, next) => {
     try {
       const snapshot = await monitor.snapshot()

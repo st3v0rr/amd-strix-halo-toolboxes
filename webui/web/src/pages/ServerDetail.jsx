@@ -1,11 +1,13 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { del, get, post } from '../api/client.js'
 import { PageHead } from '../components/Layout.jsx'
 import { LogView } from '../components/LogView.jsx'
+import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { formatDate } from '../components/format.js'
+import { formatBytes, formatDate } from '../components/format.js'
 
 export function ServerDetail() {
   const { name } = useParams()
@@ -38,6 +40,31 @@ export function ServerDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: key })
       queryClient.invalidateQueries({ queryKey: ['servers'] })
+    },
+    onError: (err) => toast.error(err),
+  })
+
+  // Walking the volume costs a directory tree, so it is fetched once per visit
+  // and only for a worker — a llama-server has no such cache.
+  const cache = useQuery({
+    queryKey: ['server-cache', name],
+    queryFn: () => get(`/servers/${encodeURIComponent(name)}/cache`),
+    enabled: isRpc,
+    retry: false,
+  })
+
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  const clearCache = useMutation({
+    mutationFn: () => del(`/servers/${encodeURIComponent(name)}/cache`),
+    onSuccess: (result) => {
+      toast.success(
+        result.cleared
+          ? `Cache geleert — ${formatBytes(result.freedBytes)} frei.`
+          : 'Es war noch kein Cache angelegt.',
+      )
+      setConfirmClear(false)
+      queryClient.invalidateQueries({ queryKey: ['server-cache', name] })
     },
     onError: (err) => toast.error(err),
   })
@@ -88,7 +115,7 @@ export function ServerDetail() {
       </PageHead>
 
       {s ? (
-        <div className="card-grid">
+        <div className="detail-grid">
           <section className="card">
             <div className="card-head">
               <h2>Konfiguration</h2>
@@ -201,6 +228,41 @@ export function ServerDetail() {
             )}
           </section>
 
+          {isRpc ? (
+            <section className="card">
+              <div className="card-head">
+                <h2>Tensor-Cache</h2>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={s.running || !cache.data?.exists || clearCache.isPending}
+                  title={s.running ? 'Erst den Worker stoppen' : undefined}
+                  onClick={() => setConfirmClear(true)}
+                >
+                  Leeren
+                </button>
+              </div>
+              <dl className="kv">
+                <dt>Belegt</dt>
+                <dd>
+                  {cache.isLoading
+                    ? 'wird ermittelt …'
+                    : cache.isError
+                      ? (cache.error?.message ?? 'unbekannt')
+                      : `${formatBytes(cache.data?.bytes ?? 0)} in ${cache.data?.files ?? 0} Dateien`}
+                </dd>
+                <dt>Volume</dt>
+                <dd>{cache.data?.volume ?? '–'}</dd>
+              </dl>
+              <p className="muted small">
+                Der Worker legt hier jeden empfangenen Tensor ab, damit derselbe Modellstart beim
+                nächsten Mal von der lokalen Platte kommt statt erneut übers Netz. Nichts räumt das
+                auf — jedes je bediente Modell bleibt liegen. Leeren kostet nur einen langsameren
+                nächsten Start.
+              </p>
+            </section>
+          ) : null}
+
           {s.command ? (
             <section className="card" style={{ gridColumn: '1 / -1' }}>
               <div className="card-head">
@@ -220,6 +282,24 @@ export function ServerDetail() {
       <section className="card">
         <LogView name={name} />
       </section>
+
+      {confirmClear ? (
+        <ConfirmDialog
+          title="Tensor-Cache leeren"
+          danger
+          confirmLabel="Leeren"
+          busy={clearCache.isPending}
+          message={
+            <p>
+              {formatBytes(cache.data?.bytes ?? 0)} in {cache.data?.files ?? 0} Dateien werden
+              gelöscht. Der nächste Start dieses Workers überträgt die Gewichte wieder vollständig
+              über das Netz — das kostet Zeit, aber nichts geht verloren.
+            </p>
+          }
+          onConfirm={() => clearCache.mutate()}
+          onClose={() => setConfirmClear(false)}
+        />
+      ) : null}
     </>
   )
 }

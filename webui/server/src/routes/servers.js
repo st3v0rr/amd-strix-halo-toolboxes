@@ -5,6 +5,7 @@ import { NAME_RE, PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/con
 import { badRequest, notFound } from '../lib/errors.js'
 import { lastEventId, openSse } from '../lib/sse.js'
 import { q, validate } from '../lib/validate.js'
+import { clearRpcCache, rpcCacheInfo } from '../podman/cache.js'
 import { logSnapshot } from '../podman/client.js'
 import { attachLogClient } from '../podman/logstream.js'
 import {
@@ -134,6 +135,22 @@ export function serverRoutes(ctx) {
   router.delete('/:name', validate({ params: nameParams }), async (req, res, next) => {
     try {
       res.json(await deleteServer(req.params.name))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  router.get('/:name/cache', validate({ params: nameParams }), async (req, res, next) => {
+    try {
+      res.json(await rpcCacheInfo(await getServerDetail(req.params.name)))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  router.delete('/:name/cache', validate({ params: nameParams }), async (req, res, next) => {
+    try {
+      res.json(await clearRpcCache(await getServerDetail(req.params.name)))
     } catch (err) {
       next(err)
     }
