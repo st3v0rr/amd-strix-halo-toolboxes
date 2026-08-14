@@ -67,6 +67,34 @@ export async function readMemory() {
   }
 }
 
+/**
+ * Free space on the filesystem holding `dir`.
+ *
+ * The models directory is the one worth watching: a single GGUF runs to tens
+ * of gigabytes, and the RPC tensor cache grows with every model a worker has
+ * ever served without anything pruning it. Returns null when the path is unset
+ * or unreadable, and the tile disappears rather than showing a wrong number.
+ *
+ * @param {string|null} dir
+ */
+export async function readDisk(dir) {
+  if (!dir) return null
+  try {
+    const stats = await fsp.statfs(dir)
+    const totalBytes = stats.blocks * stats.bsize
+    return {
+      path: dir,
+      totalBytes,
+      // bavail rather than bfree: the blocks reserved for root are not ours to
+      // fill, so counting them as free would promise space we cannot use.
+      availableBytes: stats.bavail * stats.bsize,
+      usedBytes: totalBytes - stats.bfree * stats.bsize,
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function readUptime() {
   try {
     const text = await fsp.readFile('/proc/uptime', 'utf8')

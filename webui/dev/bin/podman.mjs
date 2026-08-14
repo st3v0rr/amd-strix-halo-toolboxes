@@ -127,6 +127,16 @@ if (cmd === 'run') {
     fail(`creating container storage: the container name "${name}" is already in use`)
   }
 
+  // podman creates a named volume on first use; mirror that, or the RPC cache
+  // would never come into existence in development. A source without a slash
+  // is a volume name rather than a host path.
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== '-v') continue
+    const source = String(argv[i + 1] ?? '').split(':')[0]
+    if (!source || source.includes('/')) continue
+    fs.mkdirSync(path.join(devRoot, 'tmp', 'volumes', source, '_data'), { recursive: true })
+  }
+
   const labels = {}
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--label') {
@@ -284,6 +294,33 @@ if (cmd === 'image') {
     state.images = state.images.filter((i) => !i.Names.includes(target) && i.Id !== target)
     saveState(state)
     out('untagged')
+    process.exit(0)
+  }
+}
+
+/*
+ * Named volumes, so the RPC tensor cache can be inspected and emptied in
+ * development. The directory is real: the server walks it to report a size and
+ * deletes its contents, and both paths deserve to run against an actual
+ * filesystem rather than a stub return value.
+ */
+if (cmd === 'volume') {
+  const sub = argv[1]
+  const volumesRoot = path.join(devRoot, 'tmp', 'volumes')
+
+  if (sub === 'inspect') {
+    const target = argv[2]
+    const mountpoint = path.join(volumesRoot, target, '_data')
+    if (!fs.existsSync(mountpoint)) fail(`no such volume ${target}`, 125)
+    const fmtIdx = argv.indexOf('--format')
+    if (fmtIdx >= 0 && argv[fmtIdx + 1].includes('.Mountpoint')) out(mountpoint)
+    else out(JSON.stringify([{ Name: target, Mountpoint: mountpoint }], null, 2))
+    process.exit(0)
+  }
+
+  if (sub === 'ls') {
+    const names = fs.existsSync(volumesRoot) ? fs.readdirSync(volumesRoot) : []
+    out(JSON.stringify(names.map((Name) => ({ Name })), null, 2))
     process.exit(0)
   }
 }

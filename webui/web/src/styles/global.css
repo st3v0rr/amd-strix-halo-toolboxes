@@ -154,6 +154,21 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+/*
+ * Same idea as .card-grid, but for cards holding a description list rather
+ * than a single number.
+ *
+ * 240px is plenty for a stat tile and far too little for a `dl.kv`: the term
+ * column claims 120px of it, leaving the value half a card and wrapping paths
+ * and image references over three lines. These only earn a second column once
+ * there is room for both halves.
+ */
+.detail-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+}
+
 .empty {
   padding: var(--space-6);
   text-align: center;
@@ -401,7 +416,12 @@ textarea:focus-visible,
 
 .kv { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: var(--space-2) var(--space-4); }
 .kv dt { color: var(--text-muted); font-size: 12.5px; }
-.kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+/*
+ * `overflow-wrap: anywhere` rather than `word-break: break-all`: both rescue a
+ * long unbroken path, but break-all also chops values that would have fitted,
+ * so a two-word status ended up split across lines for no reason.
+ */
+.kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
 
 /* ---------- progress ---------- */
 

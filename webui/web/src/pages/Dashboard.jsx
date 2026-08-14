@@ -38,6 +38,7 @@ export function Dashboard() {
   const gpu = latest?.gpu
   const cpu = latest?.cpu
   const memory = latest?.memory
+  const disk = latest?.disk
   const running = (servers.data?.servers ?? []).filter((s) => s.running)
   const updates = (images.data?.images ?? []).filter((i) => i.updateAvailable)
 
@@ -126,6 +127,16 @@ export function Dashboard() {
           max={memory?.totalBytes ?? undefined}
           color="var(--ok)"
         />
+        {disk ? (
+          <StatTile
+            label="Speicherplatz"
+            value={formatBytes(disk.usedBytes)}
+            secondary={`${formatBytes(disk.availableBytes)} frei von ${formatBytes(disk.totalBytes)}`}
+            values={series((s) => s.disk?.usedBytes)}
+            max={disk.totalBytes}
+            color="var(--info)"
+          />
+        ) : null}
         <StatTile
           label="Laufzeit"
           value={latest?.uptime ? formatDuration(latest.uptime) : '–'}

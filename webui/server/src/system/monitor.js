@@ -5,7 +5,7 @@ import { RingBuffer } from '../lib/ringbuffer.js'
 import { containerStats } from '../podman/client.js'
 import { listServers } from '../podman/servers.js'
 import { readGpu } from './amdgpu.js'
-import { readCpu, readMemory, readUptime } from './host.js'
+import { readCpu, readDisk, readMemory, readUptime } from './host.js'
 
 const TICK_MS = 2000
 /** `podman stats` costs 200-400 ms, so it gets its own slower interval. */
@@ -27,7 +27,21 @@ export class Monitor extends EventEmitter {
     this.subscribers = 0
     this.latest = null
     this.containerStats = []
+    this.resolveDiskPath = null
     this.setMaxListeners(0)
+  }
+
+  /**
+   * Tell the monitor which filesystem to measure.
+   *
+   * A resolver rather than a path, because the models directory is a setting
+   * and can change while we run — a captured string would keep reporting the
+   * old disk.
+   *
+   * @param {() => string|null} resolve
+   */
+  setDiskPath(resolve) {
+    this.resolveDiskPath = resolve
   }
 
   subscribe(listener) {
@@ -74,13 +88,14 @@ export class Monitor extends EventEmitter {
   }
 
   async #sample() {
-    const [gpu, cpu, memory, uptime] = await Promise.all([
+    const [gpu, cpu, memory, uptime, disk] = await Promise.all([
       readGpu(),
       readCpu(),
       readMemory(),
       readUptime(),
+      readDisk(this.resolveDiskPath?.() ?? null),
     ])
-    return { at: new Date().toISOString(), gpu, cpu, memory, uptime }
+    return { at: new Date().toISOString(), gpu, cpu, memory, uptime, disk }
   }
 
   async #sampleContainers() {
