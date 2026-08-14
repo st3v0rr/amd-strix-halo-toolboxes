@@ -80,6 +80,60 @@ Der Benutzer muss in den Gruppen `video` und `render` sein, sonst schlägt
 sudo usermod -aG video,render "$USER"   # danach neu anmelden
 ```
 
+## Firewall
+
+Fedora bringt firewalld mit, und dessen Standardzonen lassen keinen der hier
+relevanten Ports durch. Je nachdem, was auf der Maschine läuft, sind es bis zu
+drei:
+
+| Port | Wofür | Geschützt durch |
+|---|---|---|
+| 8420 | das Webinterface selbst | Passwort + JWT-Cookie |
+| 11434 | llama-server (Default je Server) | `--api-key` |
+| 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
+
+Für das Webinterface erledigt das der Installer mit `--open-firewall`. Von Hand,
+zusammen mit dem llama-server-Port:
+
+```bash
+sudo firewall-cmd --permanent --add-port=8420/tcp
+sudo firewall-cmd --permanent --add-port=11434/tcp
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-ports
+```
+
+Ein zweiter Server auf einem anderen Port braucht dessen Port zusätzlich —
+11435, 11436 und so weiter.
+
+Nach einem `firewall-cmd --reload` kann podman seine eigenen
+Weiterleitungsregeln verlieren. Ist ein Container danach nicht mehr erreichbar,
+obwohl er läuft, hilft ein Neustart des Containers.
+
+### Der RPC-Port ist ein Sonderfall
+
+`ggml-rpc-server` kennt **keine Authentifizierung** — llama.cpp warnt beim Start
+selbst in Großbuchstaben davor. Wer Port 50052 erreicht, kann auf der GPU dieser
+Maschine rechnen lassen und ihren Speicher belegen. Deshalb nicht pauschal
+aufmachen, sondern nur für die Adressen, die ihn wirklich brauchen, also den
+Master des Clusters:
+
+```bash
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.100.0/24" port port="50052" protocol="tcp" accept'
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-all
+```
+
+Das Subnetz durch das eigene ersetzen. Wer strenger sein will, gibt statt des
+Netzes die einzelne Adresse des Masters an (`source address="192.168.100.10/32"`).
+Bei USB4-Direktverbindungen ist jede Strecke ein eigenes kleines Subnetz — dann
+pro Strecke eine Regel.
+
+Fehlt die Freigabe, sieht das Symptom nach einem Anwendungsfehler aus, ist aber
+keiner: der Master meldet den Knoten beim Preflight als nicht erreichbar
+(Zeitüberschreitung), und im Log des Workers steht dazu **nichts** — die Pakete
+kommen dort nie an. Ein Worker, dessen Port offen ist, protokolliert jeden
+Verbindungsversuch.
+
 ## Betrieb
 
 Als normaler Benutzer:
