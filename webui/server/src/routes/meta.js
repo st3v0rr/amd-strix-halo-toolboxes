@@ -1,4 +1,5 @@
 import express from 'express'
+import os from 'node:os'
 
 import { repoRoot } from '../config/paths.js'
 import { run, which } from '../lib/exec.js'
@@ -32,6 +33,10 @@ export async function readVersion() {
     shortSha: sha.slice(0, 7),
     branch,
     dirty,
+    // Which box am I? With one instance per machine, this is what tells four
+    // otherwise identical browser tabs apart. Deliberately on the unauthenticated
+    // route so the tab is already labelled on the login page.
+    hostname: os.hostname(),
     node: process.version,
     startedAt: new Date().toISOString(),
   }
