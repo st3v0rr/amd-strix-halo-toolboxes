@@ -65,6 +65,7 @@ export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
           threads: profile.threads,
           apiKey: profile.apiKey,
           extraArgs: profile.extraArgs,
+          rpcPeers: profile.rpcPeers,
           profileId: profile.id,
         })
         started.push({ name: profile.name, action: 'neu angelegt' })

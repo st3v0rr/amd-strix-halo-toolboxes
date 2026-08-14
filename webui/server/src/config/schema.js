@@ -59,6 +59,12 @@ export const profileSchema = z.object({
   // Empty string means "autodetect from the image" — same semantics as the
   // script's empty EXTRA_ARGS.
   extraArgs: z.string().default(''),
+  /**
+   * `host:port` RPC workers this profile distributes over. Empty is the normal
+   * single-machine case. Note that autostart plus peers is a gamble: the
+   * workers have to be up first, and nothing here can guarantee that.
+   */
+  rpcPeers: z.array(z.string().min(1).max(300)).max(32).default([]),
   autostart: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),

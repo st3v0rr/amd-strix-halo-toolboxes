@@ -22,6 +22,7 @@ export const CONTAINER_MODELS_DIR = '/workspace/models'
 export const LABEL = {
   managed: 'shx.managed',
   version: 'shx.version',
+  role: 'shx.role',
   profile: 'shx.profile',
   model: 'shx.model',
   image: 'shx.image',
@@ -30,11 +31,29 @@ export const LABEL = {
   threads: 'shx.threads',
   port: 'shx.port',
   extraArgs: 'shx.extra-args',
+  rpcPeers: 'shx.rpc-peers',
   created: 'shx.created',
 }
 
+/**
+ * What a managed container actually is.
+ *
+ * `server` is a llama-server serving HTTP; `rpc` is a ggml-rpc-server offering
+ * its GPU to someone else's llama-server. Containers created before this label
+ * existed carry no role and are read as `server` — which is what they are.
+ */
+export const ROLE = /** @type {const} */ ({ server: 'server', rpc: 'rpc' })
+
 /** Schema version of the label set, so a future migration can tell them apart. */
 export const LABEL_VERSION = '1'
+
+/**
+ * Port ggml-rpc-server listens on inside the container.
+ *
+ * The same default scripts/run_distributed_llama.py uses, so a worker started
+ * here is reachable by the TUI and vice versa.
+ */
+export const RPC_PORT = 50052
 
 /** The two spellings of "flash attention + no mmap" llama.cpp has used. */
 export const EXTRA_ARGS_NEW = '-fa on --load-mode none'

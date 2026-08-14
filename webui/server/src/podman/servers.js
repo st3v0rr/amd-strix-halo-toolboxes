@@ -8,13 +8,22 @@ import {
   NAME_RE,
   PORT_MAX,
   PORT_MIN,
+  ROLE,
+  RPC_PORT,
 } from '../../../shared/constants.js'
+import { normalizeRpcPeers, parseRpcPeer } from '../../../shared/rpc.js'
 import { badRequest, conflict, failedDependency, notFound } from '../lib/errors.js'
 import { log } from '../lib/log.js'
 import { registerSecret } from '../lib/redact.js'
 import { safeResolve } from '../models/paths.js'
-import { buildRunArgv, hostModelPath, normalizeModelPath } from './argv.js'
-import { buildLabels, parseLabels } from './labels.js'
+import {
+  buildRpcRunArgv,
+  buildRunArgv,
+  hostModelPath,
+  normalizeModelPath,
+  rpcCacheVolume,
+} from './argv.js'
+import { buildLabels, buildRpcLabels, parseLabels } from './labels.js'
 import {
   containerExists,
   inspectContainer,
@@ -69,7 +78,10 @@ function replacedContainerHoldsPort(containers, port, ignoreName) {
 export function describeContainer(entry) {
   const labels = parseLabels(entry.Labels ?? {})
   const name = (entry.Names ?? [])[0] ?? entry.Id?.slice(0, 12) ?? 'unbekannt'
-  const published = (entry.Ports ?? []).find((p) => p.container_port === CONTAINER_PORT)
+  // A worker publishes 50052, not 11434. Looking for the wrong container port
+  // would silently report "kein Port" for every RPC worker.
+  const innerPort = labels.role === ROLE.rpc ? RPC_PORT : CONTAINER_PORT
+  const published = (entry.Ports ?? []).find((p) => p.container_port === innerPort)
   return {
     name,
     id: entry.Id,
@@ -148,13 +160,14 @@ export function portInUse(port) {
 }
 
 /**
- * Validate a start request before anything is spawned.
+ * Checks every container start shares: a usable name, a free port, an image we
+ * are willing to run.
  *
- * Two of these checks exist because the script learned them the hard way: a
- * missing model file plus `--restart unless-stopped` produces a silent crash
- * loop, and a taken port produces a container that dies on bind.
+ * The port checks exist because the script learned them the hard way — a taken
+ * port produces a container that dies on bind, and with
+ * `--restart unless-stopped` that becomes a silent loop.
  */
-export async function validateSpec(ctx, spec, { ignoreName } = {}) {
+async function validateCommon(ctx, spec, { ignoreName } = {}) {
   const settings = ctx.settings
 
   if (!NAME_RE.test(spec.name ?? '')) {
@@ -171,17 +184,6 @@ export async function validateSpec(ctx, spec, { ignoreName } = {}) {
   if (!settings.allowCustomImages && !spec.image.startsWith(`${IMAGE_REPO}:`)) {
     throw badRequest(
       `Nur Images aus ${IMAGE_REPO} sind erlaubt. Beliebige Images lassen sich in den Einstellungen freischalten.`,
-    )
-  }
-
-  // Path traversal guard — the same one every filesystem entry point uses.
-  const rel = normalizeModelPath(spec.modelPath)
-  safeResolve(settings.modelsDir, rel)
-
-  const hostPath = hostModelPath(settings.modelsDir, rel)
-  if (!fs.existsSync(hostPath)) {
-    throw failedDependency(
-      `Modell nicht gefunden: ${hostPath}. Ohne die Datei würde der Container in einer stillen Neustart-Schleife landen.`,
     )
   }
 
@@ -203,7 +205,66 @@ export async function validateSpec(ctx, spec, { ignoreName } = {}) {
     }
   }
 
+  return { port }
+}
+
+/**
+ * Validate a llama-server start request before anything is spawned.
+ *
+ * On top of the common checks: a missing model file plus
+ * `--restart unless-stopped` produces a silent crash loop, so the file has to
+ * exist before we hand the spec to podman.
+ */
+export async function validateSpec(ctx, spec, { ignoreName } = {}) {
+  const settings = ctx.settings
+  const { port } = await validateCommon(ctx, spec, { ignoreName })
+
+  // Path traversal guard — the same one every filesystem entry point uses.
+  const rel = normalizeModelPath(spec.modelPath)
+  safeResolve(settings.modelsDir, rel)
+
+  const hostPath = hostModelPath(settings.modelsDir, rel)
+  if (!fs.existsSync(hostPath)) {
+    throw failedDependency(
+      `Modell nicht gefunden: ${hostPath}. Ohne die Datei würde der Container in einer stillen Neustart-Schleife landen.`,
+    )
+  }
+
   return { rel, hostPath, port }
+}
+
+/**
+ * Can we open a TCP connection to this address?
+ *
+ * The only health signal an RPC worker gives from the outside — it speaks a
+ * binary protocol, not HTTP, so there is no endpoint to ask.
+ */
+export function tcpReachable(host, port, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    const done = (result) => {
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(result)
+    }
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => done({ reachable: true }))
+    socket.once('timeout', () => done({ reachable: false, reason: 'Zeitüberschreitung' }))
+    socket.once('error', (err) => done({ reachable: false, reason: err.code || err.message }))
+    socket.connect(port, host)
+  })
+}
+
+/** Probe every peer concurrently; the slowest one decides how long this takes. */
+export async function probeRpcPeers(peers, timeoutMs = 2000) {
+  return Promise.all(
+    peers.map(async (peer) => {
+      const parsed = parseRpcPeer(peer)
+      if (!parsed) return { peer, reachable: false, reason: 'Ungültige Adresse' }
+      const result = await tcpReachable(parsed.host, parsed.port, timeoutMs)
+      return { peer, ...result }
+    }),
+  )
 }
 
 /**
@@ -224,6 +285,28 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   }
 
   const { rel } = await validateSpec(ctx, spec, { ignoreName: exists ? spec.name : undefined })
+
+  // A cluster run reaches out to other machines. Check them before we start,
+  // because llama-server exits when a peer refuses — and `--restart
+  // unless-stopped` would turn that into the silent loop we guard against
+  // everywhere else.
+  const { peers: rpcPeers, invalid } = normalizeRpcPeers(spec.rpcPeers ?? [])
+  if (invalid.length) {
+    throw badRequest(`Ungültige RPC-Adresse: ${invalid.join(', ')}. Erwartet wird host:port.`)
+  }
+  if (rpcPeers.length) {
+    onLog(`Prüfe ${rpcPeers.length} RPC-Knoten …`)
+    const probes = await probeRpcPeers(rpcPeers)
+    const dead = probes.filter((p) => !p.reachable)
+    if (dead.length) {
+      throw failedDependency(
+        `RPC-Knoten nicht erreichbar: ${dead.map((d) => `${d.peer} (${d.reason})`).join(', ')}. ` +
+          'Starte dort den RPC-Worker, bevor du den Cluster hochfährst.',
+        { peers: probes },
+      )
+    }
+    onLog(`Alle ${rpcPeers.length} RPC-Knoten erreichbar.`)
+  }
 
   if (exists) {
     onLog(`Ersetze vorhandenen Container '${spec.name}' …`)
@@ -246,6 +329,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   registerSecret(apiKey)
 
   const labels = buildLabels({
+    role: ROLE.server,
     profileId: spec.profileId,
     modelPath: rel,
     image: spec.image,
@@ -254,6 +338,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     threads: spec.threads,
     hostPort: spec.port,
     extraArgs,
+    rpcPeers,
   })
 
   const argv = buildRunArgv({
@@ -267,6 +352,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     threads: spec.threads,
     apiKey,
     extraArgs,
+    rpcPeers,
     labels,
   })
 
@@ -274,7 +360,49 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   const id = await runContainer(argv)
   log.info(`Server '${spec.name}' gestartet (${id.slice(0, 12)})`)
 
-  return { name: spec.name, id, apiKey, extraArgs }
+  return { name: spec.name, id, apiKey, extraArgs, rpcPeers }
+}
+
+/**
+ * Create and start a ggml-rpc-server worker, offering this machine's GPU to a
+ * llama-server running elsewhere.
+ *
+ * @param {object} ctx
+ * @param {object} spec name, image, port, bindAddress
+ * @param {{replace?: boolean, onLog?: (line: string) => void}} [opts]
+ */
+export async function createRpcWorker(ctx, spec, { replace = false, onLog = () => {} } = {}) {
+  const exists = await containerExists(spec.name)
+  if (exists && !replace) {
+    throw conflict(`Ein Container namens '${spec.name}' existiert bereits.`, {
+      existing: spec.name,
+    })
+  }
+
+  await validateCommon(ctx, spec, { ignoreName: exists ? spec.name : undefined })
+
+  if (exists) {
+    onLog(`Ersetze vorhandenen Container '${spec.name}' …`)
+    closeLogSession(spec.name)
+    await stopContainer(spec.name)
+    await removeContainer(spec.name, { force: true })
+  }
+
+  const labels = buildRpcLabels({ image: spec.image, hostPort: spec.port })
+  const argv = buildRpcRunArgv({
+    containerName: spec.name,
+    image: spec.image,
+    hostPort: spec.port,
+    bindAddress: spec.bindAddress ?? '',
+    cacheVolume: rpcCacheVolume(spec.name),
+    labels,
+  })
+
+  onLog(`Starte RPC-Worker ${spec.name} (${spec.image}) auf Port ${spec.port} …`)
+  const id = await runContainer(argv)
+  log.info(`RPC-Worker '${spec.name}' gestartet (${id.slice(0, 12)})`)
+
+  return { name: spec.name, id, role: ROLE.rpc, port: spec.port }
 }
 
 export async function startServer(name) {
@@ -314,6 +442,17 @@ export async function serverHealth(name) {
   if (!server.running) return { reachable: false, state: server.state }
   if (!server.hostPort) return { reachable: false, reason: 'Kein veröffentlichter Port.' }
 
+  // An RPC worker speaks a binary protocol — there is no /health to ask. That
+  // the port accepts a connection is the whole signal available.
+  if (server.role === ROLE.rpc) {
+    const result = await tcpReachable('127.0.0.1', server.hostPort)
+    return { ...result, role: ROLE.rpc }
+  }
+
+  // For a cluster head, report each peer alongside its own health: the head
+  // being up says nothing about whether it still has all its GPUs.
+  const peers = server.rpcPeers?.length ? await probeRpcPeers(server.rpcPeers) : []
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 3000)
   try {
@@ -327,9 +466,13 @@ export async function serverHealth(name) {
     } catch {
       parsed = { raw: body.slice(0, 200) }
     }
-    return { reachable: true, status: res.status, body: parsed }
+    return { reachable: true, status: res.status, body: parsed, peers }
   } catch (err) {
-    return { reachable: false, reason: err.name === 'AbortError' ? 'Zeitüberschreitung' : err.message }
+    return {
+      reachable: false,
+      reason: err.name === 'AbortError' ? 'Zeitüberschreitung' : err.message,
+      peers,
+    }
   } finally {
     clearTimeout(timer)
   }

@@ -1,13 +1,14 @@
 import express from 'express'
 import { z } from 'zod'
 
-import { NAME_RE, PORT_MAX, PORT_MIN } from '../../../shared/constants.js'
+import { NAME_RE, PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/constants.js'
 import { badRequest, notFound } from '../lib/errors.js'
 import { lastEventId, openSse } from '../lib/sse.js'
 import { q, validate } from '../lib/validate.js'
 import { logSnapshot } from '../podman/client.js'
 import { attachLogClient } from '../podman/logstream.js'
 import {
+  createRpcWorker,
   createServer,
   deleteServer,
   getServerDetail,
@@ -18,7 +19,11 @@ import {
   stopServer,
 } from '../podman/servers.js'
 
+/** A peer is validated properly in shared/rpc.js; this only bounds the input. */
+const rpcPeer = z.string().min(1).max(300)
+
 const specSchema = z.object({
+  role: z.literal(ROLE.server).optional(),
   name: z.string().regex(NAME_RE),
   image: z.string().min(1),
   modelPath: z.string().min(1),
@@ -28,10 +33,25 @@ const specSchema = z.object({
   threads: z.number().int().min(1).max(512),
   apiKey: z.string().max(512).optional(),
   extraArgs: z.string().max(1024).optional(),
+  rpcPeers: z.array(rpcPeer).max(32).optional(),
   profileId: z.string().optional(),
 })
 
+/**
+ * An RPC worker has no model, no context and no API key — it only lends its
+ * GPU. Giving it its own schema means a request that mixes the two shapes is
+ * rejected rather than silently half-applied.
+ */
+const rpcSpecSchema = z.object({
+  role: z.literal(ROLE.rpc),
+  name: z.string().regex(NAME_RE),
+  image: z.string().min(1),
+  port: z.number().int().min(PORT_MIN).max(PORT_MAX).default(RPC_PORT),
+  bindAddress: z.string().max(64).optional(),
+})
+
 const createBody = z.union([
+  rpcSpecSchema.extend({ replace: z.boolean().optional() }),
   z.object({ profileId: z.string().min(1), replace: z.boolean().optional() }),
   specSchema.extend({ replace: z.boolean().optional() }),
 ])
@@ -54,6 +74,13 @@ export function serverRoutes(ctx) {
       const { replace = false, ...rest } = req.body
       let spec = rest
 
+      if (rest.role === ROLE.rpc) {
+        const logs = []
+        const result = await createRpcWorker(ctx, spec, { replace, onLog: (l) => logs.push(l) })
+        res.status(201).json({ ...result, logs })
+        return
+      }
+
       // A profile is just a stored spec; materialise it here so the podman
       // layer only ever sees one shape.
       if (rest.profileId && !rest.name) {
@@ -69,6 +96,7 @@ export function serverRoutes(ctx) {
           threads: profile.threads,
           apiKey: profile.apiKey,
           extraArgs: profile.extraArgs,
+          rpcPeers: profile.rpcPeers,
           profileId: profile.id,
         }
       }
