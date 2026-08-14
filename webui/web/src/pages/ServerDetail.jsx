@@ -20,10 +20,16 @@ export function ServerDetail() {
     refetchInterval: 5000,
   })
 
+  const isRpc = server.data?.server?.role === 'rpc'
+
   const health = useQuery({
     queryKey: ['server-health', name],
     queryFn: () => get(`/servers/${encodeURIComponent(name)}/health`),
-    refetchInterval: 10000,
+    // An RPC worker has no /health — the probe is a bare TCP connect, and
+    // ggml-rpc-server logs every one of them as an accepted-then-closed
+    // connection. On a timer that buries the messages you actually opened the
+    // log for, so a worker is probed once and then only on demand.
+    refetchInterval: isRpc ? false : 10000,
     enabled: Boolean(server.data?.server?.running),
   })
 
@@ -151,11 +157,23 @@ export function ServerDetail() {
           <section className="card">
             <div className="card-head">
               <h2>Erreichbarkeit</h2>
-              {health.data ? (
-                <span className={`badge ${health.data.reachable ? 'badge-ok' : 'badge-warn'}`}>
-                  {health.data.reachable ? 'antwortet' : 'keine Antwort'}
-                </span>
-              ) : null}
+              <div className="row">
+                {isRpc && s.running ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={health.isFetching}
+                    onClick={() => health.refetch()}
+                  >
+                    {health.isFetching ? 'Prüft …' : 'Erneut prüfen'}
+                  </button>
+                ) : null}
+                {health.data ? (
+                  <span className={`badge ${health.data.reachable ? 'badge-ok' : 'badge-warn'}`}>
+                    {health.data.reachable ? 'antwortet' : 'keine Antwort'}
+                  </span>
+                ) : null}
+              </div>
             </div>
             {s.running ? (
               <dl className="kv">
@@ -167,6 +185,16 @@ export function ServerDetail() {
                 </dd>
                 <dt>Status</dt>
                 <dd>{health.data?.status ?? health.data?.reason ?? 'wird geprüft …'}</dd>
+                {isRpc ? (
+                  <>
+                    <dt>Hinweis</dt>
+                    <dd className="small faint">
+                      Jede Prüfung ist ein TCP-Verbindungsaufbau und taucht im Log des Workers als
+                      „Accepted client connection / Client connection closed“ auf. Deshalb wird
+                      hier nicht automatisch gepollt.
+                    </dd>
+                  </>
+                ) : null}
               </dl>
             ) : (
               <p className="muted small">Der Container läuft nicht.</p>
