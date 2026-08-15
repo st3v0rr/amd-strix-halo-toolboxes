@@ -135,6 +135,60 @@ function kindFromName(name) {
 }
 
 /**
+ * Link rate of a USB4/Thunderbolt connection.
+ *
+ * `thunderbolt-net` does not answer the ethtool query behind
+ * `/sys/class/net/<if>/speed`, so a link that carries 40 Gbit/s reports
+ * nothing at all there. The negotiated rate lives on the Thunderbolt device
+ * instead: `link_speed` is the per-lane rate in Gbit/s and `link_width` the
+ * number of lanes, so a healthy two-lane USB4 connection reads 20 × 2. USB4 v2
+ * kernels report the two directions separately (`rx_speed`/`rx_lanes` and
+ * `tx_speed`/`tx_lanes`); receive is the one worth showing, since that is the
+ * direction a model gets pulled over.
+ *
+ * The netdev hangs off a service device below the connection itself, so the
+ * attributes sit one or two levels above it — whichever level has them wins.
+ *
+ * @returns {Promise<{speedMbit: number, lanes: number|null, laneMbit: number|null}|null>}
+ */
+async function readThunderboltLink(dir) {
+  let start
+  try {
+    start = await fsp.realpath(path.join(dir, 'device'))
+  } catch {
+    return null
+  }
+
+  for (let level = 0, current = start; level < 3; level += 1, current = path.dirname(current)) {
+    const [linkSpeed, linkWidth, rxSpeed, rxLanes] = await Promise.all([
+      readTrimmed(path.join(current, 'link_speed')),
+      readTrimmed(path.join(current, 'link_width')),
+      readTrimmed(path.join(current, 'rx_speed')),
+      readTrimmed(path.join(current, 'rx_lanes')),
+    ])
+
+    // The values carry their unit in some kernels ("20 Gb/s"), so take the
+    // leading number and ignore the rest.
+    const gbit = firstNumber(rxSpeed ?? linkSpeed)
+    if (!gbit) continue
+    const lanes = firstNumber(rxLanes ?? linkWidth)
+
+    return {
+      speedMbit: Math.round(gbit * (lanes || 1) * 1000),
+      lanes: lanes || null,
+      laneMbit: Math.round(gbit * 1000),
+    }
+  }
+  return null
+}
+
+function firstNumber(text) {
+  if (text == null) return null
+  const value = Number.parseFloat(text)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+/**
  * Everything sysfs knows about one interface. All of it is optional: a
  * container bridge has no bus, `speed` is unreadable while a link is down, and
  * on a development machine none of these files exist at all.
@@ -154,13 +208,27 @@ export async function readInterfaceMeta(name) {
 
   // -1 is what the kernel reports for "the driver has no idea", which several
   // do while the link is down.
-  const speedMbit = speed != null && Number(speed) > 0 ? Number(speed) : null
+  let speedMbit = speed != null && Number(speed) > 0 ? Number(speed) : null
+  let lanes = null
+
+  // Thunderbolt keeps its rate somewhere else entirely; ask there when the
+  // ethtool path came up empty.
+  if (speedMbit == null && kind === 'thunderbolt') {
+    const link = await readThunderboltLink(dir)
+    if (link) {
+      speedMbit = link.speedMbit
+      lanes = link.lanes
+    }
+  }
 
   return {
     kind,
     operstate: operstate ?? null,
     carrier: carrier === '1' ? true : carrier === '0' ? false : null,
     speedMbit,
+    // Only Thunderbolt reports this, and only there is it worth knowing: a
+    // cable that negotiated a single lane runs at half the expected rate.
+    lanes,
   }
 }
 

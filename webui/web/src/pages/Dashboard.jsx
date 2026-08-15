@@ -289,6 +289,11 @@ function NetworkRow({ iface, history }) {
         ) : (
           <span className="faint">{iface.carrier === false ? 'kein Kabel' : (iface.operstate ?? '–')}</span>
         )}
+        {iface.lanes ? (
+          <div className="small faint">
+            {iface.lanes} {iface.lanes === 1 ? 'Lane' : 'Lanes'}
+          </div>
+        ) : null}
         {iface.errors > 0 ? (
           <div className="small" style={{ color: 'var(--danger)' }}>
             {iface.errors} Fehler

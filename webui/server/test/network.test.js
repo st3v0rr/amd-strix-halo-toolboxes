@@ -123,6 +123,92 @@ test('a wireless card is wifi even though it sits on the PCI bus', async () => {
   assert.equal((await readInterfaceMeta('enp1s0')).kind, 'wifi')
 })
 
+/**
+ * A Thunderbolt netdev as the kernel arranges it: the interface's `device`
+ * points at a service below the connection, and the link attributes sit on the
+ * connection one level up.
+ *
+ * @param {object} attributes files to write on the connection device
+ * @param {{name?: string, subsystem?: boolean}} [opts]
+ */
+function fakeThunderbolt(attributes, { name = 'thunderbolt0', subsystem = false } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shx-tb-'))
+  const connection = path.join(root, 'devices', 'domain0', '0-1')
+  const service = path.join(connection, '0-1.0')
+  fs.mkdirSync(service, { recursive: true })
+  for (const [file, value] of Object.entries(attributes)) {
+    fs.writeFileSync(path.join(connection, file), `${value}\n`)
+  }
+
+  const dir = path.join(root, 'class', 'net', name)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'operstate'), 'up\n')
+  fs.writeFileSync(path.join(dir, 'carrier'), '1\n')
+  // The driver does not answer the ethtool query, which is the whole reason
+  // the attributes above have to be found.
+  fs.writeFileSync(path.join(dir, 'speed'), '-1\n')
+  fs.symlinkSync(service, path.join(dir, 'device'))
+  if (subsystem) fs.symlinkSync('/sys/bus/thunderbolt', path.join(service, 'subsystem'))
+
+  process.env.SHX_SYSFS_ROOT = root
+  return root
+}
+
+test('a USB4 link reports the rate the thunderbolt device negotiated', async () => {
+  fakeThunderbolt({ link_speed: '20', link_width: '2' })
+  const meta = await readInterfaceMeta('thunderbolt0')
+  // 20 Gbit/s per lane over two lanes is the 40 Gbit/s a USB4 cable is sold as.
+  assert.equal(meta.speedMbit, 40000)
+  assert.equal(meta.lanes, 2)
+})
+
+test('a single-lane USB4 link is reported at half the rate', async () => {
+  // What a bad cable or a passive adapter negotiates, and the reason the lane
+  // count is worth showing at all.
+  fakeThunderbolt({ link_speed: '20', link_width: '1' })
+  const meta = await readInterfaceMeta('thunderbolt0')
+  assert.equal(meta.speedMbit, 20000)
+  assert.equal(meta.lanes, 1)
+})
+
+test('the USB4 v2 per-direction attributes win over the older pair', async () => {
+  fakeThunderbolt({
+    link_speed: '20',
+    link_width: '2',
+    rx_speed: '40',
+    rx_lanes: '2',
+    tx_speed: '40',
+    tx_lanes: '2',
+  })
+  assert.equal((await readInterfaceMeta('thunderbolt0')).speedMbit, 80000)
+})
+
+test('an attribute that carries its unit is still read', async () => {
+  fakeThunderbolt({ link_speed: '20 Gb/s', link_width: '2' })
+  assert.equal((await readInterfaceMeta('thunderbolt0')).speedMbit, 40000)
+})
+
+test('a thunderbolt link found by bus rather than by name is probed too', async () => {
+  fakeThunderbolt({ link_speed: '20', link_width: '2' }, { name: 'eno2', subsystem: true })
+  const meta = await readInterfaceMeta('eno2')
+  assert.equal(meta.kind, 'thunderbolt')
+  assert.equal(meta.speedMbit, 40000)
+})
+
+test('a thunderbolt device without link attributes reports no speed', async () => {
+  fakeThunderbolt({})
+  const meta = await readInterfaceMeta('thunderbolt0')
+  assert.equal(meta.speedMbit, null)
+  assert.equal(meta.lanes, null)
+})
+
+test('interfaces that are not thunderbolt keep their ethtool speed', async () => {
+  fakeSysfs({ enp3s0: { subsystem: 'pci', operstate: 'up', carrier: '1', speed: '2500' } })
+  const meta = await readInterfaceMeta('enp3s0')
+  assert.equal(meta.speedMbit, 2500)
+  assert.equal(meta.lanes, null)
+})
+
 test('an unknown link speed stays null instead of becoming -1', async () => {
   fakeSysfs({ br0: { operstate: 'down', carrier: '0', speed: '-1' } })
   const meta = await readInterfaceMeta('br0')
