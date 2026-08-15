@@ -77,6 +77,11 @@ export function sysfsRoot() {
   return process.env.SHX_SYSFS_ROOT || '/sys'
 }
 
+/** Same idea for procfs, which is where the network counters live. */
+export function procRoot() {
+  return process.env.SHX_PROC_ROOT || '/proc'
+}
+
 export function ensureDirs() {
   for (const dir of [configDir, stateDir]) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })

@@ -26,11 +26,59 @@ const env = {
   SHX_PODMAN_BIN: path.join(here, 'bin', 'podman'),
   SHX_HF_BIN: path.join(here, 'bin', 'hf'),
   SHX_SYSFS_ROOT: path.join(here, 'sysfs'),
+  SHX_PROC_ROOT: path.join(tmp, 'proc'),
   SHX_CONFIG_DIR: path.join(tmp, 'config'),
   SHX_STATE_DIR: path.join(tmp, 'state'),
   SHX_LOG_LEVEL: process.env.SHX_LOG_LEVEL || 'debug',
   SHX_MOCK_HELP_VARIANT: process.env.SHX_MOCK_HELP_VARIANT || 'new',
 }
+
+/**
+ * A `/proc/net/dev` that actually moves.
+ *
+ * The interfaces themselves are fixtures under `dev/sysfs/class/net`, but
+ * throughput only exists as the difference between two reads — a static file
+ * would show every link at exactly 0 B/s. So the counters are advanced here
+ * once a second, with the Thunderbolt link bursting the way an RPC transfer
+ * does and the others trickling along.
+ */
+const procNetDev = path.join(tmp, 'proc', 'net', 'dev')
+const netCounters = {
+  enp3s0: { rx: 4_000_000_000, tx: 900_000_000, rate: 120_000 },
+  thunderbolt0: { rx: 91_000_000_000, tx: 88_000_000_000, rate: 900_000_000, bursty: true },
+  wlp1s0: { rx: 300_000_000, tx: 40_000_000, rate: 8_000 },
+  'cni-podman0': { rx: 12_000_000, tx: 9_000_000, rate: 2_000 },
+}
+let netTick = 0
+
+function writeProcNetDev() {
+  netTick += 1
+  const lines = [
+    'Inter-|   Receive                                                |  Transmit',
+    ' face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed',
+    '    lo: 1200  12 0 0 0 0 0 0 1200  12 0 0 0 0 0 0',
+  ]
+  for (const [name, state] of Object.entries(netCounters)) {
+    // A sine over the tick count, so the sparklines have a shape instead of a
+    // flat line; the Thunderbolt link idles between bursts.
+    const wave = state.bursty
+      ? Math.max(0, Math.sin(netTick / 8)) ** 2
+      : 0.6 + 0.4 * Math.sin(netTick / 5)
+    const rx = Math.round(state.rate * wave)
+    const tx = Math.round(rx * 0.35)
+    state.rx += rx
+    state.tx += tx
+    const packets = Math.round(rx / 1500)
+    lines.push(
+      `${name.padStart(9)}: ${state.rx} ${packets} 0 0 0 0 0 0 ${state.tx} ${Math.round(packets * 0.4)} 0 0 0 0 0 0`,
+    )
+  }
+  fs.writeFileSync(procNetDev, lines.join('\n') + '\n')
+}
+
+fs.mkdirSync(path.dirname(procNetDev), { recursive: true })
+writeProcNetDev()
+setInterval(writeProcNetDev, 1000)
 
 // A small model tree for the scanner to find. Generated rather than committed:
 // these are megabytes of zeroes whose only job is to have a plausible name,

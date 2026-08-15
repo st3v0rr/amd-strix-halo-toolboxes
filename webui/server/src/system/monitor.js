@@ -6,6 +6,7 @@ import { containerStats } from '../podman/client.js'
 import { listServers } from '../podman/servers.js'
 import { readGpu } from './amdgpu.js'
 import { readCpu, readDisk, readMemory, readUptime } from './host.js'
+import { readNetwork } from './network.js'
 
 const TICK_MS = 2000
 /** `podman stats` costs 200-400 ms, so it gets its own slower interval. */
@@ -88,14 +89,15 @@ export class Monitor extends EventEmitter {
   }
 
   async #sample() {
-    const [gpu, cpu, memory, uptime, disk] = await Promise.all([
+    const [gpu, cpu, memory, uptime, disk, network] = await Promise.all([
       readGpu(),
       readCpu(),
       readMemory(),
       readUptime(),
       readDisk(this.resolveDiskPath?.() ?? null),
+      readNetwork(),
     ])
-    return { at: new Date().toISOString(), gpu, cpu, memory, uptime, disk }
+    return { at: new Date().toISOString(), gpu, cpu, memory, uptime, disk, network }
   }
 
   async #sampleContainers() {

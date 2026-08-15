@@ -154,6 +154,33 @@ keiner: der Master meldet den Knoten beim Preflight als nicht erreichbar
 kommen dort nie an. Ein Worker, dessen Port offen ist, protokolliert jeden
 Verbindungsversuch.
 
+## Übersicht
+
+Die Startseite zeigt live, was die Box gerade tut: GPU-Auslastung, GTT- und
+VRAM-Belegung, Temperatur, CPU, Arbeitsspeicher, freier Plattenplatz, Laufzeit
+und die laufenden Server mit ihren Container-Werten. Alle Kacheln führen zehn
+Minuten Verlauf mit.
+
+Darunter steht eine Tabelle mit **jeder Netzwerkschnittstelle**, die der Kernel
+kennt, mit aktuellem Durchsatz je Richtung, den Zählern seit dem Systemstart und
+einem Verlauf des Gesamtdurchsatzes. Die Liste ist nirgends fest verdrahtet:
+
+- Steckt ein USB4- oder Thunderbolt-Kabel zu einer zweiten Strix-Halo-Box, taucht
+  die neue Schnittstelle (meist `thunderbolt0`) beim nächsten Tick von selbst auf
+  — mit Kennzeichnung **USB4/TB** und der ausgehandelten Linkgeschwindigkeit. Für
+  verteilte Inferenz über llama.cpp-RPC ist das die Stelle, an der man sieht, ob
+  der schnelle Link überhaupt benutzt wird.
+- Die Einordnung kommt aus sysfs (an welchem Bus die Karte hängt), nicht aus dem
+  Namen — ein USB4-Adapter, den der Kernel `eno2` nennt, wird trotzdem als solcher
+  erkannt.
+- Virtuelle Schnittstellen (Container-Bridges, `veth`-Paare, VPNs) stehen hinter
+  einem Schalter, damit sie die physischen Links nicht verdrängen.
+- Zählt eine Schnittstelle Fehler, steht das rot in ihrer Zeile — bei USB4 meist
+  ein Kabel- oder Steckproblem.
+
+Auf einem Rechner ohne `/proc/net/dev` (etwa einem Mac zur Entwicklung) entfällt
+der Abschnitt ersatzlos, wie die GPU-Kacheln auch.
+
 ## Betrieb
 
 Als normaler Benutzer:
@@ -333,7 +360,7 @@ webui/
     podman/    argv, labels, features, client, servers, logstream, autostart
     models/    scan, paths (Traversal-Schutz), estimator, hfapi, download
     images/    catalog, registry, pullparse, service
-    system/    amdgpu, host, monitor
+    system/    amdgpu, host, network, monitor
     updates/   git, apply
     routes/    die REST-API
   web/src/     React + Vite
