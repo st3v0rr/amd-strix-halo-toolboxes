@@ -4,7 +4,11 @@ import { useAuth } from './AuthContext.jsx'
 
 export function LoginPage() {
   const { login } = useAuth()
-  const [username, setUsername] = useState('admin')
+  // Deliberately empty, and deliberately not remembered anywhere: a prefilled
+  // box hands a valid account name to whoever reaches the login screen. It used
+  // to default to "admin", which both gave that name away and was wrong for
+  // anyone who had renamed their account.
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -43,6 +47,8 @@ export function LoginPage() {
             id="username"
             type="text"
             autoComplete="username"
+            required
+            autoFocus
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -55,13 +61,12 @@ export function LoginPage() {
             type="password"
             autoComplete="current-password"
             required
-            autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
 
-        <button className="btn btn-primary" type="submit" disabled={busy || !password}>
+        <button className="btn btn-primary" type="submit" disabled={busy || !password || !username}>
           {busy ? 'Wird angemeldet …' : 'Anmelden'}
         </button>
 
