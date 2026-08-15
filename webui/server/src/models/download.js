@@ -1,7 +1,8 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 
-import { AppError, badRequest, failedDependency } from '../lib/errors.js'
+import { JOB_FINISHED_STATUS } from '../../../shared/constants.js'
+import { AppError, badRequest, conflict, failedDependency } from '../lib/errors.js'
 import { stream, which } from '../lib/exec.js'
 import { log } from '../lib/log.js'
 import { listGgufFiles } from './hfapi.js'
@@ -89,6 +90,39 @@ async function bytesOnDisk(dir) {
 }
 
 /**
+ * Bytes of the selected files that are already there from an earlier attempt.
+ *
+ * Three places have to be looked at: the finished file at its final path, and
+ * the partial one, which current `huggingface_hub` parks under
+ * `.cache/huggingface/download/<path>.incomplete` while older versions put it
+ * next to the target. Only the selected paths are counted — other quants
+ * sitting in the same repository folder are none of this download's business.
+ *
+ * @param {string} targetDir
+ * @param {{path: string, size: number}[]} selected
+ */
+export async function resumableBytes(targetDir, selected) {
+  let total = 0
+  for (const file of selected) {
+    const candidates = [
+      path.join(targetDir, file.path),
+      path.join(targetDir, '.cache', 'huggingface', 'download', `${file.path}.incomplete`),
+      path.join(targetDir, `${file.path}.incomplete`),
+    ]
+    for (const abs of candidates) {
+      try {
+        const { size } = await fsp.stat(abs)
+        total += Math.min(size, file.size)
+        break
+      } catch {
+        /* not there yet */
+      }
+    }
+  }
+  return total
+}
+
+/**
  * Start a model download as a job.
  *
  * The total is fetched from the HF API up front, so it is exact from the first
@@ -123,17 +157,38 @@ export async function startDownload(ctx, { repo, revision = 'main', include, tar
     throw badRequest('Keine der ausgewählten Dateien existiert in diesem Repository.')
   }
 
-  const totalBytes = selected.reduce((sum, f) => sum + f.size, 0)
-  const disk = await diskUsage(ctx.settings.modelsDir)
-  if (disk.freeBytes != null && totalBytes > disk.freeBytes) {
-    throw failedDependency(
-      `Zu wenig Platz: benötigt werden ${fmt(totalBytes)}, frei sind ${fmt(disk.freeBytes)}.`,
-    )
-  }
-
   // Default target mirrors the existing layout: <modelsDir>/<repo-name>/…
   const subdir = targetSubdir || repo.split('/').pop()
   const targetDir = safeResolve(ctx.settings.modelsDir, subdir)
+
+  // Two jobs writing the same files would fight over the partials, and the
+  // progress figures of both would be nonsense. The UI offers a resume button
+  // on every unfinished download, so this is mostly a double-click guard.
+  const running = ctx.jobs
+    .list({ type: 'model-download' })
+    .find(
+      (j) =>
+        !JOB_FINISHED_STATUS.includes(j.status) &&
+        j.meta?.repo === repo &&
+        j.meta?.targetSubdir === subdir,
+    )
+  if (running) {
+    throw conflict(
+      `Für ${repo} läuft bereits ein Download. Warte ihn ab oder brich ihn unter "Modelle" ab.`,
+      { jobId: running.id },
+    )
+  }
+
+  const totalBytes = selected.reduce((sum, f) => sum + f.size, 0)
+  // Only what is still missing has to fit — a resumed download brings its
+  // partial files along.
+  const missingBytes = Math.max(0, totalBytes - (await resumableBytes(targetDir, selected)))
+  const disk = await diskUsage(ctx.settings.modelsDir)
+  if (disk.freeBytes != null && missingBytes > disk.freeBytes) {
+    throw failedDependency(
+      `Zu wenig Platz: benötigt werden ${fmt(missingBytes)}, frei sind ${fmt(disk.freeBytes)}.`,
+    )
+  }
 
   const includes = buildIncludes(
     selected.map((f) => f.path),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 
+import { JOB_FINISHED_STATUS } from '../../../shared/constants.js'
 import { RingBuffer } from './ringbuffer.js'
 import { log } from './log.js'
 import { redact } from './redact.js'
@@ -8,6 +9,8 @@ import { AppError, notFound } from './errors.js'
 
 const LOG_LINES = 500
 const HISTORY = 50
+/** How often a running job's progress is written to disk; see `setProgress`. */
+const PROGRESS_PERSIST_MS = 10_000
 
 /**
  * One job abstraction for every long-running thing this app does: model
@@ -55,7 +58,7 @@ export class Job {
   }
 
   get finished() {
-    return ['done', 'failed', 'cancelled', 'interrupted'].includes(this.status)
+    return JOB_FINISHED_STATUS.includes(this.status)
   }
 }
 
@@ -136,6 +139,8 @@ export class JobManager extends EventEmitter {
     job.onCancel = () => controller.abort()
     this.#emitJob(job)
 
+    let progressPersistedAt = 0
+
     const ctx = {
       job,
       signal: controller.signal,
@@ -143,6 +148,14 @@ export class JobManager extends EventEmitter {
         job.progress = progress
         this.emit(`job:${job.id}`, { event: 'progress', data: progress })
         this.emit('job', job.toJSON())
+        // Every tick would rewrite `state.json` once a second for hours. Every
+        // now and then is enough to tell the user where an interrupted
+        // download stood when the process went away.
+        const now = Date.now()
+        if (now - progressPersistedAt >= PROGRESS_PERSIST_MS) {
+          progressPersistedAt = now
+          this.#persist()
+        }
       },
       setMessage: (message) => {
         job.message = message
@@ -179,7 +192,6 @@ export class JobManager extends EventEmitter {
       job.endedAt = new Date().toISOString()
       job.onCancel = null
       this.#emitJob(job)
-      this.#persist()
     }
   }
 
@@ -240,6 +252,7 @@ export class JobManager extends EventEmitter {
     while (finished.length > HISTORY) {
       const job = finished.shift()
       this.jobs.delete(job.id)
+      this.emit('job:removed', job.id)
     }
   }
 
@@ -247,6 +260,11 @@ export class JobManager extends EventEmitter {
     const payload = job.toJSON()
     this.emit('job', payload)
     this.emit(`job:${job.id}`, { event: 'status', data: payload })
+    // Every status change hits the disk, not just the final one: a download
+    // that is still running has to be in `state.json` before the process dies,
+    // otherwise there is nothing left to mark `interrupted` and offer to
+    // resume after the restart.
+    this.#persist()
   }
 
   #persist() {

@@ -108,6 +108,14 @@ export const JOB_STATUS = /** @type {const} */ ([
   'interrupted',
 ])
 
+/** The states a job never leaves again; everything else is still in flight. */
+export const JOB_FINISHED_STATUS = /** @type {const} */ ([
+  'done',
+  'failed',
+  'cancelled',
+  'interrupted',
+])
+
 export const JOB_TYPE = /** @type {const} */ ([
   'model-download',
   'image-pull',

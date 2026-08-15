@@ -61,6 +61,33 @@ Ein erneuter Lauf ist idempotent und überschreibt die Zugangsdaten nicht.
 | python3 | VRAM-Schätzer | Schätzung bleibt deaktiviert |
 | `hf` | Modell-Downloads | `pipx install "huggingface_hub[cli]"` |
 
+Der Benutzer muss in den Gruppen `video` und `render` sein, sonst schlägt
+`--device /dev/kfd` fehl:
+
+```bash
+sudo usermod -aG video,render "$USER"   # danach neu anmelden
+```
+
+## Modelle laden
+
+Unter **Modelle → Modell herunterladen** wird ein Repository auf Hugging Face
+gesucht und eine Quantisierung ausgewählt. Der Dialog schließt sich, sobald der
+Download angelegt ist — ab da steht er in der Tabelle **Downloads** auf
+derselben Seite, mit Fortschritt, Tempo und Restzeit.
+
+Die Tabelle ist die einzige Stelle, an der ein Download gesteuert wird:
+
+- **Abbrechen** hält ihn an. Angefangene Dateien bleiben liegen.
+- **Fortsetzen** nimmt einen abgebrochenen, fehlgeschlagenen oder durch einen
+  Neustart unterbrochenen Download wieder auf; `hf` setzt an den vorhandenen
+  Teildateien an, lädt also nicht von vorn.
+- **Verwerfen** räumt einen erledigten Eintrag weg.
+
+Fertige Downloads verschwinden aus der Tabelle und stehen darüber in der
+Modell-Liste. Der Fortschritt hängt nicht am Browser: Die Seite darf geschlossen
+werden, der Download läuft auf der Box weiter, und ein Dienstneustart macht aus
+ihm einen Eintrag „Unterbrochen“ statt eines verlorenen Downloads.
+
 ### Download bleibt bei 0 % stehen
 
 Mit gesetztem Token lädt `huggingface_hub` über **Xet**, und dieser Weg bleibt
@@ -72,13 +99,6 @@ von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
   (`HF_HUB_DISABLE_XET=1`). Der Token bleibt nutzbar, gated Repositories also
   weiterhin erreichbar. Das ist meist die bessere Wahl.
 - **Token entfernen** — öffentliche Repos laden dann wieder ohne Xet.
-
-Der Benutzer muss in den Gruppen `video` und `render` sein, sonst schlägt
-`--device /dev/kfd` fehl:
-
-```bash
-sudo usermod -aG video,render "$USER"   # danach neu anmelden
-```
 
 ## Firewall
 

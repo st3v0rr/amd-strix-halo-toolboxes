@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { JOB_FINISHED_STATUS } from '../../../shared/constants.js'
 import { del, get } from '../api/client.js'
 import { useEventStream } from '../api/sse.js'
 import { formatBytes, formatDuration } from './format.js'
@@ -41,7 +42,7 @@ export function JobProgress({ jobId, onFinished }) {
   const p = progress ?? job?.progress
   if (!job) return <div className="small muted">Job wird geladen …</div>
 
-  const finished = ['done', 'failed', 'cancelled', 'interrupted'].includes(job.status)
+  const finished = JOB_FINISHED_STATUS.includes(job.status)
   const pct = p?.pct
 
   return (

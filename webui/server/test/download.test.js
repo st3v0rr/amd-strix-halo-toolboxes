@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { test } from 'node:test'
 
-import { buildIncludes } from '../src/models/download.js'
+import { buildIncludes, resumableBytes } from '../src/models/download.js'
 
 /** A repository shaped like the real unsloth ones: many flat quants, one
  *  shard folder. */
@@ -62,4 +65,52 @@ test('the returned array is a copy, not the caller’s', () => {
   const result = buildIncludes(paths)
   result.push('b.gguf')
   assert.deepEqual(paths, ['a.gguf'])
+})
+
+/* ---------------------------- resumableBytes ---------------------------- */
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'shx-download-'))
+}
+
+function write(root, rel, bytes) {
+  const abs = path.join(root, rel)
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, Buffer.alloc(bytes))
+}
+
+test('a resumed download only needs room for what is still missing', async () => {
+  const dir = tmpDir()
+  const selected = [
+    { path: 'BF16/m-00001-of-00002.gguf', size: 1000 },
+    { path: 'BF16/m-00002-of-00002.gguf', size: 1000 },
+  ]
+  // One shard finished, the next one is half way in the hub's cache directory.
+  write(dir, 'BF16/m-00001-of-00002.gguf', 1000)
+  write(dir, '.cache/huggingface/download/BF16/m-00002-of-00002.gguf.incomplete', 400)
+
+  assert.equal(await resumableBytes(dir, selected), 1400)
+})
+
+test('older hub versions put the partial next to the target', async () => {
+  const dir = tmpDir()
+  write(dir, 'm.gguf.incomplete', 300)
+  assert.equal(await resumableBytes(dir, [{ path: 'm.gguf', size: 1000 }]), 300)
+})
+
+test('other quants in the same folder are not counted as progress', async () => {
+  // Over-counting here would wave through a download that does not fit.
+  const dir = tmpDir()
+  write(dir, 'm-Q8_0.gguf', 5000)
+  assert.equal(await resumableBytes(dir, [{ path: 'm-Q4_K_M.gguf', size: 1000 }]), 0)
+})
+
+test('a file larger than the listing says still counts only its listed size', async () => {
+  const dir = tmpDir()
+  write(dir, 'm.gguf', 4000)
+  assert.equal(await resumableBytes(dir, [{ path: 'm.gguf', size: 1000 }]), 1000)
+})
+
+test('an empty target directory is simply zero', async () => {
+  assert.equal(await resumableBytes(tmpDir(), [{ path: 'm.gguf', size: 1000 }]), 0)
 })
