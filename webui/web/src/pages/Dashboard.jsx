@@ -282,6 +282,7 @@ function NetworkRow({ iface, history }) {
       <td>
         <strong className="mono">{iface.name}</strong>{' '}
         <span className="badge">{kind.label}</span>
+        <Addresses list={iface.addresses} />
       </td>
       <td className="small">
         {iface.operstate === 'up' ? (
@@ -306,6 +307,33 @@ function NetworkRow({ iface, history }) {
         <Sparkline values={throughput} color={kind.color} height={28} />
       </td>
     </tr>
+  )
+}
+
+/**
+ * The addresses configured on an interface, IPv4 first.
+ *
+ * A machine on an IPv6 network collects a handful of v6 addresses it never
+ * asked for, which would make one row three lines tall; past the third the
+ * rest move into the tooltip.
+ */
+function Addresses({ list }) {
+  if (!list?.length) return <div className="small faint">keine IP</div>
+
+  const shown = list.slice(0, 3)
+  const rest = list.slice(3)
+
+  return (
+    <div className="small mono faint">
+      {shown.map((a) => (
+        <div key={a.address}>{a.cidr ?? a.address}</div>
+      ))}
+      {rest.length ? (
+        <div title={rest.map((a) => a.cidr ?? a.address).join('\n')}>
+          + {rest.length} weitere
+        </div>
+      ) : null}
+    </div>
   )
 }
 

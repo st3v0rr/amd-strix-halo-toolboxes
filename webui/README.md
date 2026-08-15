@@ -162,8 +162,11 @@ und die laufenden Server mit ihren Container-Werten. Alle Kacheln führen zehn
 Minuten Verlauf mit.
 
 Darunter steht eine Tabelle mit **jeder Netzwerkschnittstelle**, die der Kernel
-kennt, mit aktuellem Durchsatz je Richtung, den Zählern seit dem Systemstart und
-einem Verlauf des Gesamtdurchsatzes. Die Liste ist nirgends fest verdrahtet:
+kennt, mit ihrer IP-Adresse samt Präfix, dem aktuellen Durchsatz je Richtung,
+den Zählern seit dem Systemstart und einem Verlauf des Gesamtdurchsatzes.
+Angezeigt werden nur konfigurierte Adressen — die automatischen (`fe80::`,
+`169.254.`) liegen auf jedem eingesteckten Kabel und würden nur vortäuschen,
+dass zwei Maschinen sich erreichen. Die Liste ist nirgends fest verdrahtet:
 
 - Steckt ein USB4- oder Thunderbolt-Kabel zu einer zweiten Strix-Halo-Box, taucht
   die neue Schnittstelle (meist `thunderbolt0`) beim nächsten Tick von selbst auf

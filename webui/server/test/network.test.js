@@ -8,6 +8,7 @@ import {
   KIND_ORDER,
   parseNetDev,
   rateBetween,
+  readAddresses,
   readInterfaceMeta,
   readNetwork,
   resetNetwork,
@@ -217,6 +218,75 @@ test('an unknown link speed stays null instead of becoming -1', async () => {
   assert.equal(meta.operstate, 'down')
 })
 
+/* -------------------------------- addresses ------------------------------- */
+
+test('every configured address is kept, with its prefix', () => {
+  const addresses = readAddresses({
+    thunderbolt0: [
+      { family: 'IPv4', address: '192.168.100.11', cidr: '192.168.100.11/24', internal: false },
+      { family: 'IPv6', address: '2001:db8::11', cidr: '2001:db8::11/64', internal: false },
+    ],
+  })
+  assert.deepEqual(addresses.thunderbolt0, [
+    { family: 'IPv4', address: '192.168.100.11', cidr: '192.168.100.11/24' },
+    { family: 'IPv6', address: '2001:db8::11', cidr: '2001:db8::11/64' },
+  ])
+})
+
+test('addresses nobody configured are left out', () => {
+  // A link-local pair exists on every cable that is plugged in; showing it
+  // would suggest the two machines can reach each other when they cannot.
+  const addresses = readAddresses({
+    thunderbolt0: [
+      { family: 'IPv6', address: 'fe80::1c2d:3e4f:5a6b:7c8d', cidr: 'fe80::.../64', internal: false },
+      { family: 'IPv4', address: '169.254.7.9', cidr: '169.254.7.9/16', internal: false },
+    ],
+    lo: [{ family: 'IPv4', address: '127.0.0.1', cidr: '127.0.0.1/8', internal: true }],
+  })
+  assert.deepEqual(addresses, {})
+})
+
+test('an interface keeps its real address next to a link-local one', () => {
+  const addresses = readAddresses({
+    enp3s0: [
+      { family: 'IPv6', address: 'FE80::1', cidr: 'FE80::1/64', internal: false },
+      { family: 'IPv4', address: '10.0.0.5', cidr: '10.0.0.5/24', internal: false },
+    ],
+  })
+  assert.deepEqual(
+    addresses.enp3s0.map((a) => a.address),
+    ['10.0.0.5'],
+  )
+})
+
+test('IPv4 is listed before IPv6', () => {
+  const addresses = readAddresses({
+    enp3s0: [
+      { family: 'IPv6', address: '2001:db8::5', cidr: '2001:db8::5/64', internal: false },
+      { family: 'IPv4', address: '10.0.0.5', cidr: '10.0.0.5/24', internal: false },
+      { family: 'IPv6', address: '2001:db8::6', cidr: '2001:db8::6/64', internal: false },
+    ],
+  })
+  assert.deepEqual(
+    addresses.enp3s0.map((a) => a.address),
+    ['10.0.0.5', '2001:db8::5', '2001:db8::6'],
+  )
+})
+
+test('the numeric family older Node versions report is normalised', () => {
+  const addresses = readAddresses({
+    enp3s0: [{ family: 4, address: '10.0.0.5', cidr: '10.0.0.5/24', internal: false }],
+  })
+  assert.equal(addresses.enp3s0[0].family, 'IPv4')
+})
+
+test('a missing prefix leaves cidr null rather than guessing one', () => {
+  const addresses = readAddresses({
+    enp3s0: [{ family: 'IPv4', address: '10.0.0.5', internal: false }],
+  })
+  assert.equal(addresses.enp3s0[0].cidr, null)
+})
+
 /* -------------------------------- readNetwork ----------------------------- */
 
 function fakeProc(text) {
@@ -239,6 +309,9 @@ test('loopback is left out and the first tick reports no rate', async () => {
   )
   assert.equal(interfaces[0].rxBytesPerSec, null)
   assert.equal(interfaces[1].errors, 4)
+  // An interface the host does not actually have carries no addresses, and the
+  // field is still there so the dashboard need not special-case it.
+  assert.deepEqual(interfaces[0].addresses, [])
 })
 
 test('the second tick reports the throughput in between', async () => {

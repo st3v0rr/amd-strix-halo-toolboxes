@@ -1,4 +1,5 @@
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 import { procRoot, sysfsRoot } from '../config/paths.js'
@@ -232,6 +233,46 @@ export async function readInterfaceMeta(name) {
   }
 }
 
+/**
+ * The addresses configured on each interface.
+ *
+ * This one does not come from procfs: IPv4 addresses are not exposed as text
+ * anywhere under /proc — they are a netlink query, which is exactly what
+ * `os.networkInterfaces()` does for us.
+ *
+ * Two kinds are left out. Loopback and other internal addresses say nothing,
+ * and IPv6 link-local (`fe80::`) plus IPv4 self-assigned (`169.254.`) exist on
+ * every link whether or not anybody configured it — on a direct USB4 cable
+ * they would fill the column while still telling you nothing about whether the
+ * two machines can talk.
+ *
+ * @param {Record<string, object[]>} [byInterface] injectable for tests
+ */
+export function readAddresses(byInterface = os.networkInterfaces()) {
+  const out = {}
+  for (const [name, entries] of Object.entries(byInterface ?? {})) {
+    const addresses = (entries ?? [])
+      .filter((entry) => entry && !entry.internal && !isAutoAddress(entry.address))
+      .map((entry) => ({
+        // Node has reported this as both the number 4 and the string 'IPv4'.
+        family: typeof entry.family === 'number' ? `IPv${entry.family}` : entry.family,
+        address: entry.address,
+        // The prefix is half the answer when a cluster node cannot be reached.
+        cidr: entry.cidr ?? null,
+      }))
+    // IPv4 first: on this kind of box it is the address somebody typed into a
+    // config, while the v6 ones came from the router.
+    addresses.sort((a, b) => (a.family === b.family ? 0 : a.family === 'IPv4' ? -1 : 1))
+    if (addresses.length) out[name] = addresses
+  }
+  return out
+}
+
+function isAutoAddress(address) {
+  const text = String(address ?? '').toLowerCase()
+  return text.startsWith('fe80:') || text.startsWith('169.254.')
+}
+
 /** @type {{at: number, counters: Record<string, object>} | null} */
 let previous = null
 
@@ -252,6 +293,7 @@ export async function readNetwork() {
   if (text == null) return null
 
   const counters = parseNetDev(text)
+  const addresses = readAddresses()
   const now = Date.now()
   const seconds = previous ? (now - previous.at) / 1000 : 0
 
@@ -264,6 +306,7 @@ export async function readNetwork() {
         return {
           name,
           ...meta,
+          addresses: addresses[name] ?? [],
           rxBytes: current.rxBytes,
           txBytes: current.txBytes,
           rxBytesPerSec: rateBetween(before?.rxBytes, current.rxBytes, seconds),
