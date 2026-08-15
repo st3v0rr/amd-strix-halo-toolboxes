@@ -16,6 +16,32 @@ export function jobRoutes(ctx) {
     res.json({ jobs: ctx.jobs.list(q(req)) })
   })
 
+  /**
+   * Live feed of *every* job, so a list view needs one connection instead of
+   * one per row. Progress ticks arrive here too — `setProgress` re-emits the
+   * whole job — which is all a table needs; the per-job stream below stays the
+   * place to go for log lines.
+   *
+   * Declared before `/:id` so the literal path wins over the parameter.
+   */
+  router.get('/events', validate({ query: listQuery }), (req, res) => {
+    const { type } = q(req)
+    const sse = openSse(req, res)
+
+    for (const job of ctx.jobs.list({ type })) sse.send('job', job)
+
+    const onJob = (job) => {
+      if (!type || job.type === type) sse.send('job', job)
+    }
+    const onRemoved = (id) => sse.send('removed', { id })
+    ctx.jobs.on('job', onJob)
+    ctx.jobs.on('job:removed', onRemoved)
+    req.on('close', () => {
+      ctx.jobs.off('job', onJob)
+      ctx.jobs.off('job:removed', onRemoved)
+    })
+  })
+
   router.get('/:id', (req, res, next) => {
     try {
       const job = ctx.jobs.get(req.params.id)

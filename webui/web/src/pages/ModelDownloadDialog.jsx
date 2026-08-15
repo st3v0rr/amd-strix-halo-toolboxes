@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { get, post, qs } from '../api/client.js'
-import { JobProgress } from '../components/JobProgress.jsx'
 import { Modal } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatNumber } from '../components/format.js'
@@ -20,7 +19,6 @@ export function ModelDownloadDialog({ onClose }) {
   const [submitted, setSubmitted] = useState('')
   const [repo, setRepo] = useState(null)
   const [selected, setSelected] = useState(new Set())
-  const [jobId, setJobId] = useState(null)
 
   const search = useQuery({
     queryKey: ['hf-search', submitted],
@@ -48,9 +46,14 @@ export function ModelDownloadDialog({ onClose }) {
     return sum
   }, [files.data, selected])
 
+  // The dialog is done once the job exists: the queue on the models page owns
+  // progress from here, so it survives closing this window.
   const start = useMutation({
     mutationFn: () => post('/models/downloads', { repo, include: [...selected] }),
-    onSuccess: (data) => setJobId(data.jobId),
+    onSuccess: () => {
+      toast.success('Download gestartet — der Fortschritt steht unter „Downloads“.')
+      onClose()
+    },
     onError: (err) => toast.error(err),
   })
 
@@ -66,31 +69,6 @@ export function ModelDownloadDialog({ onClose }) {
       }
       return next
     })
-  }
-
-  if (jobId) {
-    return (
-      <Modal
-        title="Modell wird geladen"
-        onClose={onClose}
-        footer={
-          <button type="button" className="btn" onClick={onClose}>
-            Schließen
-          </button>
-        }
-      >
-        <p className="small muted">
-          Der Download läuft im Hintergrund weiter, auch wenn du dieses Fenster schließt.
-        </p>
-        <JobProgress
-          jobId={jobId}
-          onFinished={(job) => {
-            if (job.status === 'done') toast.success('Download abgeschlossen.')
-            if (job.status === 'failed') toast.error(job.error ?? 'Download fehlgeschlagen.')
-          }}
-        />
-      </Modal>
-    )
   }
 
   return (

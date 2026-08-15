@@ -4,7 +4,7 @@ import path from 'node:path'
 import express from 'express'
 import { z } from 'zod'
 
-import { conflict, notFound } from '../lib/errors.js'
+import { badRequest, conflict, notFound } from '../lib/errors.js'
 import { q, validate } from '../lib/validate.js'
 import { startDownload } from '../models/download.js'
 import { estimateVram } from '../models/estimator.js'
@@ -144,6 +144,38 @@ export function modelRoutes(ctx) {
   router.post('/downloads', validate({ body: downloadBody }), async (req, res, next) => {
     try {
       const job = await startDownload(ctx, req.body)
+      res.status(202).json({ jobId: job.id, job: job.toJSON() })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  /**
+   * Start a finished-but-incomplete download over again.
+   *
+   * The job's `meta` holds everything the first attempt was given, and `hf`
+   * picks partial files back up, so resuming is just the same command once
+   * more. The old entry is dismissed afterwards rather than left next to the
+   * new one.
+   */
+  router.post('/downloads/:id/resume', async (req, res, next) => {
+    try {
+      const previous = ctx.jobs.get(req.params.id)
+      if (previous.type !== 'model-download') {
+        throw badRequest('Dieser Job ist kein Modell-Download.')
+      }
+      if (!previous.finished) {
+        throw conflict('Dieser Download läuft noch — er muss nicht fortgesetzt werden.')
+      }
+      const { repo, revision = 'main', include, targetSubdir } = previous.meta ?? {}
+      if (!repo || !Array.isArray(include) || include.length === 0) {
+        throw badRequest(
+          'Zu diesem Job sind keine Download-Angaben gespeichert. Bitte das Modell neu auswählen.',
+        )
+      }
+
+      const job = await startDownload(ctx, { repo, revision, include, targetSubdir })
+      ctx.jobs.cancel(previous.id)
       res.status(202).json({ jobId: job.id, job: job.toJSON() })
     } catch (err) {
       next(err)

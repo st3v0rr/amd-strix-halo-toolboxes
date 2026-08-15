@@ -70,7 +70,7 @@ grep -qi 'httponly' "$JAR" && ok "Cookie ist HttpOnly" || bad "Cookie ist nicht 
 
 echo
 echo "Kernfunktionen"
-for path in /version /system /models /images /servers /profiles /settings /updates/app; do
+for path in /version /system /models /images /servers /profiles /settings /updates/app /jobs; do
   check "GET $path" 200 -b "$JAR" "$BASE/api$path"
 done
 

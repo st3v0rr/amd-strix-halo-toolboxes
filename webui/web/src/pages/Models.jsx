@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatDate } from '../components/format.js'
 import { ModelDownloadDialog } from './ModelDownloadDialog.jsx'
+import { ModelDownloadQueue } from './ModelDownloadQueue.jsx'
 import { StartServerDialog } from './StartServerDialog.jsx'
 
 export function Models() {
@@ -81,6 +82,8 @@ export function Models() {
           laufender oder abgebrochener Download.
         </div>
       ) : null}
+
+      <ModelDownloadQueue />
 
       {models.isError ? (
         <div className="alert alert-danger">{models.error.message}</div>
