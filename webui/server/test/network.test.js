@@ -228,48 +228,47 @@ test('every configured address is kept, with its prefix', () => {
     ],
   })
   assert.deepEqual(addresses.thunderbolt0, [
-    { family: 'IPv4', address: '192.168.100.11', cidr: '192.168.100.11/24' },
-    { family: 'IPv6', address: '2001:db8::11', cidr: '2001:db8::11/64' },
+    { family: 'IPv4', address: '192.168.100.11', cidr: '192.168.100.11/24', auto: false },
+    { family: 'IPv6', address: '2001:db8::11', cidr: '2001:db8::11/64', auto: false },
   ])
 })
 
-test('addresses nobody configured are left out', () => {
-  // A link-local pair exists on every cable that is plugged in; showing it
-  // would suggest the two machines can reach each other when they cannot.
+test('loopback and other internal addresses are dropped', () => {
   const addresses = readAddresses({
-    thunderbolt0: [
-      { family: 'IPv6', address: 'fe80::1c2d:3e4f:5a6b:7c8d', cidr: 'fe80::.../64', internal: false },
-      { family: 'IPv4', address: '169.254.7.9', cidr: '169.254.7.9/16', internal: false },
-    ],
     lo: [{ family: 'IPv4', address: '127.0.0.1', cidr: '127.0.0.1/8', internal: true }],
   })
   assert.deepEqual(addresses, {})
 })
 
-test('an interface keeps its real address next to a link-local one', () => {
+test('an address the kernel invented is kept but marked', () => {
+  // This is the state of a USB4 cable that is plugged in and nothing more.
+  // Reporting "no IP" would send someone looking for a hardware fault.
   const addresses = readAddresses({
-    enp3s0: [
-      { family: 'IPv6', address: 'FE80::1', cidr: 'FE80::1/64', internal: false },
-      { family: 'IPv4', address: '10.0.0.5', cidr: '10.0.0.5/24', internal: false },
+    thunderbolt0: [
+      { family: 'IPv6', address: 'fe80::1c2d:3e4f:5a6b:7c8d', cidr: 'fe80::1c2d:3e4f:5a6b:7c8d/64', internal: false },
+      { family: 'IPv4', address: '169.254.7.9', cidr: '169.254.7.9/16', internal: false },
     ],
   })
   assert.deepEqual(
-    addresses.enp3s0.map((a) => a.address),
-    ['10.0.0.5'],
+    addresses.thunderbolt0.map((a) => [a.address, a.auto]),
+    [
+      ['169.254.7.9', true],
+      ['fe80::1c2d:3e4f:5a6b:7c8d', true],
+    ],
   )
 })
 
-test('IPv4 is listed before IPv6', () => {
+test('configured addresses sort ahead of invented ones, IPv4 ahead of IPv6', () => {
   const addresses = readAddresses({
     enp3s0: [
+      { family: 'IPv6', address: 'FE80::1', cidr: 'FE80::1/64', internal: false },
       { family: 'IPv6', address: '2001:db8::5', cidr: '2001:db8::5/64', internal: false },
       { family: 'IPv4', address: '10.0.0.5', cidr: '10.0.0.5/24', internal: false },
-      { family: 'IPv6', address: '2001:db8::6', cidr: '2001:db8::6/64', internal: false },
     ],
   })
   assert.deepEqual(
     addresses.enp3s0.map((a) => a.address),
-    ['10.0.0.5', '2001:db8::5', '2001:db8::6'],
+    ['10.0.0.5', '2001:db8::5', 'FE80::1'],
   )
 })
 

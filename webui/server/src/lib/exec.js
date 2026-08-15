@@ -22,12 +22,25 @@ const webuiRoot = path.resolve(here, '../../..')
  * than a code branch.
  */
 const BINARIES = {
-  podman: process.env.SHX_PODMAN_BIN || 'podman',
-  hf: process.env.SHX_HF_BIN || 'hf',
-  git: process.env.SHX_GIT_BIN || 'git',
-  python3: process.env.SHX_PYTHON_BIN || 'python3',
-  systemctl: process.env.SHX_SYSTEMCTL_BIN || 'systemctl',
-  'systemd-run': process.env.SHX_SYSTEMD_RUN_BIN || 'systemd-run',
+  podman: ['SHX_PODMAN_BIN', 'podman'],
+  hf: ['SHX_HF_BIN', 'hf'],
+  git: ['SHX_GIT_BIN', 'git'],
+  python3: ['SHX_PYTHON_BIN', 'python3'],
+  systemctl: ['SHX_SYSTEMCTL_BIN', 'systemctl'],
+  'systemd-run': ['SHX_SYSTEMD_RUN_BIN', 'systemd-run'],
+  'firewall-cmd': ['SHX_FIREWALL_CMD_BIN', 'firewall-cmd'],
+}
+
+/**
+ * The override is read on every call rather than captured at import, so a test
+ * can point one binary at a fixture without having to control module load
+ * order.
+ */
+function configuredBinary(key) {
+  const entry = BINARIES[key]
+  if (!entry) return null
+  const [envVar, fallback] = entry
+  return process.env[envVar] || fallback
 }
 
 /**
@@ -67,7 +80,7 @@ function searchDirs() {
 const resolvedBinaries = new Map()
 
 export function binaryPath(key) {
-  const bin = BINARIES[key]
+  const bin = configuredBinary(key)
   if (!bin) throw new Error(`Unknown binary key: ${key}`)
 
   // An explicit override wins. A relative one resolves against webui/, so
@@ -100,7 +113,8 @@ export function forgetBinaryPaths() {
   resolvedBinaries.clear()
 }
 
-export const isMock = process.env.SHX_MOCK === '1'
+/** Read on every call for the same reason the binary overrides are. */
+export const isMock = () => process.env.SHX_MOCK === '1'
 
 /**
  * Environment handed to subprocesses. An allowlist rather than `process.env`,
@@ -120,9 +134,16 @@ function baseEnv(extra = {}) {
     if (process.env[key]) env[key] = process.env[key]
   }
   // Mock shims need to find their own fixtures.
-  if (isMock) {
+  if (isMock()) {
     env.SHX_MOCK = '1'
-    for (const key of ['SHX_MOCK_STATE', 'SHX_MOCK_FIXTURES', 'SHX_MOCK_HELP_VARIANT', 'SHX_MOCK_XET']) {
+    for (const key of [
+      'SHX_MOCK_STATE',
+      'SHX_MOCK_FIXTURES',
+      'SHX_MOCK_HELP_VARIANT',
+      'SHX_MOCK_XET',
+      'SHX_MOCK_FIREWALL',
+      'SHX_MOCK_FIREWALL_STATE',
+    ]) {
       if (process.env[key]) env[key] = process.env[key]
     }
   }

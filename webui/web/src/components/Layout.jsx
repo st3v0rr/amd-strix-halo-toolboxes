@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/servers', label: 'Server' },
   { to: '/models', label: 'Modelle' },
   { to: '/images', label: 'Images' },
+  { to: '/network', label: 'Netzwerk' },
   { to: '/profiles', label: 'Profile' },
   { to: '/updates', label: 'Updates' },
   { to: '/settings', label: 'Einstellungen' },

@@ -7,6 +7,7 @@ import { useDocumentTitle } from './components/useDocumentTitle.js'
 import { Dashboard } from './pages/Dashboard.jsx'
 import { Images } from './pages/Images.jsx'
 import { Models } from './pages/Models.jsx'
+import { Network } from './pages/Network.jsx'
 import { Profiles } from './pages/Profiles.jsx'
 import { ServerDetail } from './pages/ServerDetail.jsx'
 import { Servers } from './pages/Servers.jsx'
@@ -38,6 +39,7 @@ export function App() {
         <Route path="servers/:name" element={<ServerDetail />} />
         <Route path="models" element={<Models />} />
         <Route path="images" element={<Images />} />
+        <Route path="network" element={<Network />} />
         <Route path="profiles" element={<Profiles />} />
         <Route path="updates" element={<Updates />} />
         <Route path="settings" element={<Settings />} />

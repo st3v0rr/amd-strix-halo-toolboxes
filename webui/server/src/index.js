@@ -18,7 +18,7 @@ if (!ctx.config.data.jwtSecret) {
 }
 
 const server = app.listen(port, bindAddress, () => {
-  log.info(`Strix Halo WebUI lauscht auf http://${bindAddress}:${port}${isMock ? ' (Mock-Modus)' : ''}`)
+  log.info(`Strix Halo WebUI lauscht auf http://${bindAddress}:${port}${isMock() ? ' (Mock-Modus)' : ''}`)
   if (!ctx.config.data.passwordHash) {
     log.warn('Es ist noch kein Passwort gesetzt — eine Anmeldung ist derzeit nicht möglich.')
   }
