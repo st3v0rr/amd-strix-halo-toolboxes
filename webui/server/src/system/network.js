@@ -196,10 +196,12 @@ function firstNumber(text) {
  */
 export async function readInterfaceMeta(name) {
   const dir = path.join(sysfsRoot(), 'class', 'net', name)
-  const [operstate, carrier, speed, subsystem, wireless] = await Promise.all([
+  const [operstate, carrier, speed, mac, mtu, subsystem, wireless] = await Promise.all([
     readTrimmed(path.join(dir, 'operstate')),
     readTrimmed(path.join(dir, 'carrier')),
     readTrimmed(path.join(dir, 'speed')),
+    readTrimmed(path.join(dir, 'address')),
+    readTrimmed(path.join(dir, 'mtu')),
     readSubsystem(dir),
     isWireless(dir),
   ])
@@ -230,21 +232,24 @@ export async function readInterfaceMeta(name) {
     // Only Thunderbolt reports this, and only there is it worth knowing: a
     // cable that negotiated a single lane runs at half the expected rate.
     lanes,
+    mac: mac || null,
+    mtu: firstNumber(mtu),
   }
 }
 
 /**
- * The addresses configured on each interface.
+ * The addresses on each interface.
  *
  * This one does not come from procfs: IPv4 addresses are not exposed as text
  * anywhere under /proc — they are a netlink query, which is exactly what
  * `os.networkInterfaces()` does for us.
  *
- * Two kinds are left out. Loopback and other internal addresses say nothing,
- * and IPv6 link-local (`fe80::`) plus IPv4 self-assigned (`169.254.`) exist on
- * every link whether or not anybody configured it — on a direct USB4 cable
- * they would fill the column while still telling you nothing about whether the
- * two machines can talk.
+ * Only loopback and other internal addresses are dropped outright. The ones
+ * nobody configured — IPv6 link-local (`fe80::`) and IPv4 self-assigned
+ * (`169.254.`) — are kept but marked `auto`, because "this link has no address"
+ * and "this link has only the address the kernel invented" are different
+ * answers to the same question, and on a freshly plugged USB4 cable it is
+ * always the second one.
  *
  * @param {Record<string, object[]>} [byInterface] injectable for tests
  */
@@ -252,21 +257,26 @@ export function readAddresses(byInterface = os.networkInterfaces()) {
   const out = {}
   for (const [name, entries] of Object.entries(byInterface ?? {})) {
     const addresses = (entries ?? [])
-      .filter((entry) => entry && !entry.internal && !isAutoAddress(entry.address))
+      .filter((entry) => entry && !entry.internal)
       .map((entry) => ({
         // Node has reported this as both the number 4 and the string 'IPv4'.
         family: typeof entry.family === 'number' ? `IPv${entry.family}` : entry.family,
         address: entry.address,
         // The prefix is half the answer when a cluster node cannot be reached.
         cidr: entry.cidr ?? null,
+        auto: isAutoAddress(entry.address),
       }))
-    // IPv4 first: on this kind of box it is the address somebody typed into a
-    // config, while the v6 ones came from the router.
-    addresses.sort((a, b) => (a.family === b.family ? 0 : a.family === 'IPv4' ? -1 : 1))
+    // Configured before invented, IPv4 before IPv6: on this kind of box the
+    // v4 address is the one somebody typed into a config.
+    addresses.sort(
+      (a, b) => Number(a.auto) - Number(b.auto) || rankFamily(a.family) - rankFamily(b.family),
+    )
     if (addresses.length) out[name] = addresses
   }
   return out
 }
+
+const rankFamily = (family) => (family === 'IPv4' ? 0 : 1)
 
 function isAutoAddress(address) {
   const text = String(address ?? '').toLowerCase()

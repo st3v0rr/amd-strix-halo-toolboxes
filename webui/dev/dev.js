@@ -25,6 +25,8 @@ const env = {
   SHX_MOCK: '1',
   SHX_PODMAN_BIN: path.join(here, 'bin', 'podman'),
   SHX_HF_BIN: path.join(here, 'bin', 'hf'),
+  SHX_FIREWALL_CMD_BIN: path.join(here, 'bin', 'firewall-cmd'),
+  SHX_MOCK_FIREWALL_STATE: path.join(tmp, 'firewalld.json'),
   SHX_SYSFS_ROOT: path.join(here, 'sysfs'),
   SHX_PROC_ROOT: path.join(tmp, 'proc'),
   SHX_CONFIG_DIR: path.join(tmp, 'config'),

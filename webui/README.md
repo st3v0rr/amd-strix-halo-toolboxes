@@ -100,7 +100,29 @@ von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
   weiterhin erreichbar. Das ist meist die bessere Wahl.
 - **Token entfernen** — öffentliche Repos laden dann wieder ohne Xet.
 
-## Firewall
+## Netzwerk und Firewall
+
+Die Seite **Netzwerk** führt beides zusammen: alle Schnittstellen der Box mit
+Adressen, Linkgeschwindigkeit, MAC und MTU — und darunter die Ports, die durch
+die Firewall müssen. Je Port zwei Wege: **für alle freigeben** oder **nur für
+eine Quelle**, also für eine IP-Adresse oder ein Subnetz. Der zweite Weg legt
+eine Rich Rule an, genau in dieser Form:
+
+```
+rule family="ipv4" source address="10.7.7.0/24" port port="50052" protocol="tcp" accept
+```
+
+Bestehende Regeln dieser Form werden gelesen und in der Portzeile angezeigt —
+ein Port, der nur für das Cluster-Subnetz offen ist, steht dort als **„nur für
+Quelle“** und nicht als „gesperrt“. Alles, was firewalld sonst noch kann
+(Services, `log`, `reject`, Weiterleitungen), wird unverändert angezeigt, aber
+nicht angefasst: Eine Regel, deren Wirkung die Anwendung nicht vollständig
+beschreiben kann, entfernt sie auch nicht.
+
+Welche Ports das sind, wird nicht gepflegt, sondern hergeleitet: der eigene Port
+aus den Einstellungen, dazu je ein Port pro llama-server und pro RPC-Worker. Ein
+Server, der vor fünf Minuten gestartet wurde, steht dort ohne weiteres Zutun,
+und ein Port, der für einen längst gelöschten Server offen ist, fällt auf.
 
 Fedora bringt firewalld mit, und dessen Standardzonen lassen keinen der hier
 relevanten Ports durch. Je nachdem, was auf der Maschine läuft, sind es bis zu
@@ -112,22 +134,36 @@ drei:
 | 11434 | llama-server (Default je Server) | `--api-key` |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
 
-Für das Webinterface erledigt das der Installer mit `--open-firewall`. Von Hand,
-zusammen mit dem llama-server-Port:
+Zwei Dinge macht die Oberfläche bewusst nicht:
+
+- **Kein `firewall-cmd --reload`.** Ein Reload reißt podmans eigene
+  Weiterleitungsregeln mit, und laufende Container sind danach nicht mehr
+  erreichbar, obwohl sie laufen. Stattdessen wird jede Änderung zweimal
+  angewandt — einmal für die laufende Firewall, einmal dauerhaft. Gleiches
+  Ergebnis, kein Reload. (Wer doch einmal reloadet und danach einen Container
+  nicht erreicht: Container neu starten.)
+- **Keine fremden Regeln anfassen.** Ports, die zu keinem verwalteten Dienst
+  gehören — SSH etwa —, werden angezeigt, aber nicht angeboten. Ein Knopf, der
+  Port 22 schließen kann, ist ein Knopf, der die eigene Sitzung beendet.
+
+Läuft das Webinterface **nicht als root**, verweigert polkit den Zugriff auf
+firewalld. Dann zeigt die Seite denselben Stand, nur mit den Befehlen statt der
+Schalter:
 
 ```bash
-sudo firewall-cmd --permanent --add-port=8420/tcp
-sudo firewall-cmd --permanent --add-port=11434/tcp
-sudo firewall-cmd --reload
+sudo firewall-cmd --add-port=11434/tcp              # sofort
+sudo firewall-cmd --permanent --add-port=11434/tcp  # und nach dem Neustart
 sudo firewall-cmd --list-ports
 ```
 
-Ein zweiter Server auf einem anderen Port braucht dessen Port zusätzlich —
-11435, 11436 und so weiter.
+Für das Webinterface selbst erledigt das schon der Installer mit
+`--open-firewall`. Ein zweiter Server auf einem anderen Port braucht dessen Port
+zusätzlich — 11435, 11436 und so weiter.
 
-Nach einem `firewall-cmd --reload` kann podman seine eigenen
-Weiterleitungsregeln verlieren. Ist ein Container danach nicht mehr erreichbar,
-obwohl er läuft, hilft ein Neustart des Containers.
+Adressen vergibt die Oberfläche nicht. Eine Schnittstelle umzukonfigurieren,
+während die Seite über genau diese Schnittstelle ausgeliefert wird, ist der
+kürzeste Weg zu einer Box, die Tastatur und Monitor braucht — der `nmcli`-Befehl
+dafür steht [weiter unten](#übersicht).
 
 ### Der RPC-Port ist ein Sonderfall
 
@@ -135,7 +171,11 @@ obwohl er läuft, hilft ein Neustart des Containers.
 selbst in Großbuchstaben davor. Wer Port 50052 erreicht, kann auf der GPU dieser
 Maschine rechnen lassen und ihren Speicher belegen. Deshalb nicht pauschal
 aufmachen, sondern nur für die Adressen, die ihn wirklich brauchen, also den
-Master des Clusters:
+Master des Clusters.
+
+Genau dafür ist auf der Netzwerkseite **„Nur für Quelle“** da: Port 50052 steht
+dort auch dann, wenn gerade kein Worker läuft — die Freigabe richtet man
+üblicherweise ein, bevor der Worker das erste Mal startet. Von Hand:
 
 ```bash
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.100.0/24" port port="50052" protocol="tcp" accept'
@@ -164,9 +204,10 @@ Minuten Verlauf mit.
 Darunter steht eine Tabelle mit **jeder Netzwerkschnittstelle**, die der Kernel
 kennt, mit ihrer IP-Adresse samt Präfix, dem aktuellen Durchsatz je Richtung,
 den Zählern seit dem Systemstart und einem Verlauf des Gesamtdurchsatzes.
-Angezeigt werden nur konfigurierte Adressen — die automatischen (`fe80::`,
-`169.254.`) liegen auf jedem eingesteckten Kabel und würden nur vortäuschen,
-dass zwei Maschinen sich erreichen. Die Liste ist nirgends fest verdrahtet:
+Adressen, die niemand vergeben hat (`fe80::`, `169.254.`), stehen nicht als
+gleichwertig daneben, sondern als **„nur Link-Local, nicht konfiguriert“** — das
+ist der Normalzustand eines frisch eingesteckten USB4-Kabels und etwas anderes
+als „keine IP“. Die Liste ist nirgends fest verdrahtet:
 
 - Steckt ein USB4- oder Thunderbolt-Kabel zu einer zweiten Strix-Halo-Box, taucht
   die neue Schnittstelle (meist `thunderbolt0`) beim nächsten Tick von selbst auf
@@ -179,6 +220,17 @@ dass zwei Maschinen sich erreichen. Die Liste ist nirgends fest verdrahtet:
   ergeben die 40 Gbit/s, für die das Kabel verkauft wurde; steht dort nur
   **1 Lane**, hat die Verbindung die Hälfte ausgehandelt, und das liegt fast
   immer am Kabel oder am Port.
+- Eine IP bekommt so ein Link von niemandem geschenkt. Steht in der Zeile „nur
+  Link-Local“, fehlt sie noch — auf beiden Maschinen je einmal setzen, dann
+  laufen RPC-Verbindungen darüber:
+
+  ```bash
+  # Box A; auf Box B dasselbe mit .12
+  nmcli con add type ethernet ifname thunderbolt0 con-name tb0 \
+    ip4 192.168.100.11/24
+  nmcli con up tb0
+  ```
+
 - Die Einordnung kommt aus sysfs (an welchem Bus die Karte hängt), nicht aus dem
   Namen — ein USB4-Adapter, den der Kernel `eno2` nennt, wird trotzdem als solcher
   erkannt.
@@ -369,10 +421,11 @@ webui/
     podman/    argv, labels, features, client, servers, logstream, autostart
     models/    scan, paths (Traversal-Schutz), estimator, hfapi, download
     images/    catalog, registry, pullparse, service
-    system/    amdgpu, host, network, monitor
+    system/    amdgpu, host, network, firewall, monitor
     updates/   git, apply
     routes/    die REST-API
   web/src/     React + Vite
+  shared/      Konstanten, Quant-Gruppierung, RPC-Peers, Firewall-Regeln
   dev/         Mock-Attrappen, Fixtures, Parity-Harness
   scripts/     self-update.sh, smoke.sh, shx-passwd
 ```

@@ -7,6 +7,7 @@ import { imageRoutes } from './images.js'
 import { jobRoutes } from './jobs.js'
 import { metaRoutes } from './meta.js'
 import { modelRoutes } from './models.js'
+import { networkRoutes } from './network.js'
 import { profileRoutes } from './profiles.js'
 import { serverRoutes } from './servers.js'
 import { settingsRoutes } from './settings.js'
@@ -30,6 +31,7 @@ export function apiRoutes(ctx) {
   router.use('/images', imageRoutes(ctx))
   router.use('/jobs', jobRoutes(ctx))
   router.use('/models', modelRoutes(ctx))
+  router.use('/network', networkRoutes(ctx))
   router.use('/profiles', profileRoutes(ctx))
   router.use('/servers', serverRoutes(ctx))
   router.use('/settings', settingsRoutes(ctx))

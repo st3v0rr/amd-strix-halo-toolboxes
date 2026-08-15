@@ -311,17 +311,33 @@ function NetworkRow({ iface, history }) {
 }
 
 /**
- * The addresses configured on an interface, IPv4 first.
+ * The addresses of an interface, IPv4 first.
+ *
+ * A link with nothing but its kernel-invented address is the normal state of a
+ * freshly plugged USB4 cable, and saying "keine IP" there would send someone
+ * looking for a hardware fault instead of for the missing configuration — so
+ * that case is spelled out rather than swallowed.
  *
  * A machine on an IPv6 network collects a handful of v6 addresses it never
- * asked for, which would make one row three lines tall; past the third the
- * rest move into the tooltip.
+ * asked for, which would make one row four lines tall; past the third the rest
+ * move into the tooltip.
  */
 function Addresses({ list }) {
-  if (!list?.length) return <div className="small faint">keine IP</div>
+  const configured = (list ?? []).filter((a) => !a.auto)
+  const auto = (list ?? []).filter((a) => a.auto)
 
-  const shown = list.slice(0, 3)
-  const rest = list.slice(3)
+  if (configured.length === 0) {
+    if (auto.length === 0) return <div className="small faint">keine IP</div>
+    return (
+      <div className="small faint" title={auto.map((a) => a.cidr ?? a.address).join('\n')}>
+        <span className="mono">{auto[0].address}</span>
+        <div>nur Link-Local, nicht konfiguriert</div>
+      </div>
+    )
+  }
+
+  const shown = configured.slice(0, 3)
+  const rest = configured.slice(3)
 
   return (
     <div className="small mono faint">
