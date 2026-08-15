@@ -170,6 +170,12 @@ einem Verlauf des Gesamtdurchsatzes. Die Liste ist nirgends fest verdrahtet:
   — mit Kennzeichnung **USB4/TB** und der ausgehandelten Linkgeschwindigkeit. Für
   verteilte Inferenz über llama.cpp-RPC ist das die Stelle, an der man sieht, ob
   der schnelle Link überhaupt benutzt wird.
+- Die Rate eines solchen Links kommt nicht aus `/sys/class/net/<if>/speed` —
+  `thunderbolt-net` beantwortet diese Abfrage nicht —, sondern vom
+  Thunderbolt-Gerät selbst, samt Anzahl der Lanes. Zwei Lanes à 20 Gbit/s
+  ergeben die 40 Gbit/s, für die das Kabel verkauft wurde; steht dort nur
+  **1 Lane**, hat die Verbindung die Hälfte ausgehandelt, und das liegt fast
+  immer am Kabel oder am Port.
 - Die Einordnung kommt aus sysfs (an welchem Bus die Karte hängt), nicht aus dem
   Namen — ein USB4-Adapter, den der Kernel `eno2` nennt, wird trotzdem als solcher
   erkannt.
