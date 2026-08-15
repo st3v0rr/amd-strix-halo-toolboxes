@@ -5,10 +5,20 @@ import { Link } from 'react-router-dom'
 import { get } from '../api/client.js'
 import { useEventStream } from '../api/sse.js'
 import { PageHead } from '../components/Layout.jsx'
-import { StatTile } from '../components/Sparkline.jsx'
+import { Sparkline, StatTile } from '../components/Sparkline.jsx'
 import { formatBytes, formatDuration, shortImage } from '../components/format.js'
 
 const MAX_HISTORY = 300
+
+/** Interface kinds as the server classifies them (see system/network.js). */
+const NET_KIND = {
+  thunderbolt: { label: 'USB4/TB', color: 'var(--accent)' },
+  ethernet: { label: 'LAN', color: 'var(--info)' },
+  usb: { label: 'USB', color: 'var(--info)' },
+  wifi: { label: 'WLAN', color: 'var(--info)' },
+  virtual: { label: 'virtuell', color: 'var(--text-faint)' },
+  other: { label: 'sonstige', color: 'var(--info)' },
+}
 
 export function Dashboard() {
   const [history, setHistory] = useState([])
@@ -144,6 +154,8 @@ export function Dashboard() {
         />
       </div>
 
+      <NetworkSection interfaces={latest?.network} history={history} />
+
       <section className="card">
         <div className="card-head">
           <h2>Laufende Server</h2>
@@ -193,4 +205,117 @@ export function Dashboard() {
       </section>
     </>
   )
+}
+
+/**
+ * Throughput per network interface.
+ *
+ * Whatever the kernel currently lists is what appears here — plugging a USB4
+ * cable into a second Strix Halo box adds a `thunderbolt0` row on the next
+ * tick, without anything in this file knowing about it. Virtual interfaces
+ * (container bridges, veth pairs, VPNs) are real but rarely interesting, so
+ * they sit behind a toggle instead of pushing the physical links out of view.
+ */
+function NetworkSection({ interfaces, history }) {
+  const [showVirtual, setShowVirtual] = useState(false)
+
+  // null means there is no procfs to read at all (a development machine); an
+  // empty list means the box genuinely has nothing but loopback.
+  if (!interfaces) return null
+
+  const virtual = interfaces.filter((n) => n.kind === 'virtual')
+  const shown = showVirtual ? interfaces : interfaces.filter((n) => n.kind !== 'virtual')
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Netzwerk</h2>
+        {virtual.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => setShowVirtual((v) => !v)}
+          >
+            {showVirtual
+              ? 'Virtuelle ausblenden'
+              : `Virtuelle anzeigen (${virtual.length})`}
+          </button>
+        ) : null}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="muted small">Keine Schnittstelle gefunden.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Schnittstelle</th>
+                <th>Verbindung</th>
+                <th className="right">Empfangen</th>
+                <th className="right">Gesendet</th>
+                <th style={{ width: '22%' }}>Durchsatz</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((iface) => (
+                <NetworkRow key={iface.name} iface={iface} history={history} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function NetworkRow({ iface, history }) {
+  const kind = NET_KIND[iface.kind] ?? NET_KIND.other
+  const throughput = history.map((s) => {
+    const sample = s.network?.find((n) => n.name === iface.name)
+    if (!sample || sample.rxBytesPerSec == null || sample.txBytesPerSec == null) return null
+    return sample.rxBytesPerSec + sample.txBytesPerSec
+  })
+
+  return (
+    <tr>
+      <td>
+        <strong className="mono">{iface.name}</strong>{' '}
+        <span className="badge">{kind.label}</span>
+      </td>
+      <td className="small">
+        {iface.operstate === 'up' ? (
+          <span>{formatLinkSpeed(iface.speedMbit) ?? 'verbunden'}</span>
+        ) : (
+          <span className="faint">{iface.carrier === false ? 'kein Kabel' : (iface.operstate ?? '–')}</span>
+        )}
+        {iface.errors > 0 ? (
+          <div className="small" style={{ color: 'var(--danger)' }}>
+            {iface.errors} Fehler
+          </div>
+        ) : null}
+      </td>
+      <RateCell perSec={iface.rxBytesPerSec} total={iface.rxBytes} />
+      <RateCell perSec={iface.txBytesPerSec} total={iface.txBytes} />
+      <td>
+        <Sparkline values={throughput} color={kind.color} height={28} />
+      </td>
+    </tr>
+  )
+}
+
+/** Current rate, with the counter since boot underneath it. */
+function RateCell({ perSec, total }) {
+  return (
+    <td className="right nowrap">
+      <span className="mono">{perSec != null ? `${formatBytes(perSec)}/s` : '–'}</span>
+      <div className="small faint">{total != null ? formatBytes(total) : '–'}</div>
+    </td>
+  )
+}
+
+/** The kernel reports link speed in Mbit/s; USB4 links land in the 20–40 Gbit range. */
+function formatLinkSpeed(mbit) {
+  if (!mbit) return null
+  return mbit >= 1000 ? `${(mbit / 1000).toFixed(0)} Gbit/s` : `${mbit} Mbit/s`
 }
