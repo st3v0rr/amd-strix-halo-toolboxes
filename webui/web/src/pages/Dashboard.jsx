@@ -314,8 +314,15 @@ function RateCell({ perSec, total }) {
   )
 }
 
-/** The kernel reports link speed in Mbit/s; USB4 links land in the 20–40 Gbit range. */
+/**
+ * The kernel reports link speed in Mbit/s; USB4 links land in the 20–40 Gbit
+ * range.
+ *
+ * The fraction matters: 2500 Mbit is a 2,5-Gbit port, and rounding it to
+ * "3 Gbit/s" names a link speed that does not exist.
+ */
 function formatLinkSpeed(mbit) {
   if (!mbit) return null
-  return mbit >= 1000 ? `${(mbit / 1000).toFixed(0)} Gbit/s` : `${mbit} Mbit/s`
+  if (mbit < 1000) return `${mbit} Mbit/s`
+  return `${(mbit / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Gbit/s`
 }
