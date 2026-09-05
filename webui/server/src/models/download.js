@@ -174,7 +174,7 @@ export async function startDownload(ctx, { repo, revision = 'main', include, tar
     )
   if (running) {
     throw conflict(
-      `Für ${repo} läuft bereits ein Download. Warte ihn ab oder brich ihn unter "Modelle" ab.`,
+      `Für ${repo} läuft bereits ein Download. Warte ihn ab oder brich ihn unter "Llama.cpp-Modelle" ab.`,
       { jobId: running.id },
     )
   }

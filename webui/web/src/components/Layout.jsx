@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthContext.jsx'
 const LINKS = [
   { to: '/', label: 'Übersicht', end: true },
   { to: '/servers', label: 'Server' },
-  { to: '/models', label: 'Modelle' },
+  { to: '/models', label: 'Llama.cpp-Modelle' },
   { to: '/comfy-models', label: 'ComfyUI-Modelle' },
   { to: '/images', label: 'Images' },
   { to: '/network', label: 'Netzwerk' },

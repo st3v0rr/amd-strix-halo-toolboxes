@@ -12,7 +12,7 @@ import { formatBytes, formatDate } from '../components/format.js'
 /**
  * ComfyUI's model tree.
  *
- * Deliberately a page of its own rather than a tab on "Modelle": these are
+ * Deliberately a page of its own rather than a tab on the GGUF page: these are
  * .safetensors grouped by the folder that gives them their meaning, not GGUFs
  * grouped by shard set, and nothing on either page applies to the other.
  */
