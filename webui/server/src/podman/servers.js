@@ -10,6 +10,7 @@ import {
   PORT_MIN,
   ROLE,
   RPC_PORT,
+  SERVER_DEFAULTS,
 } from '../../../shared/constants.js'
 import { normalizeRpcPeers, parseRpcPeer } from '../../../shared/rpc.js'
 import { badRequest, conflict, failedDependency, notFound } from '../lib/errors.js'
@@ -117,6 +118,58 @@ export async function getServerDetail(name) {
     command: inspect?.Config?.Cmd ?? null,
     restartPolicy: inspect?.HostConfig?.RestartPolicy?.Name ?? null,
     exitCode: inspect?.State?.ExitCode ?? null,
+  }
+}
+
+/**
+ * Recover the API key from a container's resolved command.
+ *
+ * The key is deliberately not stored in a label — labels are readable by every
+ * process of this user — so the container's argv is the only place left that
+ * still knows it. It is no more exposed there than it already is: the server
+ * detail page shows that same argv.
+ *
+ * @param {string[]|null} command `Config.Cmd` from `podman inspect`
+ * @returns {string} the key, or '' when the container predates it or was
+ *   started by hand without one
+ */
+export function apiKeyFromCommand(command) {
+  const argv = Array.isArray(command) ? command : []
+  const at = argv.indexOf('--api-key')
+  if (at === -1) return ''
+  const value = argv[at + 1]
+  return typeof value === 'string' ? value : ''
+}
+
+/**
+ * Turn a running container back into a profile the user can save.
+ *
+ * Everything a profile needs is already on the container as a label, except the
+ * key — see apiKeyFromCommand. Fields a container predating a given label does
+ * not carry come back as the same defaults a fresh profile would have, so the
+ * dialog opens on something sane rather than on nulls.
+ *
+ * @param {object} server a describeContainer() result, plus `command`
+ * @returns {object} a body the profiles endpoint accepts
+ */
+export function profileFromContainer(server) {
+  return {
+    name: server.name,
+    image: server.image ?? IMAGE_REPO,
+    modelPath: server.modelPath ?? '',
+    mmprojPath: server.mmprojPath ?? '',
+    specType: server.specType ?? '',
+    specDraftNMax: server.specDraftNMax ?? null,
+    port: server.hostPort ?? CONTAINER_PORT,
+    ctxSize: server.ctxSize ?? SERVER_DEFAULTS.ctxSize,
+    gpuLayers: server.gpuLayers ?? SERVER_DEFAULTS.gpuLayers,
+    threads: server.threads ?? SERVER_DEFAULTS.threads,
+    apiKey: apiKeyFromCommand(server.command),
+    extraArgs: server.extraArgs ?? '',
+    rpcPeers: server.rpcPeers ?? [],
+    // Never inherited: a container running now says nothing about whether the
+    // user wants it back after a reboot.
+    autostart: false,
   }
 }
 

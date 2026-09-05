@@ -399,6 +399,25 @@ Container werden mit `shx.*`-Labels markiert. Damit erkennt die App ihre
 eigenen wieder — auch nach einem Reboot oder einem gelöschten `state.json` —
 und lässt von Hand gestartete Container in Ruhe.
 
+### Aus einem laufenden Server ein Profil machen
+
+Auf der Serverdetailseite legt **Als Profil speichern** den Profil-Dialog mit
+den Werten des Containers an — Modell, Projektor, Speculative Decoding, Image,
+Context, GPU-Layers, Threads, Port, Zusatzargumente und RPC-Knoten. Gespeichert
+wird erst, wenn du im Dialog auf Speichern gehst; Name und Autostart setzt du
+dort noch selbst.
+
+Der API-Key wird mit übernommen, damit ein Start aus dem Profil denselben Key
+hat wie der laufende Server und Clients nichts umstellen müssen. Er steht
+bewusst nicht in den Labels — dort könnte ihn jeder Prozess dieses Benutzers
+lesen — sondern wird aus der Kommandozeile des Containers gelesen, also aus
+derselben Quelle, die die Detailseite ohnehin anzeigt.
+
+**Autostart** wird nie übernommen: dass ein Container gerade läuft, sagt nichts
+darüber, ob du ihn nach einem Reboot zurück haben willst.
+
+RPC-Worker haben keine Profil-Einstellungen; dort fehlt der Knopf.
+
 ## Autostart
 
 Rootless-Container kommen beim Boot **nicht** von selbst zurück. Statt

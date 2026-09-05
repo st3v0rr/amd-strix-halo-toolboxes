@@ -21,6 +21,7 @@ import {
   deleteServer,
   getServerDetail,
   listServers,
+  profileFromContainer,
   restartServer,
   serverHealth,
   startServer,
@@ -79,6 +80,27 @@ export function serverRoutes(ctx) {
       next(err)
     }
   })
+
+  /**
+   * A profile body derived from a running container, ready for the profile
+   * dialog. Read-only: what the user does with it is a normal POST /profiles,
+   * so nothing is saved behind their back.
+   */
+  router.get(
+    '/:name/profile-draft',
+    validate({ params: nameParams }),
+    async (req, res, next) => {
+      try {
+        const server = await getServerDetail(req.params.name)
+        if (server.role === ROLE.rpc) {
+          throw badRequest('Ein RPC-Worker hat keine Profil-Einstellungen.')
+        }
+        res.json({ profile: profileFromContainer(server) })
+      } catch (err) {
+        next(err)
+      }
+    },
+  )
 
   router.post('/', validate({ body: createBody }), async (req, res, next) => {
     try {
