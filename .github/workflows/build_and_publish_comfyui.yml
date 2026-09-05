@@ -4,15 +4,14 @@ name: Build & Publish ComfyUI Toolbox
 # the web interface's image catalog both read toolboxes_llama_server/, so a
 # ComfyUI Dockerfile in there would be offered as a llama-server backend.
 
+# Manual only, like build_and_publish.yml. The build pulls a full ROCm torch and
+# clones five repositories, so it is far too expensive to hang off a push — a
+# typo in UPSTREAM.md or a line in build.sh would cost the same as a real
+# rebuild. Start it by hand when toolboxes_comfyui/ actually changed, or after
+# check-upstream-comfyui.yaml reports that the vendored files have fallen
+# behind.
 on:
   workflow_dispatch:
-  # The build context lives in this repository, so a change to it is the signal
-  # to rebuild — no polling of anyone else's repository involved.
-  push:
-    branches: [main]
-    paths:
-      - 'toolboxes_comfyui/**'
-      - '.github/workflows/build_and_publish_comfyui.yml'
 
 env:
   DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes

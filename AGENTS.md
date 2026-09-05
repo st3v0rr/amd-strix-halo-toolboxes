@@ -14,7 +14,7 @@ Upstream's own parts — the interactive toolboxes, the benchmark suite, the Git
 *   `/toolboxes_comfyui/`: ComfyUI as a server image. Upstream's Dockerfile plus their `scripts/` and `workflows/`, vendored so the build needs no other repository — see its `UPSTREAM.md`.
 *   `/webui/`: Express + React management interface (JWT-protected) for models, containers, images and app updates. Runs as a `systemd --user` service on the box. Node backend, no native npm modules by design, so `npm ci` stays reliable across Node upgrades.
 *   `run-llama-server.sh`: starts one server from the command line. Kept above all because `dev/parity` runs *this* script against a fake podman and diffs its arguments against `argv.js` — delete it and that check dies.
-*   `.github/workflows/`: GitHub Actions that rebuild the `llama-server` images when `llama.cpp` master moves, rebuild ComfyUI on a change to `toolboxes_comfyui/`, and prune old tags.
+*   `.github/workflows/`: GitHub Actions. The `llama-server` images rebuild when `llama.cpp` master moves (poller → build). Everything else is manual: the ComfyUI build is started by hand, since it pulls a full ROCm torch and clones five repositories. A weekly check only reports whether `toolboxes_comfyui/`'s vendored files have fallen behind upstream.
 
 ## Critical Technical Quirks (Important for Development)
 *   **Flash Attention & no-mmap**: Running `llama-server` or `llama-cli` on Strix Halo *requires* `-fa 1` (flash attention) and `--no-mmap` to avoid memory fragmentation and crashes.

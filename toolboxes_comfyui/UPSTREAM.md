@@ -44,8 +44,11 @@ Das Skript lässt `Dockerfile.comfyui` in Ruhe und meldet stattdessen, wenn sich
 upstreams Dockerfile geändert hat — dann gehört die Änderung von Hand
 übernommen, weil unser CMD-Block sonst verloren ginge.
 
-Die Prüfung `check-upstream-comfyui.yaml` macht dasselbe täglich und meldet
-Abweichungen, ohne etwas zu ändern.
+Die Prüfung `check-upstream-comfyui.yaml` macht dasselbe wöchentlich und meldet
+Abweichungen, ohne etwas zu ändern. Gebaut wird danach von Hand: der Workflow
+*Build & Publish ComfyUI Toolbox* läuft nur per **Run workflow**, weil ein Build
+eine komplette ROCm-Torch-Installation und fünf Repo-Clones bedeutet — zu teuer,
+um an einem Push zu hängen.
 
 ## Lizenz
 
