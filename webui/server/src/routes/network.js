@@ -1,7 +1,7 @@
 import express from 'express'
 import { z } from 'zod'
 
-import { PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/constants.js'
+import { COMFY_PORT, PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/constants.js'
 import { conflict } from '../lib/errors.js'
 import { q, validate } from '../lib/validate.js'
 import { listServers } from '../podman/servers.js'
@@ -43,6 +43,32 @@ const unmanaged = (port, protocol) =>
  * and a port that is open for a server that no longer exists shows up as
  * exactly that.
  */
+const DETAIL = {
+  rpc:
+    'ggml-rpc-server kennt keine Authentifizierung — wer diesen Port erreicht, kann die ' +
+    'GPU dieser Maschine benutzen und beliebige Dateien lesen. Nur in einem ' +
+    'vertrauenswürdigen Netz öffnen.',
+  comfy:
+    'ComfyUI kennt keine Anmeldung — wer diesen Port erreicht, kann Workflows ausführen ' +
+    'und damit Dateien auf dieser Maschine lesen und schreiben. Nur in einem ' +
+    'vertrauenswürdigen Netz öffnen.',
+  server: 'llama-server, geschützt durch seinen API-Key.',
+}
+
+/** Ports without authentication. The UI warns harder for these. */
+const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
+
+/** What a container's port is for, by role. */
+function describeRole(server) {
+  if (server.role === ROLE.rpc) {
+    return { purpose: `RPC-Worker '${server.name}'`, detail: DETAIL.rpc, kind: 'rpc' }
+  }
+  if (server.role === ROLE.comfy) {
+    return { purpose: `ComfyUI '${server.name}'`, detail: DETAIL.comfy, kind: 'comfy' }
+  }
+  return { purpose: `Server '${server.name}'`, detail: DETAIL.server, kind: 'server' }
+}
+
 async function requiredPorts(ctx, firewall) {
   const open = firewall.ports ?? []
   const isOpen = (port) => open.includes(`${port}/tcp`)
@@ -68,39 +94,33 @@ async function requiredPorts(ctx, firewall) {
   for (const server of await listServers()) {
     const port = Number(server.hostPort)
     if (!Number.isInteger(port)) continue
-    const worker = server.role === ROLE.rpc
     ports.push({
       port,
       protocol: 'tcp',
-      purpose: worker ? `RPC-Worker '${server.name}'` : `Server '${server.name}'`,
-      detail: worker
-        ? 'ggml-rpc-server kennt keine Authentifizierung — wer diesen Port erreicht, ' +
-          'kann die GPU dieser Maschine benutzen und beliebige Dateien lesen. Nur in ' +
-          'einem vertrauenswürdigen Netz öffnen.'
-        : 'llama-server, geschützt durch seinen API-Key.',
-      kind: worker ? 'rpc' : 'server',
+      ...describeRole(server),
       running: server.running,
       open: isOpen(port),
       sources: sourcesFor(port, 'tcp'),
     })
   }
 
-  // The RPC port belongs on the list even with no worker running: its rule is
-  // what a node is prepared with, usually before the worker is ever started,
-  // and without this entry an existing rule would look like a stray.
-  if (!ports.some((p) => p.port === RPC_PORT)) {
+  // These two belong on the list even with nothing running: their rules are what
+  // a machine is prepared with, usually before the container is ever started,
+  // and without the entries an existing rule would look like a stray.
+  for (const fallback of [
+    { port: RPC_PORT, purpose: 'RPC-Worker (Standardport)', kind: 'rpc' },
+    { port: COMFY_PORT, purpose: 'ComfyUI (Standardport)', kind: 'comfy' },
+  ]) {
+    if (ports.some((p) => p.port === fallback.port)) continue
     ports.push({
-      port: RPC_PORT,
+      port: fallback.port,
       protocol: 'tcp',
-      purpose: 'RPC-Worker (Standardport)',
-      detail:
-        'ggml-rpc-server kennt keine Authentifizierung — wer diesen Port erreicht, kann die ' +
-        'GPU dieser Maschine benutzen und beliebige Dateien lesen. Nur in einem ' +
-        'vertrauenswürdigen Netz öffnen.',
-      kind: 'rpc',
+      purpose: fallback.purpose,
+      detail: DETAIL[fallback.kind],
+      kind: fallback.kind,
       running: false,
-      open: isOpen(RPC_PORT),
-      sources: sourcesFor(RPC_PORT, 'tcp'),
+      open: isOpen(fallback.port),
+      sources: sourcesFor(fallback.port, 'tcp'),
     })
   }
 
@@ -117,9 +137,10 @@ async function requiredPorts(ctx, firewall) {
     }
     existing.purpose = `${existing.purpose}, ${entry.purpose}`
     existing.running = existing.running || entry.running
-    // The RPC warning outranks everything else sharing the port.
-    if (entry.kind === 'rpc') {
-      existing.kind = 'rpc'
+    // A service without authentication outranks a protected one on a shared
+    // port: the stronger warning is the one that has to be shown.
+    if (UNAUTHENTICATED.has(entry.kind)) {
+      existing.kind = entry.kind
       existing.detail = entry.detail
     }
   }
