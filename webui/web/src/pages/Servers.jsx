@@ -57,11 +57,11 @@ export function Servers() {
           RPC-Worker starten
         </button>
         {/* The two things you actually start here, side by side. */}
-        <button className="btn btn-primary" type="button" onClick={() => setStarting(true)}>
-          llama.cpp starten
-        </button>
         <button className="btn btn-primary" type="button" onClick={() => setStartingComfy(true)}>
           ComfyUI starten
+        </button>
+        <button className="btn btn-primary" type="button" onClick={() => setStarting(true)}>
+          llama.cpp starten
         </button>
       </PageHead>
 
