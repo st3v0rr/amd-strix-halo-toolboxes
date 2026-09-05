@@ -7,23 +7,23 @@ This guide shows how to pull and run the AMD Strix Halo Llama Server Docker imag
 | Image | Description |
 |-------|-------------|
 | `vulkan-radv` | Vulkan backend with RADV driver (Mesa, Fedora 44). Most stable and compatible — recommended for most models. |
-| `vulkan-amdvlk` | Vulkan backend with AMDVLK driver. Fastest, but a ≤2 GiB single-buffer limit stops some large models from loading. |
-| `rocm-7.14` | ROCm 7.14 backend (Fedora 44). Last ROCm Core SDK build before upstream moved to 10.0. |
-| `rocm-6.4.4` | ROCm 6.4.4 backend (Fedora 43). Latest stable 6.x build. |
+| `rocm-10.0` | ROCm 10.0 backend (Fedora 44). Current stable ROCm Core SDK build. |
+| `rocm-7.14` | ROCm 7.14 backend (Fedora 44). The previous ROCm branch, kept as a fallback if 10.0 misbehaves. |
 
-These were the stable backends of the upstream project
-[`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes)
-when this fork was made, with `llama-server` as the container entrypoint instead
-of a shell. Upstream has since narrowed its stable set to `vulkan-radv` and
-`rocm-10.0`, so the other three are maintained here.
+These mirror the stable backends of the upstream project
+[`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes),
+with `llama-server` as the container entrypoint instead of a shell. Upstream
+builds `vulkan-radv` and `rocm-10.0`; `rocm-7.14` is kept here after upstream
+replaced it.
 
 > **Prefer a browser?** [`webui/`](webui/README.md) does everything on this page —
 > pulling images, downloading models, starting and stopping servers, live logs —
 > from a JWT-protected web interface that autostarts with the machine.
 > Install it with `cd webui && ./install.sh`.
 
-> The retired tags `rocm-7.1.1`, `rocm-7.2` and `rocm7-nightlies` are no longer
-> built. Upstream dropped them; use `rocm-7.14` instead.
+> The retired tags `rocm-7.1.1`, `rocm-7.2`, `rocm7-nightlies`, `rocm-6.4.4` and
+> `vulkan-amdvlk` are no longer built. Existing images stay on Docker Hub but
+> receive no new llama.cpp builds — use `rocm-10.0` or `vulkan-radv` instead.
 
 ## Pulling Images
 
@@ -36,23 +36,22 @@ Refresh all toolboxes:
 
 Refresh specific toolboxes:
 ```bash
-./refresh-toolboxes-llama-server.sh llama-rocm-7.14
-./refresh-toolboxes-llama-server.sh llama-vulkan-radv llama-rocm-7.14
+./refresh-toolboxes-llama-server.sh llama-rocm-10.0
+./refresh-toolboxes-llama-server.sh llama-vulkan-radv llama-rocm-10.0
 ```
 
 ### Using Docker/Podman directly
 
 Pull a specific image:
 ```bash
-docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
+docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
 Pull all images:
 ```bash
 docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv
-docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-amdvlk
+docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
-docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-6.4.4
 ```
 
 ## Running Images
@@ -70,17 +69,7 @@ The images come with default configuration and will automatically start `llama-s
 | `THREADS` | `16` | Number of CPU threads |
 | `API_KEY` | `abcde` | API key for authentication |
 
-### Vulkan Backends (AMDVLK / RADV)
-
-**vulkan-amdvlk:**
-```bash
-docker run -it --rm \
-  --device /dev/dri \
-  --group-add video \
-  --security-opt seccomp=unconfined \
-  -p 11434:11434 \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-amdvlk
-```
+### Vulkan Backend (RADV)
 
 **vulkan-radv:**
 ```bash
@@ -94,7 +83,7 @@ docker run -it --rm \
 
 ### ROCm Backends
 
-**rocm-6.4.4:**
+**rocm-10.0:**
 ```bash
 docker run -it --rm \
   --device /dev/dri \
@@ -103,7 +92,7 @@ docker run -it --rm \
   --group-add render \
   --security-opt seccomp=unconfined \
   -p 11434:11434 \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-6.4.4
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
 **rocm-7.14:**
@@ -132,7 +121,7 @@ docker run -it --rm \
   -p 11434:11434 \
   -v /path/to/models:/workspace/models \
   -e MODEL_PATH=/workspace/models/my-model.gguf \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
 ## Running with Custom Configuration
@@ -154,7 +143,7 @@ docker run -it --rm \
   -e GPU_LAYERS=99 \
   -e THREADS=8 \
   -e API_KEY=my-secret-key \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
 ## VRAM Estimation
@@ -169,7 +158,7 @@ docker run -it --rm \
   --group-add render \
   --security-opt seccomp=unconfined \
   -v /path/to/models:/workspace/models \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 \
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0 \
   gguf-vram-estimator.py /workspace/models/model.gguf
 ```
 

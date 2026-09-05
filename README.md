@@ -6,7 +6,7 @@ of unified memory as VRAM.
 This repository is a fork of
 **[kyuz0/amd-strix-halo-toolboxes](https://github.com/kyuz0/amd-strix-halo-toolboxes)**.
 Upstream builds container images you *enter* and work in interactively. This fork
-takes four of those backends, turns them into containers that *start a
+takes three of those backends, turns them into containers that *start a
 server* instead of a shell, and adds a web interface to manage the whole box —
 models, servers, images, updates — from a browser.
 
@@ -39,22 +39,23 @@ behaves as it does upstream — only the image-building workflows were repointed
 
 ### The backends this fork mirrors
 
-Upstream's own stable set is now just `vulkan-radv` and `rocm-10.0`; everything
-else there is experimental (ROCm 10.0 performance builds, EngramHalo, ROCmFPX,
+Upstream's stable set is `vulkan-radv` and `rocm-10.0`; everything else there is
+experimental (ROCm 10.0 performance builds, EngramHalo, ROCmFPX,
 Qwen3.8-Flash-Next, TheRock nightlies, PR builds) and lives only upstream — see
 its [README](https://github.com/kyuz0/amd-strix-halo-toolboxes#supported-toolboxes)
 and [DockerHub tags](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags).
 
-This fork builds four `llama-server` images. They were upstream's stable set when
-the fork was made; upstream has since moved ROCm 7.14 to 10.0 and retired the
-other two, so the last three are now maintained here rather than mirrored:
+This fork builds those two, plus `rocm-7.14` as a fallback for the ROCm jump:
 
 | Tag | Backend | Notes |
 | :--- | :--- | :--- |
-| `vulkan-radv` | Vulkan (Mesa RADV) | Most compatible. The default here, and the right first choice. |
-| `vulkan-amdvlk` | Vulkan (AMDVLK) | Fastest, but a ≤2 GiB single-buffer limit keeps some large models from loading. Retired upstream. |
-| `rocm-7.14` | ROCm 7.14 (Fedora 44) | Last ROCm Core SDK build for gfx1151 before upstream moved to 10.0. |
-| `rocm-6.4.4` | ROCm 6.4.4 (Fedora 43) | Latest 6.x, patched for kernel 6.18.4+. Retired upstream. |
+| `vulkan-radv` | Vulkan (Mesa RADV, Fedora 44) | Most compatible. The default here, and the right first choice. |
+| `rocm-10.0` | ROCm 10.0 (Fedora 44) | Current ROCm Core SDK build for gfx1151. |
+| `rocm-7.14` | ROCm 7.14 (Fedora 44) | The previous ROCm branch, kept here after upstream replaced it — useful if 10.0 misbehaves. |
+
+`vulkan-amdvlk` and `rocm-6.4.4` are no longer built. Upstream retired both, and
+maintaining them alone was not worth the CI time; the images already on Docker
+Hub keep working, they just stop receiving new llama.cpp builds.
 
 > Upstream's support is the reason this fork exists at all. If the toolboxes are
 > useful to you, consider [buying kyuz0 a coffee](https://buymeacoffee.com/dcapitella).
@@ -65,8 +66,8 @@ other two, so the last three are now maintained here rather than mirrored:
 
 | Part | What it is |
 | :--- | :--- |
-| `toolboxes_llama_server/` | The same four backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all four keep RDMA support for llama.cpp RPC. |
-| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds all four backends on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
+| `toolboxes_llama_server/` | The same backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all three keep RDMA support for llama.cpp RPC. |
+| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds all three backends on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `refresh-toolboxes-llama-server.sh` | The upstream refresh script pointed at this fork's images, for people who still want them as toolbx containers. |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. See [webui/README.md](webui/README.md). |
@@ -77,7 +78,7 @@ other two, so the last three are now maintained here rather than mirrored:
 | :--- | :--- | :--- |
 | Container starts | an interactive shell | `llama-server` |
 | Made for | experimenting, benchmarking, `llama-cli`, building | leaving a server running on the network |
-| Backends | two stable + many experimental | four `llama-server` builds |
+| Backends | two stable + many experimental | three `llama-server` builds |
 | Used by | `toolbox enter`, `refresh-toolboxes.sh` | `run-llama-server.sh`, the web interface |
 
 They coexist happily on one machine — different image names, different
@@ -214,7 +215,7 @@ overrides the detection entirely.
 | Path | Origin | Contents |
 | :--- | :--- | :--- |
 | `toolboxes/` | upstream | Dockerfiles for the interactive images, plus patches and the VRAM estimator |
-| `toolboxes_llama_server/` | fork | Dockerfiles for the four `llama-server` images |
+| `toolboxes_llama_server/` | fork | Dockerfiles for the three `llama-server` images |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh`, `refresh-toolboxes-llama-server.sh` | fork | launching and refreshing this fork's images |
 | `refresh-toolboxes.sh` | upstream | creating and updating upstream's toolboxes |
