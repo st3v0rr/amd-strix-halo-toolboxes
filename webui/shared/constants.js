@@ -26,8 +26,14 @@ export const COMFY_PORT = 8000
 export const COMFY_CONTAINER_MODELS_DIR = '/root/comfy-models'
 export const COMFY_CONTAINER_OUTPUT_DIR = '/root/comfy-outputs'
 
-/** ComfyUI image channels this fork publishes. */
-export const COMFY_TAGS = /** @type {const} */ (['comfyui', 'comfyui-dev'])
+/**
+ * ComfyUI image tags this fork publishes.
+ *
+ * One, not two: upstream's `latest` and `dev` are the same source — they build
+ * from main as `dev` and promote a tested one to `latest`. Building from source
+ * ourselves, there is no second channel to inherit.
+ */
+export const COMFY_TAGS = /** @type {const} */ (['comfyui'])
 
 /**
  * The model subfolders ComfyUI expects, as created by set_extra_paths.sh.

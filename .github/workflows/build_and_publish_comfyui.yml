@@ -7,36 +7,33 @@ name: Build & Publish ComfyUI Toolbox
 on:
   workflow_dispatch:
     inputs:
-      channel:
+      source_ref:
         description: >
-          Upstream channel to build on top of: "latest" (stable) or "dev".
-          Published as :comfyui and :comfyui-dev respectively.
+          Revision of kyuz0/amd-strix-halo-comfyui-toolboxes to build from —
+          a branch or a commit SHA. Its scripts/ and workflows/ are the build
+          context our Dockerfile copies from.
         required: false
-        default: latest
-        type: choice
-        options:
-          - latest
-          - dev
+        default: main
       source_state_name:
         description: Artifact name used by the poller after a successful build.
         required: false
         default: ''
       source_state_value:
-        description: Upstream image digest recorded after a successful build.
+        description: Upstream commit recorded after a successful build.
         required: false
         default: ''
 
 env:
   DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
-  BASE_REPO: docker.io/kyuz0/amd-strix-halo-comfyui
+  SOURCE_REPO: https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes.git
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      # The base image alone is tens of gigabytes, so the runner needs every
-      # byte it can spare — more so than for the llama builds.
+      # This build installs a full ROCm torch and clones ComfyUI plus four
+      # plugin repositories, so the runner needs every byte it can spare.
       - name: Free up runner disk space
         run: |
           echo "Before cleanup:" && df -h /
@@ -54,6 +51,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Fetch upstream build context
+        id: ctx
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.source_ref }}"
+          [[ -z "$REF" ]] && REF=main
+          # Full clone rather than --branch: the input may be a commit SHA,
+          # which --branch does not accept.
+          git clone --quiet "${SOURCE_REPO}" ctx
+          git -C ctx checkout --quiet "$REF"
+          REV="$(git -C ctx rev-parse HEAD)"
+          echo "✅ Building from $REV"
+          echo "rev=${REV}" >> "$GITHUB_OUTPUT"
+          # Our Dockerfile expects to sit in their context.
+          cp toolboxes_comfyui/Dockerfile.comfyui ctx/Dockerfile.comfyui
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -63,33 +77,28 @@ jobs:
       - name: Set build timestamp
         run: echo "BUILD_TS=$(date +%Y%m%dT%H%M%S)" >> $GITHUB_ENV
 
-      - name: Build & push ComfyUI (${{ inputs.channel }})
-        working-directory: toolboxes_comfyui
+      - name: Build & push comfyui
+        working-directory: ctx
         shell: bash
         run: |
           set -euo pipefail
-          CHANNEL="${{ inputs.channel }}"
-          [[ -z "$CHANNEL" ]] && CHANNEL=latest
-
-          # "latest" is the default channel and gets the plain :comfyui tag;
-          # anything else is suffixed, so :comfyui-dev sits beside it.
-          if [[ "$CHANNEL" == "latest" ]]; then NAME="comfyui"; else NAME="comfyui-${CHANNEL}"; fi
-
+          NAME="comfyui"
           LI="comfyui-local"
           IMM="${DOCKERHUB_REPO}:${NAME}_${BUILD_TS}"
           CHN="${DOCKERHUB_REPO}:${NAME}"
 
-          echo "→ Building on ${BASE_REPO}:${CHANNEL}"
-          docker build --pull --build-arg "BASE_TAG=${CHANNEL}" \
-            -t "${LI}" -f Dockerfile.comfyui .
+          echo "→ Building Dockerfile.comfyui"
+          docker build --no-cache -t "${LI}" -f Dockerfile.comfyui .
 
-          # Smoke test: the two things this image changes over upstream are the
-          # environment and the start-up, so both are what gets checked. Running
-          # ComfyUI itself needs a GPU the runner does not have.
+          # The image is not runnable on the runner (no GPU), so the smoke test
+          # checks what this fork actually changes over upstream: that ComfyUI
+          # is there, that the model paths can be written, and that the ROCm
+          # environment survives outside a login shell.
           echo "→ Running smoke test..."
           docker run --rm "${LI}" python /opt/ComfyUI/main.py --help > /dev/null
           docker run --rm "${LI}" bash -c '/opt/set_extra_paths.sh && test -f /opt/ComfyUI/extra_model_paths.yaml'
           docker run --rm "${LI}" bash -c '[[ -n "$TORCH_BLAS_PREFER_HIPBLASLT" ]]'
+          docker run --rm "${LI}" bash -c 'test -x /opt/get_wan22.sh && test -x /opt/get_qwen_image.sh'
 
           echo "→ Tag & push immutable → ${IMM}"
           docker tag "${LI}" "${IMM}"
@@ -99,19 +108,19 @@ jobs:
           docker tag "${IMM}" "${CHN}"
           docker push "${CHN}"
 
-  # Record the upstream digest only after the image was built and pushed, so a
+  # Record the upstream commit only after the image was built and pushed, so a
   # failed build is retried on the next poll rather than skipped.
   record-source-state:
     needs: build-and-push
     if: ${{ needs.build-and-push.result == 'success' && inputs.source_state_name != '' && inputs.source_state_value != '' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Save successful upstream digest
+      - name: Save successful upstream commit
         env:
           SOURCE_STATE_VALUE: ${{ inputs.source_state_value }}
         run: printf '%s' "$SOURCE_STATE_VALUE" > source_state
 
-      - name: Upload successful upstream digest
+      - name: Upload successful upstream commit
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.source_state_name }}

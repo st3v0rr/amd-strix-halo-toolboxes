@@ -203,7 +203,7 @@ function FolderRows({ folder, expanded, onToggle, onDelete }) {
 function ComfyDownloadDialog({ onClose }) {
   const toast = useToast()
   const queryClient = useQueryClient()
-  const [image, setImage] = useState(`${IMAGE_REPO}:comfyui`)
+  const [image, setImage] = useState(`${IMAGE_REPO}:${COMFY_TAGS[0]}`)
 
   const catalog = useQuery({ queryKey: ['comfy-catalog'], queryFn: () => get('/comfy/catalog') })
 
