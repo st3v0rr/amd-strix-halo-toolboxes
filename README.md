@@ -22,20 +22,21 @@ and [what this fork adds](#what-this-fork-adds).
 
 ## What upstream provides
 
-kyuz0's project is the foundation. All of it is still in this repository and
-behaves as it does upstream — only the image-building workflows were repointed
-(see [repository layout](#repository-layout)). Its parts, briefly:
+kyuz0's project is the foundation, and everything below still applies to a
+Strix Halo box — but it is **not** carried in this repository. This fork keeps
+only what it builds and runs itself; for the rest, go to
+[the upstream repository](https://github.com/kyuz0/amd-strix-halo-toolboxes). Worth knowing about:
 
-| Part | What it is |
+| Part | Where |
 | :--- | :--- |
-| `toolboxes/` | The Dockerfiles behind [`docker.io/kyuz0/amd-strix-halo-toolboxes`](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags) — ROCm and Vulkan stacks with llama.cpp compiled in, meant to be entered with `toolbox enter` / `distrobox enter`. Rebuilt automatically whenever llama.cpp master moves. |
-| `refresh-toolboxes.sh` | Creates and updates those interactive toolboxes on the host, with the right `/dev/dri`, `/dev/kfd` and group options (and RDMA options when `/dev/infiniband` exists). |
-| [AI Toolbox Cockpit](https://github.com/kyuz0/ai-toolbox-cockpit) | Upstream's recommended installer and launcher for its toolboxes, with tested profiles for Toolbx, Distrobox, Podman and Docker. Lives in its own repository. |
-| `benchmark/`, `docs/*.html` | The benchmark suite and the [interactive result viewer](https://kyuz0.github.io/amd-strix-halo-toolboxes/), including the [toolbox comparison](https://kyuz0.github.io/amd-strix-halo-toolboxes/toolbox-performance.html). |
-| `toolboxes/gguf-vram-estimator.py` | Estimates VRAM for a GGUF at a given context size — see [docs/vram-estimator.md](docs/vram-estimator.md). |
-| `scripts/run_distributed_llama.py` | A TUI that spreads one model across several Strix Halo machines over llama.cpp RPC. Set up SSH keys between the nodes, run it on the main node, follow the prompts. |
-| `systemd/gpu-workload-watch/` | Switches TuneD profiles and raises cooling only while the GPU is busy — see its [README](systemd/gpu-workload-watch/README.md). |
-| Host documentation | Kernel parameters, firmware pitfalls, building your own images: [docs/](docs/) and <https://strix-halo-toolboxes.com>. |
+| Interactive toolboxes | The Dockerfiles behind [`docker.io/kyuz0/amd-strix-halo-toolboxes`](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags) — ROCm and Vulkan stacks with llama.cpp compiled in, entered with `toolbox enter` / `distrobox enter`: [`toolboxes/`](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/toolboxes) |
+| `refresh-toolboxes.sh` | Kept here: creates and updates those interactive toolboxes on the host, with the right `/dev/dri`, `/dev/kfd` and group options. It pulls published images, so it needs nothing else from upstream's tree. |
+| [AI Toolbox Cockpit](https://github.com/kyuz0/ai-toolbox-cockpit) | Upstream's recommended installer and launcher for its toolboxes, with tested profiles for Toolbx, Distrobox, Podman and Docker. |
+| Benchmarks | The suite and the [interactive result viewer](https://kyuz0.github.io/amd-strix-halo-toolboxes/), including the [toolbox comparison](https://kyuz0.github.io/amd-strix-halo-toolboxes/toolbox-performance.html): [`benchmark/`](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/benchmark) |
+| VRAM estimator | Estimates VRAM for a GGUF at a given context size. A copy lives in `toolboxes_llama_server/`, which is the one the web interface runs; upstream's documentation is [docs/vram-estimator.md](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/vram-estimator.md). |
+| Distributed inference | A TUI that spreads one model across several machines over llama.cpp RPC: [`scripts/run_distributed_llama.py`](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/scripts/run_distributed_llama.py). The web interface here can start RPC workers and a cluster head on its own. |
+| GPU workload watcher | Switches TuneD profiles and raises cooling only while the GPU is busy: [`systemd/gpu-workload-watch/`](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/systemd/gpu-workload-watch) |
+| Host documentation | Kernel parameters, firmware pitfalls, building your own images: [docs/](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/docs) and <https://strix-halo-toolboxes.com>. |
 
 ### The backends this fork mirrors
 
@@ -150,7 +151,8 @@ router mode serves several models from one process:
 llama-server --models-preset models.ini --host 0.0.0.0 --port 8080 --models-max 1 --parallel 1
 ```
 
-See [docs/models.ini.example](docs/models.ini.example) for the preset format.
+See [docs/models.ini.example](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/models.ini.example) for the
+preset format.
 
 ---
 
@@ -216,18 +218,33 @@ overrides the detection entirely.
 
 | Path | Origin | Contents |
 | :--- | :--- | :--- |
-| `toolboxes/` | upstream | Dockerfiles for the interactive images, plus patches and the VRAM estimator |
 | `toolboxes_llama_server/` | fork | Dockerfiles for the three `llama-server` images |
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh`, `refresh-toolboxes-llama-server.sh` | fork | launching and refreshing this fork's images |
-| `refresh-toolboxes.sh` | upstream | creating and updating upstream's toolboxes |
-| `benchmark/`, `docs/` | upstream | benchmark suite, result viewers, host documentation |
-| `scripts/`, `systemd/` | upstream | distributed inference, GPU workload watcher |
+| `refresh-toolboxes.sh` | upstream | creating and updating upstream's interactive toolboxes |
 | `.github/workflows/` | fork-adjusted | polls llama.cpp, builds and prunes this fork's images |
 
-`main` is merged from `kyuz0/main` from time to time, so upstream's toolboxes,
-benchmarks and documentation stay current here.
+### Merging upstream
+
+`main` is merged from `kyuz0/main` from time to time. Since this fork does not
+carry `benchmark/`, `docs/`, `scripts/`, `systemd/` or `toolboxes/`, every
+upstream commit that touches those raises a conflict here. Two things make that
+routine rather than painful:
+
+```bash
+git fetch upstream
+git merge -X no-renames upstream/main
+git rm -rqf --ignore-unmatch benchmark docs scripts systemd toolboxes
+# resolve what is left — those are real content conflicts — then commit
+```
+
+`-X no-renames` is the part that matters. Without it git pairs upstream's
+`toolboxes/Dockerfile.*` with this fork's near-identical
+`toolboxes_llama_server/Dockerfile.*`, reads the change as a rename, and drops
+upstream's *interactive* toolboxes into the server directory — where the web
+interface would then offer them as backends it cannot build. With it, the last
+sync left three genuine conflicts instead of twenty-two.
 
 ---
 
@@ -235,10 +252,11 @@ benchmarks and documentation stay current here.
 
 * [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md) — the `llama-server` images in detail
 * [webui/README.md](webui/README.md) — installation, operation, security, development
-* [docs/vram-estimator.md](docs/vram-estimator.md) — memory planning
-* [docs/building.md](docs/building.md) — building images yourself
-* [docs/docker-compose-how-to.md](docs/docker-compose-how-to.md) — running via compose
-* [docs/troubleshooting-firmware.md](docs/troubleshooting-firmware.md) — firmware pitfalls
+* [toolboxes_comfyui/UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md) — where the ComfyUI build came from
+* Upstream, for the host side: [vram-estimator](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/vram-estimator.md),
+  [building](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/building.md),
+  [docker-compose](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/docker-compose-how-to.md),
+  [firmware troubleshooting](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/troubleshooting-firmware.md)
 
 ## References
 
