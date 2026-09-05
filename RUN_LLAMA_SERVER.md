@@ -6,14 +6,16 @@ This guide shows how to pull and run the AMD Strix Halo Llama Server Docker imag
 
 | Image | Description |
 |-------|-------------|
-| `vulkan-radv` | Vulkan backend with RADV driver (Mesa). Most stable and compatible — recommended for most models. |
+| `vulkan-radv` | Vulkan backend with RADV driver (Mesa, Fedora 44). Most stable and compatible — recommended for most models. |
 | `vulkan-amdvlk` | Vulkan backend with AMDVLK driver. Fastest, but a ≤2 GiB single-buffer limit stops some large models from loading. |
-| `rocm-7.14` | ROCm 7.14 backend (Fedora 44). Latest stable ROCm Core SDK build. |
+| `rocm-7.14` | ROCm 7.14 backend (Fedora 44). Last ROCm Core SDK build before upstream moved to 10.0. |
 | `rocm-6.4.4` | ROCm 6.4.4 backend (Fedora 43). Latest stable 6.x build. |
 
-These mirror the four stable backends of the upstream project
-[`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes),
-with `llama-server` as the container entrypoint instead of a shell.
+These were the stable backends of the upstream project
+[`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes)
+when this fork was made, with `llama-server` as the container entrypoint instead
+of a shell. Upstream has since narrowed its stable set to `vulkan-radv` and
+`rocm-10.0`, so the other three are maintained here.
 
 > **Prefer a browser?** [`webui/`](webui/README.md) does everything on this page —
 > pulling images, downloading models, starting and stopping servers, live logs —
