@@ -92,6 +92,24 @@ test('a projector next to the model is picked', () => {
   )
 })
 
+test('the usual Hugging Face layout resolves: projector in the repo root', () => {
+  // What `hf download` produces for a vision repo, and the layout the model
+  // download dialog writes: the quant gets a folder, the projector does not.
+  const projectors = [{ rel: 'Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf' }]
+  assert.equal(
+    projectorFor(
+      'Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf',
+      projectors,
+    ),
+    'Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf',
+  )
+  // The same repo's flat quants sit beside the projector instead.
+  assert.equal(
+    projectorFor('Qwen3.8-Flash-Next-GGUF/Qwen3.8-Flash-Next-Q8_0.gguf', projectors),
+    'Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf',
+  )
+})
+
 test('a large quant in its own shard folder still finds the projector above it', () => {
   assert.equal(
     projectorFor('Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00001-of-00002.gguf', PROJECTORS),
