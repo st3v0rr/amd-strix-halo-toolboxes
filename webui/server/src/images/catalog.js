@@ -26,7 +26,7 @@ const DESCRIPTIONS = {
   'vulkan-radv': 'Vulkan mit Mesa RADV. Stabilste Variante, für die meisten Modelle empfohlen.',
   'rocm-10.0': 'ROCm 10.0 (Fedora 44). Aktuellster stabiler ROCm-Zweig.',
   'rocm-7.14': 'ROCm 7.14 (Fedora 44). Vorgänger von 10.0, für den Fall dass 10.0 Probleme macht.',
-  comfyui: 'ComfyUI für Bild- und Videogenerierung. Kein llama-server — startet über „ComfyUI starten“.',
+  comfyui: 'ComfyUI mit ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung.',
 }
 
 /**
