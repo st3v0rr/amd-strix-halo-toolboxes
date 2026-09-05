@@ -10,3 +10,7 @@ common params:
          --no-mmap                (deprecated, use --load-mode none)
          --api-key KEY            API key to use for authentication
          --jinja                  use jinja template for chat
+
+speculative decoding:
+         --spec-type TYPE,...     speculative decoding strategies (default: none)
+         --spec-draft-n-max N     number of tokens to draft (default: 3)

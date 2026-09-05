@@ -103,6 +103,34 @@ auch große Quantisierungen in einem eigenen Shard-Ordner ihren Projektor finden
 
 Ohne Projektor startet ein Vision-Modell zwar, nimmt aber keine Bilder an.
 
+### Speculative Decoding (MTP)
+
+Im Start-Dialog und im Profil steht **Speculative Decoding**. Das Modell rät
+dabei mehrere Tokens im Voraus und prüft sie in einem Durchgang — schneller,
+solange die Entwürfe meistens stimmen. Voreingestellt ist **Aus**, wie in
+llama.cpp selbst.
+
+| Auswahl | Flag | Wofür |
+| :--- | :--- | :--- |
+| MTP | `--spec-type draft-mtp` | Nutzt die Multi-Token-Prediction-Layer *im Modell*. Nur Modelle, die damit trainiert wurden, haben sie — Qwen3-Next, DeepSeek V3, GLM-4.x. |
+| N-Gram | `--spec-type ngram-mod` | Rät aus Wiederholungen im Kontext, braucht nichts vom Modell. Hilft bei Code und strukturierter Ausgabe. |
+
+**Entwürfe pro Schritt** ist `--spec-draft-n-max`, llama.cpp-Default 3. Mehr
+Entwürfe zahlen sich nur aus, solange sie meistens akzeptiert werden.
+
+Die übrigen Strategien von llama.cpp (`draft-simple`, `draft-eagle3`, …)
+stehen nicht zur Auswahl: sie brauchen ein zweites, kleineres Draft-Modell über
+`-md`, wovon diese App nichts weiß.
+
+Ob ein Modell MTP-Layer hat, ist ihm von außen nicht anzusehen — die Auswahl
+bleibt deshalb deine. Falsch gewählt ist nicht gefährlich, llama.cpp hat dann
+nur nichts zu raten. Ob das *Image* die Flags kennt, wird dagegen geprüft: bei
+einem zu alten Build wird der Start abgelehnt, statt ihn in eine stille
+Neustart-Schleife laufen zu lassen.
+
+Siehe auch [docs/speculative.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md)
+von llama.cpp.
+
 ### Download bleibt bei 0 % stehen
 
 Mit gesetztem Token lädt `huggingface_hub` über **Xet**, und dieser Weg bleibt

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { test } from 'node:test'
 
-import { detectExtraArgs } from '../src/podman/features.js'
+import { detectExtraArgs, detectSpecType } from '../src/podman/features.js'
 import { EXTRA_ARGS_NEW, EXTRA_ARGS_OLD } from '../../shared/constants.js'
 import { webuiRoot } from '../src/config/paths.js'
 
@@ -38,4 +38,23 @@ test('an error message on stderr still counts as output and is classified', () =
   // The script merges stdout and stderr; a build that prints an error but no
   // --load-mode must land on the old spelling, not be treated as "empty".
   assert.equal(detectExtraArgs('error while loading shared libraries: libhipblas.so'), EXTRA_ARGS_OLD)
+})
+
+/* ---------------------------- speculative decoding ---------------------------- */
+
+test('a build advertising --spec-type supports speculative decoding', () => {
+  assert.equal(detectSpecType(fixture('llama-server-help-new.txt')), true)
+})
+
+test('an older build without the flag does not', () => {
+  assert.equal(detectSpecType(fixture('llama-server-help-old.txt')), false)
+})
+
+test('a failed probe answers "unknown" rather than "unsupported"', () => {
+  // The difference matters: false refuses the start, null lets it through.
+  // Freezing an unprobed image into "unsupported" would block a working setup.
+  assert.equal(detectSpecType(''), null)
+  assert.equal(detectSpecType('   \n\t '), null)
+  assert.equal(detectSpecType(null), null)
+  assert.equal(detectSpecType(undefined), null)
 })

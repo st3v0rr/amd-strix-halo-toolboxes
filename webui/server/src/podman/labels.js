@@ -22,6 +22,8 @@ export function buildLabels(spec) {
     [LABEL.port]: String(spec.hostPort),
     [LABEL.extraArgs]: spec.extraArgs ?? '',
     [LABEL.mmproj]: spec.mmprojPath ?? '',
+    [LABEL.specType]: spec.specType ?? '',
+    [LABEL.specDraftNMax]: spec.specType ? String(spec.specDraftNMax ?? '') : '',
     [LABEL.rpcPeers]: (spec.rpcPeers ?? []).join(','),
     [LABEL.created]: new Date().toISOString(),
   }
@@ -67,6 +69,8 @@ export function parseLabels(labels = {}) {
     // Null rather than '' so the UI can tell "no projector" from a server
     // created before this label existed — both simply show nothing.
     mmprojPath: labels[LABEL.mmproj] || null,
+    specType: labels[LABEL.specType] || null,
+    specDraftNMax: num(LABEL.specDraftNMax, null),
     rpcPeers: (labels[LABEL.rpcPeers] || '').split(',').filter(Boolean),
     createdAt: labels[LABEL.created] || null,
   }

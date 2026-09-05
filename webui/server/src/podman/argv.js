@@ -50,6 +50,8 @@ export function splitExtraArgs(extraArgs) {
  * @param {string} spec.modelsDir absolute host path
  * @param {string} spec.modelPath relative to modelsDir (a leading `models/` is tolerated)
  * @param {string} [spec.mmprojPath] vision projector, relative to modelsDir
+ * @param {string} [spec.specType] speculative decoding strategy; '' means off
+ * @param {number} [spec.specDraftNMax] draft tokens per step, when specType is set
  * @param {number} spec.ctxSize
  * @param {number} spec.gpuLayers
  * @param {number} spec.threads
@@ -67,6 +69,8 @@ export function buildRunArgv(spec) {
     modelsDir,
     modelPath,
     mmprojPath = '',
+    specType = '',
+    specDraftNMax,
     ctxSize,
     gpuLayers,
     threads,
@@ -133,6 +137,16 @@ export function buildRunArgv(spec) {
   // llama-server loads but silently refuses every image. Emitted right after
   // the model so the two always read together in `podman inspect`.
   if (mmprojRel) argv.push('--mmproj', `${CONTAINER_MODELS_DIR}/${mmprojRel}`)
+
+  // Speculative decoding. `--spec-draft-n-max` is only meaningful alongside a
+  // strategy, so it is never emitted on its own — llama.cpp would accept it and
+  // silently ignore it, which reads like the setting had an effect.
+  if (specType) {
+    argv.push('--spec-type', specType)
+    if (Number.isFinite(specDraftNMax)) {
+      argv.push('--spec-draft-n-max', String(specDraftNMax))
+    }
+  }
 
   // Only emitted for a cluster run. Without peers the argv must stay byte-for-byte
   // what run-llama-server.sh produces, which is what dev/parity checks.

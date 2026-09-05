@@ -78,11 +78,12 @@ MODEL_A="Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf"
 MODEL_SHARD="gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
 
 spec() {
-  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs> [mmproj]
+  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs> \
+  #      [mmproj] [specType] [specDraftNMax]
   cat <<EOF
 {"containerName":"$1","image":"$2","hostPort":$3,"modelPath":"$4","apiKey":"$5",
  "modelsDir":"$MODELS_DIR","ctxSize":$6,"gpuLayers":$7,"threads":$8,"extraArgs":"$9",
- "mmprojPath":"${10:-}"}
+ "mmprojPath":"${10:-}","specType":"${11:-}","specDraftNMax":${12:-null}}
 EOF
 }
 
@@ -126,6 +127,19 @@ run_case "Vision-Modell mit --mmproj" \
 run_case "Projektorpfad mit Praefix models/" \
   "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k7 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL")" \
   -- --model "$MODEL_VL" --api-key k7 --name llama-vl --mmproj "models/$MMPROJ_VL"
+
+run_case "MTP mit Draft-Anzahl" \
+  "$(spec llamacpp-server "$IMAGE_RADV" 11434 "$MODEL_A" k8 65536 999 12 '-fa 1 --no-mmap' '' draft-mtp 3)" \
+  -- --model "$MODEL_A" --api-key k8 --spec-type draft-mtp --spec-draft-n-max 3
+
+run_case "Speculative ohne Draft-Anzahl" \
+  "$(spec llamacpp-server "$IMAGE_RADV" 11434 "$MODEL_A" k9 65536 999 12 '-fa 1 --no-mmap' '' ngram-mod)" \
+  -- --model "$MODEL_A" --api-key k9 --spec-type ngram-mod
+
+run_case "Vision und MTP zusammen" \
+  "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k10 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL" draft-mtp 5)" \
+  -- --model "$MODEL_VL" --api-key k10 --name llama-vl --mmproj "$MMPROJ_VL" \
+     --spec-type draft-mtp --spec-draft-n-max 5
 
 echo
 if [[ $FAIL -eq 0 ]]; then

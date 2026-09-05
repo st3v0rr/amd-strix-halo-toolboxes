@@ -6,6 +6,7 @@ import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog, Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
 import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
+import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { shortImage } from '../components/format.js'
 
@@ -16,6 +17,8 @@ const EMPTY = {
   image: `${IMAGE_REPO}:vulkan-radv`,
   modelPath: '',
   mmprojPath: '',
+  specType: '',
+  specDraftNMax: null,
   port: 11434,
   ctxSize: 65536,
   gpuLayers: 999,
@@ -231,6 +234,12 @@ function ProfileDialog({ profile, onClose, onSaved }) {
           modelPath={form.modelPath}
           value={form.mmprojPath}
           onChange={(mmprojPath) => setForm((f) => ({ ...f, mmprojPath }))}
+        />
+
+        <SpeculativePicker
+          specType={form.specType}
+          specDraftNMax={form.specDraftNMax}
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
         />
 
         <div className="form-grid">

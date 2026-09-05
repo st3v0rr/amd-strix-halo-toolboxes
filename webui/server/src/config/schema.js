@@ -6,6 +6,7 @@ import {
   PORT_MAX,
   PORT_MIN,
   SERVER_DEFAULTS,
+  SPEC_TYPES,
 } from '../../../shared/constants.js'
 import { defaultModelsDir } from './paths.js'
 
@@ -53,6 +54,10 @@ export const profileSchema = z.object({
   modelPath: z.string().min(1),
   /** Vision projector for a multimodal model; '' means an ordinary text model. */
   mmprojPath: z.string().default(''),
+  /** Speculative decoding strategy; '' means off, which is llama.cpp's default. */
+  specType: z.enum(SPEC_TYPES).or(z.literal('')).default(''),
+  /** Draft tokens per step; null leaves llama.cpp's own default in place. */
+  specDraftNMax: z.number().int().min(1).max(64).nullable().default(null),
   port,
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),
@@ -81,7 +86,18 @@ export const stateSchema = z.object({
   version: z.literal(1).default(1),
   /** imageId -> detected llama-server extra args. Keyed by ID, not tag. */
   featureCache: z
-    .record(z.object({ extraArgs: z.string(), detectedAt: z.string() }))
+    .record(
+      z.object({
+        extraArgs: z.string(),
+        /**
+         * Whether the image's llama-server knows `--spec-type`. Optional
+         * because entries written before speculative decoding existed have no
+         * answer — those read as "unknown", not as "unsupported".
+         */
+        specType: z.boolean().optional(),
+        detectedAt: z.string(),
+      }),
+    )
     .default({}),
   /** tag -> last known local/remote digests and check timestamps. */
   imageStatus: z

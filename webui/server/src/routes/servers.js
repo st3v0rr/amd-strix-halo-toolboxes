@@ -1,7 +1,14 @@
 import express from 'express'
 import { z } from 'zod'
 
-import { NAME_RE, PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/constants.js'
+import {
+  NAME_RE,
+  PORT_MAX,
+  PORT_MIN,
+  ROLE,
+  RPC_PORT,
+  SPEC_TYPES,
+} from '../../../shared/constants.js'
 import { badRequest, notFound } from '../lib/errors.js'
 import { lastEventId, openSse } from '../lib/sse.js'
 import { q, validate } from '../lib/validate.js'
@@ -29,6 +36,8 @@ const specSchema = z.object({
   image: z.string().min(1),
   modelPath: z.string().min(1),
   mmprojPath: z.string().max(1000).optional(),
+  specType: z.enum(SPEC_TYPES).optional(),
+  specDraftNMax: z.number().int().min(1).max(64).optional(),
   port: z.number().int().min(PORT_MIN).max(PORT_MAX),
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),

@@ -6,6 +6,7 @@ import { normalizeRpcPeers } from '../../../shared/rpc.js'
 import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
 import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
+import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
 import { VramEstimate } from '../components/VramEstimate.jsx'
 import { useToast } from '../components/Toast.jsx'
 
@@ -30,6 +31,8 @@ export function StartServerDialog({ onClose, initial }) {
     image: `${IMAGE_REPO}:vulkan-radv`,
     modelPath: '',
     mmprojPath: '',
+    specType: '',
+    specDraftNMax: null,
     port: 11434,
     ctxSize: 65536,
     gpuLayers: 999,
@@ -88,6 +91,12 @@ export function StartServerDialog({ onClose, initial }) {
     if (!body.apiKey) delete body.apiKey
     if (!body.extraArgs) delete body.extraArgs
     if (!body.mmprojPath) delete body.mmprojPath
+    // Off is the absence of the setting, not an empty string the schema rejects.
+    if (!body.specType) {
+      delete body.specType
+      delete body.specDraftNMax
+    }
+    if (body.specDraftNMax == null) delete body.specDraftNMax
     if (rpcPeers.length) body.rpcPeers = rpcPeers
     start.mutate(body)
   }
@@ -155,6 +164,12 @@ export function StartServerDialog({ onClose, initial }) {
           modelPath={form.modelPath}
           value={form.mmprojPath}
           onChange={(mmprojPath) => setForm((f) => ({ ...f, mmprojPath }))}
+        />
+
+        <SpeculativePicker
+          specType={form.specType}
+          specDraftNMax={form.specDraftNMax}
+          onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
         />
 
         <VramEstimate
