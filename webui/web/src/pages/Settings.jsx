@@ -82,6 +82,32 @@ export function Settings() {
                 gemountet.
               </span>
             </div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="comfyModelsDir">ComfyUI-Modellverzeichnis</label>
+              <input
+                id="comfyModelsDir"
+                type="text"
+                value={form.comfyModelsDir ?? ''}
+                onChange={(e) => field('comfyModelsDir', e.target.value)}
+              />
+              <span className="hint">
+                Eigener Baum mit checkpoints, loras, vae und so weiter — getrennt von den GGUFs.
+                Wird nach /root/comfy-models gemountet.
+              </span>
+            </div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="comfyOutputDir">ComfyUI-Ausgabeverzeichnis</label>
+              <input
+                id="comfyOutputDir"
+                type="text"
+                value={form.comfyOutputDir ?? ''}
+                onChange={(e) => field('comfyOutputDir', e.target.value)}
+              />
+              <span className="hint">
+                Wohin ComfyUI erzeugte Bilder und Videos schreibt. Ohne diesen Mount verschwinden
+                sie mit dem Container.
+              </span>
+            </div>
             <div className="field">
               <label htmlFor="bindAddress">Bind-Adresse</label>
               <input

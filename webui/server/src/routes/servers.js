@@ -2,6 +2,7 @@ import express from 'express'
 import { z } from 'zod'
 
 import {
+  COMFY_PORT,
   NAME_RE,
   PORT_MAX,
   PORT_MIN,
@@ -16,6 +17,7 @@ import { clearRpcCache, rpcCacheInfo } from '../podman/cache.js'
 import { logSnapshot } from '../podman/client.js'
 import { attachLogClient } from '../podman/logstream.js'
 import {
+  createComfyServer,
   createRpcWorker,
   createServer,
   deleteServer,
@@ -62,8 +64,22 @@ const rpcSpecSchema = z.object({
   bindAddress: z.string().max(64).optional(),
 })
 
+/**
+ * ComfyUI takes even less than a worker: the image starts it with the right
+ * flags on its own, and the directories come from the settings rather than per
+ * container — two ComfyUI instances sharing one model tree is the sane default,
+ * given how large those files are.
+ */
+const comfySpecSchema = z.object({
+  role: z.literal(ROLE.comfy),
+  name: z.string().regex(NAME_RE),
+  image: z.string().min(1),
+  port: z.number().int().min(PORT_MIN).max(PORT_MAX).default(COMFY_PORT),
+})
+
 const createBody = z.union([
   rpcSpecSchema.extend({ replace: z.boolean().optional() }),
+  comfySpecSchema.extend({ replace: z.boolean().optional() }),
   z.object({ profileId: z.string().min(1), replace: z.boolean().optional() }),
   specSchema.extend({ replace: z.boolean().optional() }),
 ])
@@ -110,6 +126,13 @@ export function serverRoutes(ctx) {
       if (rest.role === ROLE.rpc) {
         const logs = []
         const result = await createRpcWorker(ctx, spec, { replace, onLog: (l) => logs.push(l) })
+        res.status(201).json({ ...result, logs })
+        return
+      }
+
+      if (rest.role === ROLE.comfy) {
+        const logs = []
+        const result = await createComfyServer(ctx, spec, { replace, onLog: (l) => logs.push(l) })
         res.status(201).json({ ...result, logs })
         return
       }

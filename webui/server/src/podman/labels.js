@@ -47,17 +47,38 @@ export function buildRpcLabels(spec) {
   }
 }
 
+/**
+ * Labels for a ComfyUI container.
+ *
+ * Like an RPC worker it carries only what it has: no model, no context, no API
+ * key. The mounted host directories are recorded so the detail page can show
+ * where its models and outputs actually live.
+ */
+export function buildComfyLabels(spec) {
+  return {
+    [LABEL.managed]: 'true',
+    [LABEL.version]: LABEL_VERSION,
+    [LABEL.role]: ROLE.comfy,
+    [LABEL.image]: spec.image,
+    [LABEL.port]: String(spec.hostPort),
+    [LABEL.comfyModelsDir]: spec.modelsDir,
+    [LABEL.comfyOutputDir]: spec.outputDir,
+    [LABEL.created]: new Date().toISOString(),
+  }
+}
+
 /** Recover a server spec from a container's labels. */
 export function parseLabels(labels = {}) {
   const num = (key, fallback) => {
     const n = Number(labels[key])
     return Number.isFinite(n) ? n : fallback
   }
+  const declaredRole = labels[LABEL.role]
   return {
     managed: labels[LABEL.managed] === 'true',
     // Containers created before the role label existed are llama-servers.
     // Defaulting rather than reporting null keeps them in the servers list.
-    role: labels[LABEL.role] === ROLE.rpc ? ROLE.rpc : ROLE.server,
+    role: declaredRole === ROLE.rpc || declaredRole === ROLE.comfy ? declaredRole : ROLE.server,
     profileId: labels[LABEL.profile] || null,
     modelPath: labels[LABEL.model] || null,
     image: labels[LABEL.image] || null,
@@ -72,6 +93,8 @@ export function parseLabels(labels = {}) {
     specType: labels[LABEL.specType] || null,
     specDraftNMax: num(LABEL.specDraftNMax, null),
     rpcPeers: (labels[LABEL.rpcPeers] || '').split(',').filter(Boolean),
+    comfyModelsDir: labels[LABEL.comfyModelsDir] || null,
+    comfyOutputDir: labels[LABEL.comfyOutputDir] || null,
     createdAt: labels[LABEL.created] || null,
   }
 }

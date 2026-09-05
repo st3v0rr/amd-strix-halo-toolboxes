@@ -55,6 +55,13 @@ export const logFile = path.join(stateDir, 'app.log')
 /** Default models directory. Absolute, and deliberately not repo-relative. */
 export const defaultModelsDir = path.join(home, 'models')
 
+/**
+ * ComfyUI's directories, named the way upstream's own toolbox names them, so a
+ * box that already ran ComfyUI by hand finds its existing models.
+ */
+export const defaultComfyModelsDir = path.join(home, 'comfy-models')
+export const defaultComfyOutputDir = path.join(home, 'comfy-outputs')
+
 /** Where the built frontend ends up. */
 export const webDist = path.join(webuiRoot, 'web', 'dist')
 

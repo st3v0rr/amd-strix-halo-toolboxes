@@ -1,0 +1,49 @@
+# ComfyUI as a server instead of a shell.
+#
+# Upstream's image (kyuz0/amd-strix-halo-comfyui) is a toolbox: you enter it and
+# start ComfyUI by hand through the `start_comfy_ui` alias. This image is that
+# same environment with the alias turned into the container's command, the way
+# toolboxes_llama_server/ does it for llama.cpp.
+#
+# Nothing is compiled here — upstream already carries ComfyUI, its plugins and a
+# ROCm-enabled torch. Only the start-up differs.
+
+ARG BASE_TAG=latest
+FROM docker.io/kyuz0/amd-strix-halo-comfyui:${BASE_TAG}
+
+# Upstream sets these in /etc/profile.d/01-rocm-envs.sh, which only a *login*
+# shell reads. This container starts Python directly, so without repeating them
+# here ComfyUI would run measurably slower with nothing to show why.
+ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+ENV TORCH_BLAS_PREFER_HIPBLASLT=1
+
+# ComfyUI Server Configuration
+ENV PORT=8000
+# The flags upstream's alias uses, kept together so they can be replaced as one:
+# --disable-mmap (mmap is slow on gfx1151), --gpu-only, --disable-smart-memory
+# and --cache-none (keep unified memory in check), --bf16-vae (VAE memory).
+ENV COMFY_ARGS="--disable-mmap --gpu-only --disable-smart-memory --cache-none --bf16-vae"
+
+# Both paths are fixed rather than configurable: set_extra_paths.sh derives the
+# model directory from $HOME itself, so an env var here would be silently
+# ignored and the mounted models would never be found. Mount the host
+# directories onto these two paths.
+ENV COMFY_MODELS_DIR=/root/comfy-models
+ENV COMFY_OUTPUT_DIR=/root/comfy-outputs
+
+WORKDIR /opt/ComfyUI
+
+EXPOSE 8000
+
+# set_extra_paths.sh writes extra_model_paths.yaml and creates the subfolders,
+# so a freshly mounted empty volume still works on the first start.
+#
+# --listen is the one flag upstream's alias does not have: ComfyUI binds
+# 127.0.0.1 by default, which inside a container means nothing outside can ever
+# reach it, no matter which port is published.
+CMD /opt/set_extra_paths.sh && \
+    exec python /opt/ComfyUI/main.py \
+      --listen 0.0.0.0 \
+      --port ${PORT} \
+      --output-directory ${COMFY_OUTPUT_DIR} \
+      ${COMFY_ARGS}

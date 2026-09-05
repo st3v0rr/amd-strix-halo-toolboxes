@@ -47,7 +47,7 @@ jobs:
             # Retired prefixes (rocm-6.4.4, rocm-7.1.1, rocm-7.2,
             # rocm7-nightlies, vulkan-amdvlk) stay here until their immutable
             # tags age out of Docker Hub.
-            JSON='["rocm-10.0","rocm-6.4.4","rocm-7.14","rocm-7.1.1","rocm-7.2","rocm7-nightlies","vulkan-amdvlk","vulkan-radv"]'
+            JSON='["comfyui","comfyui-dev","rocm-10.0","rocm-6.4.4","rocm-7.14","rocm-7.1.1","rocm-7.2","rocm7-nightlies","vulkan-amdvlk","vulkan-radv"]'
           else
             IN_CLEAN=$(echo "$IN" | tr -d '[:space:]')
             JSON='["'${IN_CLEAN//,/\",\"}'"]'

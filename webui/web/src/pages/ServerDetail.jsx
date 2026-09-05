@@ -24,6 +24,7 @@ export function ServerDetail() {
   })
 
   const isRpc = server.data?.server?.role === 'rpc'
+  const isComfy = server.data?.server?.role === 'comfy'
 
   // Filled from the container, then handed to the normal profile dialog — so
   // the user still names it and decides about autostart before anything is
@@ -120,7 +121,7 @@ export function ServerDetail() {
         <button className="btn" type="button" onClick={() => action.mutate('restart')} disabled={action.isPending}>
           Neu starten
         </button>
-        {isRpc ? null : (
+        {isRpc || isComfy ? null : (
           <button
             className="btn"
             type="button"
@@ -130,6 +131,16 @@ export function ServerDetail() {
             {draft.isPending ? 'Liest aus …' : 'Als Profil speichern'}
           </button>
         )}
+        {isComfy && s?.running && s?.hostPort ? (
+          <a
+            className="btn btn-primary"
+            href={`http://${window.location.hostname}:${s.hostPort}/`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Oberfläche öffnen
+          </a>
+        ) : null}
         <button className="btn btn-danger" type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
           Entfernen
         </button>
@@ -144,13 +155,27 @@ export function ServerDetail() {
             </div>
             <dl className="kv">
               <dt>Rolle</dt>
-              <dd>{s.role === 'rpc' ? 'RPC-Worker (stellt GPU bereit)' : 'llama-server'}</dd>
-              {s.role === 'rpc' ? null : (
+              <dd>
+                {s.role === 'rpc'
+                  ? 'RPC-Worker (stellt GPU bereit)'
+                  : s.role === 'comfy'
+                    ? 'ComfyUI (Bild- und Videogenerierung)'
+                    : 'llama-server'}
+              </dd>
+              {s.role === 'rpc' || s.role === 'comfy' ? null : (
                 <>
                   <dt>Modell</dt>
                   <dd>{s.modelPath ?? '–'}</dd>
                 </>
               )}
+              {s.role === 'comfy' ? (
+                <>
+                  <dt>Modelle</dt>
+                  <dd className="mono small">{s.comfyModelsDir ?? '–'}</dd>
+                  <dt>Ausgaben</dt>
+                  <dd className="mono small">{s.comfyOutputDir ?? '–'}</dd>
+                </>
+              ) : null}
               {s.mmprojPath ? (
                 <>
                   <dt>Vision-Projektor</dt>
@@ -172,7 +197,7 @@ export function ServerDetail() {
               <dd>
                 {s.hostPort ?? '–'} → {s.role === 'rpc' ? 50052 : 11434}
               </dd>
-              {s.role === 'rpc' ? null : (
+              {s.role === 'rpc' || s.role === 'comfy' ? null : (
                 <>
                   <dt>Context Size</dt>
                   <dd>{s.ctxSize ?? '–'}</dd>

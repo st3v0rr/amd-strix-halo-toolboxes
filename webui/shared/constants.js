@@ -15,6 +15,37 @@ export const CONTAINER_PORT = 11434
 export const CONTAINER_MODELS_DIR = '/workspace/models'
 
 /**
+ * ComfyUI's port inside the container, and the two paths it reads.
+ *
+ * The paths are fixed, not configurable: upstream's set_extra_paths.sh derives
+ * the model directory from $HOME, so pointing ComfyUI elsewhere would mean
+ * rewriting extra_model_paths.yaml ourselves. The host side of the mount is
+ * what the user actually chooses.
+ */
+export const COMFY_PORT = 8000
+export const COMFY_CONTAINER_MODELS_DIR = '/root/comfy-models'
+export const COMFY_CONTAINER_OUTPUT_DIR = '/root/comfy-outputs'
+
+/** ComfyUI image channels this fork publishes. */
+export const COMFY_TAGS = /** @type {const} */ (['comfyui', 'comfyui-dev'])
+
+/**
+ * The model subfolders ComfyUI expects, as created by set_extra_paths.sh.
+ * Listing them explicitly is what lets the models page show empty ones too —
+ * an absent folder is a normal state, not an error.
+ */
+export const COMFY_MODEL_DIRS = /** @type {const} */ ([
+  'checkpoints',
+  'clip_vision',
+  'diffusion_models',
+  'latent_upscale_models',
+  'loras',
+  'text_encoders',
+  'unet',
+  'vae',
+])
+
+/**
  * Labels stamped onto every container we create. Ownership lives in the
  * container rather than in our own state file, so a wiped state.json or a
  * reboot never orphans a running server.
@@ -35,6 +66,8 @@ export const LABEL = {
   specType: 'shx.spec-type',
   specDraftNMax: 'shx.spec-draft-n-max',
   rpcPeers: 'shx.rpc-peers',
+  comfyModelsDir: 'shx.comfy-models-dir',
+  comfyOutputDir: 'shx.comfy-output-dir',
   created: 'shx.created',
 }
 
@@ -42,10 +75,15 @@ export const LABEL = {
  * What a managed container actually is.
  *
  * `server` is a llama-server serving HTTP; `rpc` is a ggml-rpc-server offering
- * its GPU to someone else's llama-server. Containers created before this label
- * existed carry no role and are read as `server` — which is what they are.
+ * its GPU to someone else's llama-server; `comfy` is ComfyUI. Containers
+ * created before this label existed carry no role and are read as `server` —
+ * which is what they are.
  */
-export const ROLE = /** @type {const} */ ({ server: 'server', rpc: 'rpc' })
+export const ROLE = /** @type {const} */ ({
+  server: 'server',
+  rpc: 'rpc',
+  comfy: 'comfy',
+})
 
 /** Schema version of the label set, so a future migration can tell them apart. */
 export const LABEL_VERSION = '1'
@@ -142,6 +180,7 @@ export const JOB_FINISHED_STATUS = /** @type {const} */ ([
 
 export const JOB_TYPE = /** @type {const} */ ([
   'model-download',
+  'comfy-model-download',
   'image-pull',
   'feature-detect',
   'app-update',
