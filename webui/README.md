@@ -70,7 +70,7 @@ sudo usermod -aG video,render "$USER"   # danach neu anmelden
 
 ## Modelle laden
 
-Unter **Modelle → Modell herunterladen** wird ein Repository auf Hugging Face
+Unter **Llama.cpp-Modelle → Modell herunterladen** wird ein Repository auf Hugging Face
 gesucht und eine Quantisierung ausgewählt. Der Dialog schließt sich, sobald der
 Download angelegt ist — ab da steht er in der Tabelle **Downloads** auf
 derselben Seite, mit Fortschritt, Tempo und Restzeit.

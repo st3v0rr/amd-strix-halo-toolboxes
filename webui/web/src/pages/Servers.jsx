@@ -53,14 +53,15 @@ export function Servers() {
         title="Server"
         description="Container, die über dieses Interface angelegt wurden."
       >
-        <button className="btn" type="button" onClick={() => setStartingComfy(true)}>
-          ComfyUI starten
-        </button>
         <button className="btn" type="button" onClick={() => setStartingRpc(true)}>
           RPC-Worker starten
         </button>
+        {/* The two things you actually start here, side by side. */}
         <button className="btn btn-primary" type="button" onClick={() => setStarting(true)}>
-          Server starten
+          llama.cpp starten
+        </button>
+        <button className="btn btn-primary" type="button" onClick={() => setStartingComfy(true)}>
+          ComfyUI starten
         </button>
       </PageHead>
 
@@ -70,7 +71,7 @@ export function Servers() {
         <div className="empty">Wird geladen …</div>
       ) : list.length === 0 ? (
         <div className="empty">
-          Noch kein Server angelegt. Über „Server starten“ geht es los.
+          Noch kein Server angelegt. Über „llama.cpp starten“ geht es los.
         </div>
       ) : (
         <div className="card table-wrap">

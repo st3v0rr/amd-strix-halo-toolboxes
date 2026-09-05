@@ -52,7 +52,7 @@ export function Models() {
   return (
     <>
       <PageHead
-        title="Modelle"
+        title="Llama.cpp-Modelle"
         description={data ? `GGUF-Dateien in ${data.modelsDir}` : 'GGUF-Dateien im Modellverzeichnis.'}
       >
         <button className="btn" type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
