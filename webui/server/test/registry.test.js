@@ -36,8 +36,8 @@ test('converts the CI build stamp to ISO 8601', () => {
 
 test('the catalog is derived from the Dockerfile directory', () => {
   const tags = knownTags()
-  // These four are the stable backends the repository builds.
-  for (const expected of ['vulkan-radv', 'vulkan-amdvlk', 'rocm-7.14', 'rocm-6.4.4']) {
+  // These three are the backends the repository builds.
+  for (const expected of ['vulkan-radv', 'rocm-7.14', 'rocm-10.0']) {
     assert.ok(tags.includes(expected), `expected tag ${expected} in ${tags.join(', ')}`)
   }
 })

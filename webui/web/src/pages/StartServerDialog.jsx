@@ -8,7 +8,7 @@ import { ModelPicker } from '../components/ModelPicker.jsx'
 import { VramEstimate } from '../components/VramEstimate.jsx'
 import { useToast } from '../components/Toast.jsx'
 
-const KNOWN_TAGS = ['vulkan-radv', 'vulkan-amdvlk', 'rocm-7.14', 'rocm-6.4.4']
+const KNOWN_TAGS = ['vulkan-radv', 'rocm-10.0', 'rocm-7.14']
 const IMAGE_REPO = 'docker.io/st3v0rr/amd-strix-halo-toolboxes'
 
 export function StartServerDialog({ onClose, initial }) {

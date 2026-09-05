@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import { newestBuildFromTags } from '../src/images/registry.js'
 
 const TAGS = [
-  'rocm-6.4.4',
+  'rocm-10.0',
   'rocm-7.14',
   'rocm-7.14_20260701T090000',
   'rocm-7.14_20260801T120000',
@@ -27,7 +27,8 @@ test('does not confuse one backend’s build tags with another’s', () => {
 test('a backend with no build tags yields null', () => {
   // The prune workflow deletes old immutable tags, so this is the normal state
   // of the repository — the UI just omits the build date.
-  assert.equal(newestBuildFromTags(TAGS, 'rocm-6.4.4'), null)
+  assert.equal(newestBuildFromTags(TAGS, 'rocm-10.0'), null)
+  // A retired backend is absent from the registry altogether.
   assert.equal(newestBuildFromTags(TAGS, 'vulkan-amdvlk'), null)
 })
 

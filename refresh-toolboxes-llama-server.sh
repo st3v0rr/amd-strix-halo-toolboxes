@@ -5,10 +5,9 @@ set -e
 # List of all known toolboxes and their configurations
 declare -A TOOLBOXES
 
-TOOLBOXES["llama-vulkan-amdvlk"]="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-amdvlk --device /dev/dri --group-add video --security-opt seccomp=unconfined"
 TOOLBOXES["llama-vulkan-radv"]="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv --device /dev/dri --group-add video --security-opt seccomp=unconfined"
-TOOLBOXES["llama-rocm-6.4.4"]="docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-6.4.4 --device /dev/dri --device /dev/kfd --group-add video --group-add render --group-add sudo --security-opt seccomp=unconfined"
 TOOLBOXES["llama-rocm-7.14"]="docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 --device /dev/dri --device /dev/kfd --group-add video --group-add render --group-add sudo --security-opt seccomp=unconfined"
+TOOLBOXES["llama-rocm-10.0"]="docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0 --device /dev/dri --device /dev/kfd --group-add video --group-add render --group-add sudo --security-opt seccomp=unconfined"
 
 function usage() {
   echo "Usage: $0 [all|toolbox-name1 toolbox-name2 ...]"

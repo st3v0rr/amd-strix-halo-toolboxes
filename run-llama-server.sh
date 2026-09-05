@@ -51,32 +51,25 @@ Beispiele:
       --model Qwen3-VL-235B-A22B-Instruct-GGUF/UD-Q3_K_XL/Qwen3-VL-235B-A22B-Instruct-UD-Q3_K_XL-00001-of-00003.gguf \\
       --api-key example-key
 
-  Vulkan AMDVLK (schneller, aber 2-GiB-Limit pro Buffer):
+  ROCm 10.0 (aktuellstes stabiles ROCm):
     $(basename "$0") \\
-      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-amdvlk \\
-      --name llama-vulkan-amdvlk \\
-      --model Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf \\
-      --api-key example-key
-
-  ROCm 7.14 (aktuellstes stabiles ROCm):
-    $(basename "$0") \\
-      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 \\
-      --name llama-rocm-7.14 \\
+      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0 \\
+      --name llama-rocm-10.0 \\
       --model Qwen3.6-35B-A3B-GGUF/UD-Q4_K_XL/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \\
       --api-key example-key
 
-  ROCm 6.4.4 (stabiler 6.x-Zweig):
+  ROCm 7.14 (Vorgaengerzweig, falls 10.0 zickt):
     $(basename "$0") \\
-      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-6.4.4 \\
-      --name llama-rocm-6.4.4 \\
+      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 \\
+      --name llama-rocm-7.14 \\
       --model gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16.gguf \\
       --api-key example-key \\
       --ctx-size 90000
 
   Zweiter Server parallel auf anderem Port:
     $(basename "$0") \\
-      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 \\
-      --name llama-rocm-7.14-second \\
+      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0 \\
+      --name llama-rocm-10.0-second \\
       --port 11435 \\
       --model Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf \\
       --api-key example-key
