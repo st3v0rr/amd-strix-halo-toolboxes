@@ -8,6 +8,7 @@ import { LogView } from '../components/LogView.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatDate } from '../components/format.js'
+import { ProfileDialog } from './ProfileDialog.jsx'
 
 export function ServerDetail() {
   const { name } = useParams()
@@ -23,6 +24,16 @@ export function ServerDetail() {
   })
 
   const isRpc = server.data?.server?.role === 'rpc'
+
+  // Filled from the container, then handed to the normal profile dialog — so
+  // the user still names it and decides about autostart before anything is
+  // written.
+  const [profileDraft, setProfileDraft] = useState(null)
+  const draft = useMutation({
+    mutationFn: () => get(`/servers/${encodeURIComponent(name)}/profile-draft`),
+    onSuccess: (data) => setProfileDraft(data.profile),
+    onError: (err) => toast.error(err),
+  })
 
   const health = useQuery({
     queryKey: ['server-health', name],
@@ -109,6 +120,16 @@ export function ServerDetail() {
         <button className="btn" type="button" onClick={() => action.mutate('restart')} disabled={action.isPending}>
           Neu starten
         </button>
+        {isRpc ? null : (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => draft.mutate()}
+            disabled={draft.isPending}
+          >
+            {draft.isPending ? 'Liest aus …' : 'Als Profil speichern'}
+          </button>
+        )}
         <button className="btn btn-danger" type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
           Entfernen
         </button>
@@ -313,6 +334,16 @@ export function ServerDetail() {
           }
           onConfirm={() => clearCache.mutate()}
           onClose={() => setConfirmClear(false)}
+        />
+      ) : null}
+      {profileDraft ? (
+        <ProfileDialog
+          profile={profileDraft}
+          onClose={() => setProfileDraft(null)}
+          onSaved={() => {
+            setProfileDraft(null)
+            queryClient.invalidateQueries({ queryKey: ['profiles'] })
+          }}
         />
       ) : null}
     </>
