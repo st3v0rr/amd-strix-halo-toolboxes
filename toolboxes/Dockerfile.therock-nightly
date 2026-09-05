@@ -10,7 +10,7 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False install \
 WORKDIR /tmp
 ARG GFX=gfx1151
 RUN set -euo pipefail; \
-  BASE="https://rocm.nightlies.amd.com/tarball-multi-arch"; \
+  BASE="https://nightly.repo.amd.com/rocm/core/tarball"; \
   KEY="$(curl -fsSL "${BASE}/" \
   | grep -o "therock-dist-linux-${GFX}-[0-9.a]*\.tar\.gz" \
   | sort -V | tail -n1)"; \
@@ -53,7 +53,7 @@ RUN printf '%s\n' \
   && echo 'source /etc/profile.d/rocm.sh' >> /etc/bashrc
 
 WORKDIR /opt/llama.cpp
-ARG REPO=https://github.com/ggerganov/llama.cpp.git
+ARG REPO=https://github.com/ggml-org/llama.cpp.git
 ARG BRANCH=master
 RUN git clone -b ${BRANCH} --single-branch --recursive ${REPO} . \
   && git clean -xdf \
@@ -95,7 +95,7 @@ RUN find /opt/rocm -type f -name '*.a' -delete \
 FROM registry.fedoraproject.org/fedora-minimal:43
 
 RUN microdnf -y --nodocs --setopt=install_weak_deps=0 install \
-  bash ca-certificates libatomic libstdc++ libgcc libibverbs radeontop vim procps-ng python3 \
+  bash ca-certificates libatomic libstdc++ libgcc libgomp libibverbs radeontop vim procps-ng python3 \
   && microdnf clean all && rm -rf /var/cache/dnf/* \
   && ln -sf /usr/bin/python3 /usr/bin/python
 

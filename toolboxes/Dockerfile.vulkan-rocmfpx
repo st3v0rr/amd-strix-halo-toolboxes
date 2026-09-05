@@ -11,15 +11,19 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False install \
 
 # ROCmFPX (llama.cpp fork with ROCmFP3/FP4/FP6/FP8 weight formats)
 WORKDIR /opt/llama.cpp
-ARG REPO=https://github.com/charlie12345/ROCmFPX.git
+ARG REPO=https://github.com/ROCmFPX/ROCmFPX.git
 ARG BRANCH=main
 RUN git clone -b ${BRANCH} --single-branch ${REPO} .
 
 COPY llama-grammar.patch /tmp/llama-grammar.patch
+COPY rocmfpx-vulkan-shader-concurrency.patch /tmp/rocmfpx-vulkan-shader-concurrency.patch
 
 # build — Vulkan only
+# The generator caps its own glslc children, but Ninja must also be kept from
+# launching multiple memory-heavy shader-generator targets concurrently.
 RUN git clean -xdf \
   && patch -p1 < /tmp/llama-grammar.patch \
+  && patch -p1 < /tmp/rocmfpx-vulkan-shader-concurrency.patch \
   && cmake -S . -B build -G Ninja \
   -DGGML_VULKAN=ON \
   -DGGML_HIP=OFF \
@@ -32,7 +36,7 @@ RUN git clean -xdf \
   -DLLAMA_BUILD_WEBUI=OFF \
   -DLLAMA_USE_PREBUILT_WEBUI=OFF \
   -DLLAMA_BUILD_TESTS=OFF \
-  && cmake --build build --config Release \
+  && cmake --build build --config Release --parallel 1 \
   && cmake --install build --config Release
 
 # libs
