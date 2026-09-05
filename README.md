@@ -6,12 +6,17 @@ of unified memory as VRAM.
 This repository is a fork of
 **[kyuz0/amd-strix-halo-toolboxes](https://github.com/kyuz0/amd-strix-halo-toolboxes)**.
 Upstream builds container images you *enter* and work in interactively. This fork
-takes the same four stable backends, turns them into containers that *start a
+takes four of those backends, turns them into containers that *start a
 server* instead of a shell, and adds a web interface to manage the whole box —
 models, servers, images, updates — from a browser.
 
 Both halves are described below: [what upstream provides](#what-upstream-provides)
 and [what this fork adds](#what-this-fork-adds).
+
+> [!IMPORTANT]
+> This repository is part of the **[Strix Halo AI Toolboxes](https://strix-halo-toolboxes.com/)**
+> project. Follow the central guide for the recommended host setup, including
+> unified-memory allocation and OS-specific configuration.
 
 ---
 
@@ -25,26 +30,31 @@ behaves as it does upstream — only the image-building workflows were repointed
 | :--- | :--- |
 | `toolboxes/` | The Dockerfiles behind [`docker.io/kyuz0/amd-strix-halo-toolboxes`](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags) — ROCm and Vulkan stacks with llama.cpp compiled in, meant to be entered with `toolbox enter` / `distrobox enter`. Rebuilt automatically whenever llama.cpp master moves. |
 | `refresh-toolboxes.sh` | Creates and updates those interactive toolboxes on the host, with the right `/dev/dri`, `/dev/kfd` and group options (and RDMA options when `/dev/infiniband` exists). |
+| [AI Toolbox Cockpit](https://github.com/kyuz0/ai-toolbox-cockpit) | Upstream's recommended installer and launcher for its toolboxes, with tested profiles for Toolbx, Distrobox, Podman and Docker. Lives in its own repository. |
 | `benchmark/`, `docs/*.html` | The benchmark suite and the [interactive result viewer](https://kyuz0.github.io/amd-strix-halo-toolboxes/), including the [toolbox comparison](https://kyuz0.github.io/amd-strix-halo-toolboxes/toolbox-performance.html). |
 | `toolboxes/gguf-vram-estimator.py` | Estimates VRAM for a GGUF at a given context size — see [docs/vram-estimator.md](docs/vram-estimator.md). |
 | `scripts/run_distributed_llama.py` | A TUI that spreads one model across several Strix Halo machines over llama.cpp RPC. Set up SSH keys between the nodes, run it on the main node, follow the prompts. |
 | `systemd/gpu-workload-watch/` | Switches TuneD profiles and raises cooling only while the GPU is busy — see its [README](systemd/gpu-workload-watch/README.md). |
 | Host documentation | Kernel parameters, firmware pitfalls, building your own images: [docs/](docs/) and <https://strix-halo-toolboxes.com>. |
 
-### The four stable backends
+### The backends this fork mirrors
 
-Upstream also publishes experimental images (TheRock nightlies, ROCmFPX,
-TurboQuant, PR builds); those live only upstream — see its
-[README](https://github.com/kyuz0/amd-strix-halo-toolboxes#supported-toolboxes)
+Upstream's own stable set is now just `vulkan-radv` and `rocm-10.0`; everything
+else there is experimental (ROCm 10.0 performance builds, EngramHalo, ROCmFPX,
+Qwen3.8-Flash-Next, TheRock nightlies, PR builds) and lives only upstream — see
+its [README](https://github.com/kyuz0/amd-strix-halo-toolboxes#supported-toolboxes)
 and [DockerHub tags](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags).
-The four stable ones are the set this fork mirrors:
+
+This fork builds four `llama-server` images. They were upstream's stable set when
+the fork was made; upstream has since moved ROCm 7.14 to 10.0 and retired the
+other two, so the last three are now maintained here rather than mirrored:
 
 | Tag | Backend | Notes |
 | :--- | :--- | :--- |
 | `vulkan-radv` | Vulkan (Mesa RADV) | Most compatible. The default here, and the right first choice. |
-| `vulkan-amdvlk` | Vulkan (AMDVLK) | Fastest, but a ≤2 GiB single-buffer limit keeps some large models from loading. |
-| `rocm-7.14` | ROCm 7.14 (Fedora 44) | Current ROCm Core SDK build for gfx1151. |
-| `rocm-6.4.4` | ROCm 6.4.4 (Fedora 43) | Latest 6.x, patched for kernel 6.18.4+. |
+| `vulkan-amdvlk` | Vulkan (AMDVLK) | Fastest, but a ≤2 GiB single-buffer limit keeps some large models from loading. Retired upstream. |
+| `rocm-7.14` | ROCm 7.14 (Fedora 44) | Last ROCm Core SDK build for gfx1151 before upstream moved to 10.0. |
+| `rocm-6.4.4` | ROCm 6.4.4 (Fedora 43) | Latest 6.x, patched for kernel 6.18.4+. Retired upstream. |
 
 > Upstream's support is the reason this fork exists at all. If the toolboxes are
 > useful to you, consider [buying kyuz0 a coffee](https://buymeacoffee.com/dcapitella).
@@ -67,7 +77,7 @@ The four stable ones are the set this fork mirrors:
 | :--- | :--- | :--- |
 | Container starts | an interactive shell | `llama-server` |
 | Made for | experimenting, benchmarking, `llama-cli`, building | leaving a server running on the network |
-| Backends | four stable + several experimental | the four stable ones |
+| Backends | two stable + many experimental | four `llama-server` builds |
 | Used by | `toolbox enter`, `refresh-toolboxes.sh` | `run-llama-server.sh`, the web interface |
 
 They coexist happily on one machine — different image names, different
