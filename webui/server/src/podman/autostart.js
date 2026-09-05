@@ -60,6 +60,8 @@ export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
           image: profile.image,
           modelPath: profile.modelPath,
           mmprojPath: profile.mmprojPath,
+          specType: profile.specType,
+          specDraftNMax: profile.specDraftNMax,
           port: profile.port,
           ctxSize: profile.ctxSize,
           gpuLayers: profile.gpuLayers,

@@ -166,6 +166,45 @@ test('an api key containing shell metacharacters stays a single argument', () =>
   assert.equal(argv.filter((a) => a === apiKey).length, 1)
 })
 
+test('a speculative strategy emits --spec-type with the draft count', () => {
+  const argv = buildRunArgv({ ...BASE, specType: 'draft-mtp', specDraftNMax: 3 })
+  const at = argv.indexOf('--spec-type')
+  assert.equal(argv[at + 1], 'draft-mtp')
+  assert.equal(argv[at + 2], '--spec-draft-n-max')
+  assert.equal(argv[at + 3], '3')
+  // Everything before it is still the golden argv, byte for byte.
+  assert.deepEqual(argv.slice(0, at), GOLDEN.slice(0, at))
+})
+
+test('without a draft count only --spec-type is emitted', () => {
+  const argv = buildRunArgv({ ...BASE, specType: 'ngram-mod' })
+  assert.equal(argv[argv.indexOf('--spec-type') + 1], 'ngram-mod')
+  assert.equal(argv.includes('--spec-draft-n-max'), false)
+})
+
+test('a draft count without a strategy is dropped rather than emitted alone', () => {
+  // llama.cpp would accept it and ignore it, which reads like it had an effect.
+  const argv = buildRunArgv({ ...BASE, specType: '', specDraftNMax: 8 })
+  assert.equal(argv.includes('--spec-draft-n-max'), false)
+  assert.equal(argv.includes('--spec-type'), false)
+})
+
+test('speculative decoding is off unless asked for', () => {
+  assert.equal(buildRunArgv(BASE).includes('--spec-type'), false)
+})
+
+test('a projector and a strategy coexist, projector first, extra args last', () => {
+  const argv = buildRunArgv({
+    ...BASE,
+    mmprojPath: 'vl/mmproj-F16.gguf',
+    specType: 'draft-mtp',
+    specDraftNMax: 5,
+  })
+  assert.ok(argv.indexOf('--mmproj') < argv.indexOf('--spec-type'))
+  assert.ok(argv.indexOf('--spec-type') < argv.indexOf('-fa'))
+  assert.deepEqual(argv.slice(-3), ['-fa', '1', '--no-mmap'])
+})
+
 test('hostModelPath joins without doubling separators', () => {
   assert.equal(hostModelPath('/home/s/models', 'a/b.gguf'), '/home/s/models/a/b.gguf')
   assert.equal(hostModelPath('/home/s/models/', 'models/a/b.gguf'), '/home/s/models/a/b.gguf')

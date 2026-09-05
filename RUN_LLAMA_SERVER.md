@@ -143,6 +143,26 @@ the log pointing at the cause.
 The web interface finds the projector for a selected model on its own — see
 [webui/README.md](webui/README.md#vision-modelle).
 
+## Speculative Decoding
+
+The model can draft several tokens ahead and verify them in one pass. Off by
+default; `--spec-type` picks a strategy and `--spec-draft-n-max` how many tokens
+to draft (llama.cpp's default is 3):
+
+```bash
+./run-llama-server.sh \
+  --model Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf \
+  --spec-type draft-mtp --spec-draft-n-max 3 \
+  --api-key example-key
+```
+
+`draft-mtp` uses the multi-token-prediction layers baked into models trained
+with them (Qwen3-Next, DeepSeek V3, GLM-4.x); `ngram-mod` drafts from repetition
+in the context and needs nothing from the model. The remaining strategies
+llama.cpp offers need a separate draft model via `-md`, which this script does
+not wire up. See
+[docs/speculative.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md).
+
 ## Running with Custom Configuration
 
 Override multiple environment variables:

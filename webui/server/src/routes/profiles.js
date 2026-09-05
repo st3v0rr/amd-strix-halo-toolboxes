@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import express from 'express'
 import { z } from 'zod'
 
-import { NAME_RE, PORT_MAX, PORT_MIN } from '../../../shared/constants.js'
+import { NAME_RE, PORT_MAX, PORT_MIN, SPEC_TYPES } from '../../../shared/constants.js'
 import { conflict, notFound } from '../lib/errors.js'
 import { registerSecret, unregisterSecret } from '../lib/redact.js'
 import { validate } from '../lib/validate.js'
@@ -15,6 +15,8 @@ const profileBody = z.object({
   image: z.string().min(1).max(400),
   modelPath: z.string().min(1).max(1000),
   mmprojPath: z.string().max(1000).default(''),
+  specType: z.enum(SPEC_TYPES).or(z.literal('')).default(''),
+  specDraftNMax: z.number().int().min(1).max(64).nullable().default(null),
   port: z.number().int().min(PORT_MIN).max(PORT_MAX),
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),
@@ -129,6 +131,8 @@ export function profileRoutes(ctx) {
           image: profile.image,
           modelPath: profile.modelPath,
           mmprojPath: profile.mmprojPath,
+          specType: profile.specType,
+          specDraftNMax: profile.specDraftNMax,
           port: profile.port,
           ctxSize: profile.ctxSize,
           gpuLayers: profile.gpuLayers,

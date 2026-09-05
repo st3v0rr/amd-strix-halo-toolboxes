@@ -8,6 +8,8 @@ GPU_LAYERS=999
 THREADS=12
 MODEL_PATH=""
 MMPROJ_PATH=""
+SPEC_TYPE=""
+SPEC_DRAFT_N_MAX=""
 API_KEY=""
 IMAGE="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv"
 MODELS_DIR="./models"
@@ -42,6 +44,11 @@ Options:
                         Modelle, relativ zum Modellverzeichnis. Ohne ihn
                         laedt ein Vision-Modell zwar, nimmt aber keine
                         Bilder an.
+    --spec-type TYP     Speculative Decoding, z.B. "draft-mtp" (Multi Token
+                        Prediction, nur bei Modellen mit MTP-Layern) oder
+                        "ngram-mod". Ohne Angabe aus.
+    --spec-draft-n-max N  Entwuerfe pro Schritt (llama.cpp-Default: 3). Wirkt
+                        nur zusammen mit --spec-type.
     --models-dir DIR    Modellverzeichnis auf dem Host (default: $MODELS_DIR)
     --extra-args ARGS   Zusaetzliche llama-server-Argumente. Ohne Angabe
                         ermittelt das Script am Image, ob
@@ -90,6 +97,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mmproj)
             MMPROJ_PATH="$2"
+            shift 2
+            ;;
+        --spec-type)
+            SPEC_TYPE="$2"
+            shift 2
+            ;;
+        --spec-draft-n-max)
+            SPEC_DRAFT_N_MAX="$2"
             shift 2
             ;;
         --api-key)
@@ -193,6 +208,16 @@ if [ -n "$MMPROJ_PATH" ]; then
     MMPROJ_ARGS=(--mmproj "$FULL_MMPROJ_PATH")
 fi
 
+# Speculative Decoding. --spec-draft-n-max allein waere wirkungslos, llama.cpp
+# nimmt es aber trotzdem an — deshalb nur zusammen mit --spec-type.
+SPEC_ARGS=()
+if [ -n "$SPEC_TYPE" ]; then
+    SPEC_ARGS=(--spec-type "$SPEC_TYPE")
+    if [ -n "$SPEC_DRAFT_N_MAX" ]; then
+        SPEC_ARGS+=(--spec-draft-n-max "$SPEC_DRAFT_N_MAX")
+    fi
+fi
+
 # Passende Schreibweise fuer Flash Attention / mmap am Image ermitteln, falls
 # nicht per --extra-args vorgegeben. Kostet einen kurzen Container-Start ohne
 # GPU-Zugriff. Schlaegt die Erkennung fehl, gilt die alte Schreibweise: die
@@ -226,6 +251,9 @@ echo "  Model (Host):   ${MODELS_DIR}/${REL_MODEL_PATH}"
 echo "  Model (Cont.):  $FULL_MODEL_PATH"
 if [ -n "$MMPROJ_PATH" ]; then
     echo "  Projektor:      $FULL_MMPROJ_PATH"
+fi
+if [ -n "$SPEC_TYPE" ]; then
+    echo "  Speculative:    $SPEC_TYPE${SPEC_DRAFT_N_MAX:+, n-max $SPEC_DRAFT_N_MAX}"
 fi
 echo "  Port:           ${PORT} -> 11434"
 echo "  Context Size:   $CTX_SIZE"
@@ -262,6 +290,7 @@ podman run -d \
     --threads "$THREADS" \
     --api-key "$API_KEY" \
     "${MMPROJ_ARGS[@]}" \
+    "${SPEC_ARGS[@]}" \
     $EXTRA_ARGS
 
 if [ $? -eq 0 ]; then

@@ -32,6 +32,8 @@ export const LABEL = {
   port: 'shx.port',
   extraArgs: 'shx.extra-args',
   mmproj: 'shx.mmproj',
+  specType: 'shx.spec-type',
+  specDraftNMax: 'shx.spec-draft-n-max',
   rpcPeers: 'shx.rpc-peers',
   created: 'shx.created',
 }
@@ -55,6 +57,27 @@ export const LABEL_VERSION = '1'
  * here is reachable by the TUI and vice versa.
  */
 export const RPC_PORT = 50052
+
+/**
+ * Speculative decoding strategies we offer, as `--spec-type` values.
+ *
+ * llama.cpp knows more of them, but the rest (`draft-simple`, `draft-eagle3`,
+ * `draft-dflash`, `draft-dspark`) need a second, smaller draft model passed
+ * with `-md` — which this app has no notion of. What is listed here drafts from
+ * the model itself, so it works with exactly the one file the user picked:
+ *
+ * - `draft-mtp` uses the multi-token-prediction layers baked into models that
+ *   were trained with them (Qwen3-Next, DeepSeek V3, GLM-4.x …). On a model
+ *   without those layers llama-server has nothing to draft from.
+ * - `ngram-mod` drafts from repetition in the context, so it needs nothing from
+ *   the model at all and helps most on code and structured output.
+ *
+ * See https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md
+ */
+export const SPEC_TYPES = /** @type {const} */ (['draft-mtp', 'ngram-mod'])
+
+/** llama.cpp's own default for `--spec-draft-n-max`. */
+export const SPEC_DRAFT_N_MAX_DEFAULT = 3
 
 /** The two spellings of "flash attention + no mmap" llama.cpp has used. */
 export const EXTRA_ARGS_NEW = '-fa on --load-mode none'

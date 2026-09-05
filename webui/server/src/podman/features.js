@@ -21,6 +21,23 @@ export function detectExtraArgs(helpOutput) {
 }
 
 /**
+ * Whether this build knows `--spec-type`, or null when we could not tell.
+ *
+ * Speculative decoding is younger than the oldest images this app can run, and
+ * llama-server aborts on an unknown flag — which `--restart unless-stopped`
+ * turns into a silent restart loop. So a start is refused when we know the flag
+ * is missing. `null` is deliberately not `false`: a probe that produced no
+ * output must not make the feature look unsupported.
+ *
+ * @param {string} helpOutput combined stdout+stderr of `llama-server --help`
+ * @returns {boolean|null}
+ */
+export function detectSpecType(helpOutput) {
+  if (!helpOutput || !helpOutput.trim()) return null
+  return helpOutput.includes('--spec-type')
+}
+
+/**
  * Detection costs a throwaway container start, so the result is cached — keyed
  * by the local image ID rather than the tag. The project's CI moves the
  * `<backend>` channel tag onto new builds, so a tag-keyed cache would go stale
@@ -36,13 +53,25 @@ export async function resolveExtraArgs(ctx, image, { force = false, onLog } = {}
     // Image not present locally. The caller pulls first; until then fall back
     // to the spelling that cannot break a start.
     onLog?.(`Image ${image} liegt lokal nicht vor — nutze die alte Schreibweise.`)
-    return { extraArgs: EXTRA_ARGS_OLD, imageId: null, cached: false, detected: false }
+    return {
+      extraArgs: EXTRA_ARGS_OLD,
+      specType: null,
+      imageId: null,
+      cached: false,
+      detected: false,
+    }
   }
 
   const cached = ctx.state.data.featureCache[id]
   if (cached && !force) {
     onLog?.(`Aus dem Cache: ${cached.extraArgs}`)
-    return { extraArgs: cached.extraArgs, imageId: id, cached: true, detected: true }
+    return {
+      extraArgs: cached.extraArgs,
+      specType: cached.specType ?? null,
+      imageId: id,
+      cached: true,
+      detected: true,
+    }
   }
 
   onLog?.(`Ermittle unterstützte llama-server-Argumente aus ${image} …`)
@@ -60,14 +89,27 @@ export async function resolveExtraArgs(ctx, image, { force = false, onLog } = {}
   }
 
   const extraArgs = detectExtraArgs(helpOutput)
+  const specType = detectSpecType(helpOutput)
   onLog?.(`Erkannt: ${extraArgs}`)
 
   await ctx.state.update((s) => {
-    s.featureCache[id] = { extraArgs, detectedAt: new Date().toISOString() }
+    s.featureCache[id] = {
+      extraArgs,
+      // Only recorded when the probe actually said something; an unknown stays
+      // unknown rather than being frozen into the cache as "unsupported".
+      ...(specType === null ? {} : { specType }),
+      detectedAt: new Date().toISOString(),
+    }
     return s
   })
 
-  return { extraArgs, imageId: id, cached: false, detected: Boolean(helpOutput.trim()) }
+  return {
+    extraArgs,
+    specType,
+    imageId: id,
+    cached: false,
+    detected: Boolean(helpOutput.trim()),
+  }
 }
 
 /** Drop a cache entry so the next launch re-probes (used after a pull). */
