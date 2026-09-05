@@ -142,6 +142,28 @@ test('an unreadable root is reported rather than thrown', async () => {
   assert.ok(unreadable)
 })
 
+test('projectors are kept out of the model list', async () => {
+  const root = tmpRoot()
+  write(root, 'Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf', 800)
+  write(root, 'Qwen3-VL-8B-GGUF/mmproj-F16.gguf', 40)
+  write(root, 'Qwen3-VL-8B-GGUF/Qwen3-VL-8B.mmproj-f16.gguf', 40)
+
+  const { groups, projectors } = await scanModels(root, { force: true })
+
+  // Offering a projector for `-m` would produce a container that fails to load.
+  assert.deepEqual(
+    groups.map((g) => g.primary),
+    ['Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf'],
+  )
+  assert.deepEqual(
+    projectors.map((p) => p.rel),
+    ['Qwen3-VL-8B-GGUF/mmproj-F16.gguf', 'Qwen3-VL-8B-GGUF/Qwen3-VL-8B.mmproj-f16.gguf'],
+  )
+  assert.equal(projectors[0].size, 40)
+  assert.equal(projectors[0].dir, 'Qwen3-VL-8B-GGUF')
+  assert.equal(projectors[0].file, 'mmproj-F16.gguf')
+})
+
 test('the cache is bypassed by force and honoured otherwise', async () => {
   const root = tmpRoot()
   write(root, 'a.gguf')

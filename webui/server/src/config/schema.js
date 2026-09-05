@@ -51,6 +51,8 @@ export const profileSchema = z.object({
   name: z.string().regex(NAME_RE),
   image: z.string().min(1),
   modelPath: z.string().min(1),
+  /** Vision projector for a multimodal model; '' means an ordinary text model. */
+  mmprojPath: z.string().default(''),
   port,
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),

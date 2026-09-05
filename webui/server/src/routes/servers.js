@@ -28,6 +28,7 @@ const specSchema = z.object({
   name: z.string().regex(NAME_RE),
   image: z.string().min(1),
   modelPath: z.string().min(1),
+  mmprojPath: z.string().max(1000).optional(),
   port: z.number().int().min(PORT_MIN).max(PORT_MAX),
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),

@@ -35,11 +35,18 @@ const QUANT_BODY =
 
 const QUANT_RE = new RegExp(`(?:^|[-_.])(${QUANT_BODY})(?=$|[-_.])`, 'gi')
 
-/** Multimodal projectors accompany a vision model; they are not models. */
-const PROJECTOR_RE = /(^|\/)mmproj/i
+/**
+ * Multimodal projectors accompany a vision model; they are not models.
+ *
+ * Matched against the file name only, so a folder called `mmproj-files/` does
+ * not turn the weights inside it into projectors. Both conventions in the wild
+ * are covered: `mmproj-F16.gguf` and `Qwen3-VL-8B.mmproj-f16.gguf`.
+ */
+const PROJECTOR_RE = /mmproj/i
 
 export function isProjector(path) {
-  return PROJECTOR_RE.test(String(path ?? ''))
+  const file = String(path ?? '').split('/').pop() ?? ''
+  return PROJECTOR_RE.test(file)
 }
 
 /** Strip directory, `.gguf` and any shard suffix. */
@@ -141,4 +148,42 @@ export function groupByQuant(files) {
 function baseNameWithShard(path) {
   const file = String(path ?? '').split('/').pop() ?? ''
   return file.replace(/\.gguf$/i, '')
+}
+
+/**
+ * The projector that belongs to a model, or null.
+ *
+ * Vision repositories put the projector either next to the weights
+ * (`Qwen3-VL-8B-GGUF/mmproj-F16.gguf` beside `…/Qwen3-VL-8B-Q8_0.gguf`) or one
+ * level up, because large quants get their own shard folder
+ * (`Qwen3-VL-8B-GGUF/mmproj-F16.gguf` above `…/BF16/model-00001-of-00002.gguf`).
+ * Both layouts are what the download dialog produces, so both are searched —
+ * nearest directory first.
+ *
+ * Only ever a suggestion: several projector precisions may sit side by side and
+ * the caller can override the pick. When the choice is ambiguous the first by
+ * name wins, which puts `mmproj-BF16` before `mmproj-F16` — deterministic
+ * rather than clever, since the UI shows what was chosen.
+ *
+ * @param {string} modelPath model file, relative to the models directory
+ * @param {{rel: string}[]} projectors every projector found on disk
+ * @returns {string|null} the projector's path, or null when none fits
+ */
+export function projectorFor(modelPath, projectors) {
+  const path = String(modelPath ?? '')
+  if (!path || !Array.isArray(projectors) || projectors.length === 0) return null
+
+  const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+  const parent = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : ''
+
+  const dirOf = (rel) => (rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '')
+  const inDir = (target) =>
+    projectors
+      .map((p) => p.rel)
+      .filter((rel) => dirOf(rel) === target)
+      .sort((a, b) => a.localeCompare(b))[0] ?? null
+
+  // The parent lookup only makes sense below the top level: at depth 0 every
+  // projector in the models root would attach itself to every loose model.
+  return inDir(dir) ?? (dir ? inDir(parent) : null)
 }

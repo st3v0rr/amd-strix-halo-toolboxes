@@ -5,6 +5,7 @@ import { del, get, post, put } from '../api/client.js'
 import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog, Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
+import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { shortImage } from '../components/format.js'
 
@@ -14,6 +15,7 @@ const EMPTY = {
   name: '',
   image: `${IMAGE_REPO}:vulkan-radv`,
   modelPath: '',
+  mmprojPath: '',
   port: 11434,
   ctxSize: 65536,
   gpuLayers: 999,
@@ -91,6 +93,15 @@ export function Profiles() {
                     <span className="truncate" style={{ display: 'block' }} title={profile.modelPath}>
                       {profile.modelPath}
                     </span>
+                    {profile.mmprojPath ? (
+                      <span
+                        className="truncate faint"
+                        style={{ display: 'block' }}
+                        title={profile.mmprojPath}
+                      >
+                        + {profile.mmprojPath}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="small">{shortImage(profile.image)}</td>
                   <td className="small mono">{profile.port}</td>
@@ -215,6 +226,12 @@ function ProfileDialog({ profile, onClose, onSaved }) {
           <ModelPicker value={form.modelPath} onChange={(modelPath) => setForm((f) => ({ ...f, modelPath }))} />
           {form.modelPath ? <p className="small mono faint">{form.modelPath}</p> : null}
         </div>
+
+        <ProjectorPicker
+          modelPath={form.modelPath}
+          value={form.mmprojPath}
+          onChange={(mmprojPath) => setForm((f) => ({ ...f, mmprojPath }))}
+        />
 
         <div className="form-grid">
           <div className="field">

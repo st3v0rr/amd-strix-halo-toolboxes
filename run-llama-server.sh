@@ -7,6 +7,7 @@ CTX_SIZE=65536
 GPU_LAYERS=999
 THREADS=12
 MODEL_PATH=""
+MMPROJ_PATH=""
 API_KEY=""
 IMAGE="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv"
 MODELS_DIR="./models"
@@ -37,6 +38,10 @@ Options:
     --gpu-layers NUM    Anzahl GPU Layers (default: $GPU_LAYERS)
     --threads NUM       Anzahl Threads (default: $THREADS)
     --name NAME         Container Name (default: $CONTAINER_NAME)
+    --mmproj PFAD       Vision-Projektor (mmproj-*.gguf) fuer multimodale
+                        Modelle, relativ zum Modellverzeichnis. Ohne ihn
+                        laedt ein Vision-Modell zwar, nimmt aber keine
+                        Bilder an.
     --models-dir DIR    Modellverzeichnis auf dem Host (default: $MODELS_DIR)
     --extra-args ARGS   Zusaetzliche llama-server-Argumente. Ohne Angabe
                         ermittelt das Script am Image, ob
@@ -81,6 +86,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --model)
             MODEL_PATH="$2"
+            shift 2
+            ;;
+        --mmproj)
+            MMPROJ_PATH="$2"
             shift 2
             ;;
         --api-key)
@@ -168,6 +177,22 @@ fi
 # Vollstaendiger Modell-Pfad im Container
 FULL_MODEL_PATH="/workspace/models/${REL_MODEL_PATH}"
 
+# Vision-Projektor, falls angegeben: dieselbe Normalisierung und dieselbe
+# Existenzpruefung wie beim Modell. Ein fehlender Projektor faellt sonst erst
+# beim ersten Bild auf, und zwar als wenig aussagekraeftiger Serverfehler.
+MMPROJ_ARGS=()
+if [ -n "$MMPROJ_PATH" ]; then
+    REL_MMPROJ_PATH="${MMPROJ_PATH#models/}"
+    REL_MMPROJ_PATH="${REL_MMPROJ_PATH#/}"
+    if [ ! -f "${MODELS_DIR}/${REL_MMPROJ_PATH}" ]; then
+        echo "Fehler: Projektor nicht gefunden: ${MODELS_DIR}/${REL_MMPROJ_PATH}"
+        echo "Der Pfad wird relativ zu '${MODELS_DIR}' aufgeloest."
+        exit 1
+    fi
+    FULL_MMPROJ_PATH="/workspace/models/${REL_MMPROJ_PATH}"
+    MMPROJ_ARGS=(--mmproj "$FULL_MMPROJ_PATH")
+fi
+
 # Passende Schreibweise fuer Flash Attention / mmap am Image ermitteln, falls
 # nicht per --extra-args vorgegeben. Kostet einen kurzen Container-Start ohne
 # GPU-Zugriff. Schlaegt die Erkennung fehl, gilt die alte Schreibweise: die
@@ -199,6 +224,9 @@ echo "  Container Name: $CONTAINER_NAME"
 echo "  Image:          $IMAGE"
 echo "  Model (Host):   ${MODELS_DIR}/${REL_MODEL_PATH}"
 echo "  Model (Cont.):  $FULL_MODEL_PATH"
+if [ -n "$MMPROJ_PATH" ]; then
+    echo "  Projektor:      $FULL_MMPROJ_PATH"
+fi
 echo "  Port:           ${PORT} -> 11434"
 echo "  Context Size:   $CTX_SIZE"
 echo "  GPU Layers:     $GPU_LAYERS"
@@ -233,6 +261,7 @@ podman run -d \
     --n-gpu-layers "$GPU_LAYERS" \
     --threads "$THREADS" \
     --api-key "$API_KEY" \
+    "${MMPROJ_ARGS[@]}" \
     $EXTRA_ARGS
 
 if [ $? -eq 0 ]; then

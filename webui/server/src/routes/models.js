@@ -70,17 +70,27 @@ export function modelRoutes(ctx) {
   router.delete('/', validate({ query: deleteQuery }), async (req, res, next) => {
     try {
       const { key, force } = q(req)
-      const { groups } = await scanModels(modelsDir(), { force: true })
-      const group = groups.find((g) => g.key === key)
+      const { groups, projectors } = await scanModels(modelsDir(), { force: true })
+      // A projector is keyed by its path and is always a single file, so it
+      // takes the same shape as a one-file group and the rest of this handler
+      // needs no special case.
+      const projector = projectors.find((p) => p.rel === key)
+      const group =
+        groups.find((g) => g.key === key) ??
+        (projector ? { files: [projector.rel], dir: projector.dir } : null)
       if (!group) throw notFound(`Kein Modell mit dem Schlüssel '${key}'.`)
 
       // Deleting a model out from under a running server would leave it in a
       // restart loop, so refuse unless the caller explicitly asks us to stop it.
+      // A projector counts as in use the same way — pulling it out from under a
+      // vision server breaks it on the next restart.
       const servers = await listServers()
-      const users = servers.filter((s) => group.files.includes(s.modelPath))
+      const users = servers.filter(
+        (s) => group.files.includes(s.modelPath) || group.files.includes(s.mmprojPath),
+      )
       if (users.length && !force) {
         throw conflict(
-          `Das Modell wird von ${users.map((s) => `'${s.name}'`).join(', ')} verwendet.`,
+          `Die Datei wird von ${users.map((s) => `'${s.name}'`).join(', ')} verwendet.`,
           { servers: users.map((s) => s.name) },
         )
       }

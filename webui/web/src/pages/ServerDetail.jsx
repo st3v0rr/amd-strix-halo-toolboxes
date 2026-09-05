@@ -130,6 +130,12 @@ export function ServerDetail() {
                   <dd>{s.modelPath ?? '–'}</dd>
                 </>
               )}
+              {s.mmprojPath ? (
+                <>
+                  <dt>Vision-Projektor</dt>
+                  <dd>{s.mmprojPath}</dd>
+                </>
+              ) : null}
               <dt>Image</dt>
               <dd>{s.image ?? '–'}</dd>
               <dt>Host-Port</dt>

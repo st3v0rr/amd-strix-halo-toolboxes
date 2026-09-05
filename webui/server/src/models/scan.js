@@ -2,6 +2,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 
 import { SHARD_RE } from '../../../shared/constants.js'
+import { isProjector } from '../../../shared/quant.js'
 
 const MAX_DEPTH = 6
 const SKIP_DIRS = new Set(['.cache', '.git', '.locks', 'node_modules'])
@@ -15,6 +16,10 @@ let cache = { at: 0, dir: null, value: null }
  * Shards matter: llama.cpp is handed only `*-00001-of-000NN.gguf` and finds the
  * rest itself, so presenting five files where the user has one model would be
  * both noisy and misleading about what is startable.
+ *
+ * Multimodal projectors are split off into `projectors` for the same reason in
+ * reverse: they look like models but cannot be started, and belong on
+ * `--mmproj` next to the vision model they ship with.
  */
 export async function scanModels(modelsDir, { force = false } = {}) {
   if (!force && cache.value && cache.dir === modelsDir && Date.now() - cache.at < CACHE_MS) {
@@ -23,6 +28,8 @@ export async function scanModels(modelsDir, { force = false } = {}) {
 
   /** @type {{rel: string, dir: string, file: string, size: number, mtime: string}[]} */
   const files = []
+  /** @type {{rel: string, dir: string, file: string, size: number, mtime: string}[]} */
+  const projectors = []
   /** @type {{rel: string, size: number}[]} */
   const partials = []
   let unreadable = null
@@ -88,13 +95,17 @@ export async function scanModels(modelsDir, { force = false } = {}) {
 
       try {
         const stat = await fsp.stat(abs)
-        files.push({
+        const found = {
           rel,
           dir: relDir,
           file: name,
           size: stat.size,
           mtime: stat.mtime.toISOString(),
-        })
+        }
+        // A projector is not startable on its own, so it must not reach the
+        // model list — it would be offered for `-m`, where it fails to load.
+        if (isProjector(name)) projectors.push(found)
+        else files.push(found)
       } catch {
         /* vanished mid-scan */
       }
@@ -103,7 +114,12 @@ export async function scanModels(modelsDir, { force = false } = {}) {
 
   await walk(path.resolve(modelsDir), '', 0)
 
-  const value = { groups: groupShards(files), partials, unreadable }
+  const value = {
+    groups: groupShards(files),
+    projectors: projectors.sort((a, b) => a.rel.localeCompare(b.rel)),
+    partials,
+    unreadable,
+  }
   cache = { at: Date.now(), dir: modelsDir, value }
   return value
 }

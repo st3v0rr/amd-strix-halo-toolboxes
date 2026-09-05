@@ -31,6 +31,7 @@ export const LABEL = {
   threads: 'shx.threads',
   port: 'shx.port',
   extraArgs: 'shx.extra-args',
+  mmproj: 'shx.mmproj',
   rpcPeers: 'shx.rpc-peers',
   created: 'shx.created',
 }
