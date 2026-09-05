@@ -16,31 +16,22 @@ with `llama-server` as the container entrypoint instead of a shell. Upstream
 builds `vulkan-radv` and `rocm-10.0`; `rocm-7.14` is kept here after upstream
 replaced it.
 
-> **Prefer a browser?** [`webui/`](webui/README.md) does everything on this page —
-> pulling images, downloading models, starting and stopping servers, live logs —
-> from a JWT-protected web interface that autostarts with the machine.
-> Install it with `cd webui && ./install.sh`.
+> **This is the manual path.** [`webui/`](webui/README.md) does everything on
+> this page — pulling images, downloading models, starting and stopping servers,
+> live logs — from a JWT-protected web interface that autostarts with the
+> machine, and it is how the box is normally run. Install it with
+> `cd webui && ./install.sh`.
+>
+> `run-llama-server.sh` stays regardless of whether you use it: `npm run
+> test:parity` in `webui/` runs this very script against a fake podman and
+> diffs its arguments against the ones the web interface builds. It is the
+> independent reference that keeps the two honest.
 
 > The retired tags `rocm-7.1.1`, `rocm-7.2`, `rocm7-nightlies`, `rocm-6.4.4` and
 > `vulkan-amdvlk` are no longer built. Existing images stay on Docker Hub but
 > receive no new llama.cpp builds — use `rocm-10.0` or `vulkan-radv` instead.
 
 ## Pulling Images
-
-### Using the refresh script (for Podman Toolbox)
-
-Refresh all toolboxes:
-```bash
-./refresh-toolboxes-llama-server.sh all
-```
-
-Refresh specific toolboxes:
-```bash
-./refresh-toolboxes-llama-server.sh llama-rocm-10.0
-./refresh-toolboxes-llama-server.sh llama-vulkan-radv llama-rocm-10.0
-```
-
-### Using Docker/Podman directly
 
 Pull a specific image:
 ```bash
@@ -106,6 +97,23 @@ docker run -it --rm \
   -p 11434:11434 \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
 ```
+
+## Looking inside an image
+
+The refresh scripts that turned these into Toolbx containers are gone — the web
+interface manages the containers, and for a one-off look a throwaway container
+is less ceremony:
+
+```bash
+podman run --rm -it \
+  --device /dev/dri --device /dev/kfd \
+  --group-add video --group-add render \
+  --security-opt seccomp=unconfined \
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0 bash
+```
+
+`llama-cli`, `llama-bench` and `gguf-vram-estimator.py` are all on the PATH in
+there.
 
 ## Running with Custom Model
 
