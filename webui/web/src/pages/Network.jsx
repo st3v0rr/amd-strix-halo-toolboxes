@@ -8,6 +8,9 @@ import { ConfirmDialog, Modal } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes } from '../components/format.js'
 
+/** Services on these ports have no authentication at all. */
+const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
+
 const KIND_LABEL = {
   thunderbolt: 'USB4/TB',
   ethernet: 'LAN',
@@ -144,7 +147,7 @@ export function Network() {
                 ? 'Freigabe entfernen'
                 : 'Port schließen'
           }
-          danger={pending.action === 'open' && pending.kind === 'rpc'}
+          danger={pending.action === 'open' && UNAUTHENTICATED.has(pending.kind)}
           confirmLabel={pending.action === 'open' ? 'Öffnen' : 'Entfernen'}
           busy={busy}
           message={
@@ -158,7 +161,7 @@ export function Network() {
               {pending.action === 'open' ? (
                 <>
                   <p className="small muted">{pending.detail}</p>
-                  {pending.kind === 'rpc' ? (
+                  {UNAUTHENTICATED.has(pending.kind) ? (
                     <p className="small">
                       Für diesen Port ist eine Freigabe <strong>nur für eine Quelle</strong> die
                       bessere Wahl — dafür gibt es den Knopf „Nur für Quelle“.
@@ -400,7 +403,7 @@ function Firewall({ firewall, ports, others, otherRules, busy, onOpen, onClose, 
                   </td>
                   <td className="small">
                     {port.purpose}
-                    {port.kind === 'rpc' ? (
+                    {UNAUTHENTICATED.has(port.kind) ? (
                       <span className="badge badge-warn" style={{ marginLeft: 8 }}>
                         ohne Authentifizierung
                       </span>

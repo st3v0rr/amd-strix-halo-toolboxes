@@ -164,9 +164,10 @@ Detailseite führt **Oberfläche öffnen** zur ComfyUI-Weboberfläche.
 
 > [!WARNING]
 > ComfyUI hat **keine Anmeldung**. Wer den Port erreicht, kann Workflows
-> ausführen und Dateien auf der Box lesen und schreiben. Behandle ihn wie den
-> RPC-Port: nur im vertrauten Netz freigeben, siehe [Netzwerk und
-> Firewall](#netzwerk-und-firewall).
+> ausführen und Dateien auf der Box lesen und schreiben. Auf der Netzwerk-Seite
+> steht Port 8000 deshalb mit derselben Warnung wie der RPC-Port und ist auch
+> ohne laufenden Container aufgeführt — gib ihn nur für eine Quelle frei, siehe
+> [Netzwerk und Firewall](#netzwerk-und-firewall).
 
 Zwei Dinge unterscheiden das Fork-Image vom Original, beide nötig für den
 Serverbetrieb:
