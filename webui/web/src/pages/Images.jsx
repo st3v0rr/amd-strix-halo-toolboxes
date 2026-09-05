@@ -73,7 +73,16 @@ export function Images() {
           {list.map((image) => (
             <section className="card stack-sm" key={image.ref}>
               <div className="row-between">
-                <h2>{image.tag}</h2>
+                <h2>
+                  {image.tag}
+                  {/* Both kinds share one DockerHub repository but are unrelated
+                      software, so the card says which is which. */}
+                  {image.kind === 'comfy' ? (
+                    <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
+                      ComfyUI
+                    </span>
+                  ) : null}
+                </h2>
                 {image.updateAvailable ? (
                   <span className="badge badge-info">Update verfügbar</span>
                 ) : image.installed ? (

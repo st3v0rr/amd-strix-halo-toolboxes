@@ -34,12 +34,25 @@ test('converts the CI build stamp to ISO 8601', () => {
 
 /* -------------------------------- catalog -------------------------------- */
 
-test('the catalog is derived from the Dockerfile directory', () => {
+test('the catalog is derived from the Dockerfile directories', () => {
   const tags = knownTags()
-  // These three are the backends the repository builds.
+  const names = tags.map((t) => t.tag)
+  // The llama-server backends this repository builds …
   for (const expected of ['vulkan-radv', 'rocm-7.14', 'rocm-10.0']) {
-    assert.ok(tags.includes(expected), `expected tag ${expected} in ${tags.join(', ')}`)
+    assert.ok(names.includes(expected), `expected tag ${expected} in ${names.join(', ')}`)
+    assert.equal(tags.find((t) => t.tag === expected).kind, 'llama')
   }
+  // … and ComfyUI, which lives in its own directory. Without it the images
+  // page cannot pull, re-pull or remove that image at all.
+  assert.ok(names.includes('comfyui'))
+  assert.equal(tags.find((t) => t.tag === 'comfyui').kind, 'comfy')
+})
+
+test('ComfyUI is not offered as a llama-server backend', () => {
+  // Both kinds share a DockerHub repository but nothing else. The start dialog
+  // for a llama server must never list the ComfyUI image.
+  const llama = catalog().filter((e) => e.kind === 'llama').map((e) => e.tag)
+  assert.equal(llama.includes('comfyui'), false)
 })
 
 test('every catalog entry carries a full image reference', () => {

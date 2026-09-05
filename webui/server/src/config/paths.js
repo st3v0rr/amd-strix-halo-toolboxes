@@ -72,8 +72,14 @@ export const vramEstimator = path.join(
   'gguf-vram-estimator.py',
 )
 
-/** Directory whose `Dockerfile.<tag>` entries define the known image tags. */
+/**
+ * Directories whose `Dockerfile.<tag>` entries define the known image tags.
+ *
+ * Both publish into the same DockerHub repository, so one tag listing still
+ * covers all of them when checking for updates.
+ */
 export const dockerfileDir = path.join(repoRoot, 'toolboxes_llama_server')
+export const comfyDockerfileDir = path.join(repoRoot, 'toolboxes_comfyui')
 
 /**
  * Root of the sysfs tree to read GPU metrics from (swappable for dev fixtures).
