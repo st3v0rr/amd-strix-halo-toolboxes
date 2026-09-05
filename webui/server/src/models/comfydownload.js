@@ -78,9 +78,18 @@ function runComfyDownload({ appendLog, setMessage, onCancel, signal }, params) {
 
     setMessage(`Lade ${entry.label} …`)
 
+    // The scripts have no machine-readable progress — they shell out to `hf`
+    // per file — but they do announce each step. Surfacing those lines as the
+    // job's message turns an otherwise blank bar into "which file are we on".
+    const step = (line) => {
+      appendLog(line)
+      const t = line.trim()
+      if (t.startsWith('==>') || t.startsWith('✓')) setMessage(t.replace(/^==>\s*/, ''))
+    }
+
     const child = stream('podman', argv, {
-      onStdout: (line) => appendLog(line),
-      onStderr: (line) => appendLog(line),
+      onStdout: step,
+      onStderr: step,
       onExit: (code) => {
         invalidateComfyModelCache()
         if (signal?.aborted) {

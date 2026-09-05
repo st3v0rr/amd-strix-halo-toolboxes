@@ -83,7 +83,7 @@ export function ComfyModels() {
         </div>
       ) : null}
 
-      <ModelDownloadQueue />
+      <ModelDownloadQueue type="comfy-model-download" invalidate={['comfy-models']} />
 
       {models.isError ? (
         <div className="alert alert-danger">{models.error.message}</div>
