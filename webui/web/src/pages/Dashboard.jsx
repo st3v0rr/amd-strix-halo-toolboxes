@@ -20,6 +20,22 @@ const NET_KIND = {
   other: { label: 'sonstige', color: 'var(--info)' },
 }
 
+/** Interface kinds where a missing carrier really does mean an unplugged cable. */
+const CABLED = new Set(['ethernet', 'thunderbolt', 'usb'])
+
+/**
+ * What a link's state says in words.
+ *
+ * A missing carrier is "kein Kabel" only where there is a cable to miss. On
+ * Wi-Fi it means the radio is not associated with an access point, and on
+ * anything else we cannot say what the cause is — so both read as plainly
+ * disconnected.
+ */
+function carrierLabel(iface) {
+  if (iface.carrier !== false) return iface.operstate ?? '–'
+  return CABLED.has(iface.kind) ? 'kein Kabel' : 'nicht verbunden'
+}
+
 export function Dashboard() {
   const [history, setHistory] = useState([])
   const [latest, setLatest] = useState(null)
@@ -288,7 +304,7 @@ function NetworkRow({ iface, history }) {
         {iface.operstate === 'up' ? (
           <span>{formatLinkSpeed(iface.speedMbit) ?? 'verbunden'}</span>
         ) : (
-          <span className="faint">{iface.carrier === false ? 'kein Kabel' : (iface.operstate ?? '–')}</span>
+          <span className="faint">{carrierLabel(iface)}</span>
         )}
         {iface.lanes ? (
           <div className="small faint">

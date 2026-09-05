@@ -144,7 +144,9 @@ async function requiredPorts(ctx, firewall) {
       existing.detail = entry.detail
     }
   }
-  return [...merged.values()]
+  // Ascending by port: the list is read to find a number, and insertion order
+  // put the standing entries last however small their port.
+  return [...merged.values()].sort((a, b) => a.port - b.port || a.protocol.localeCompare(b.protocol))
 }
 
 export function networkRoutes(ctx) {
