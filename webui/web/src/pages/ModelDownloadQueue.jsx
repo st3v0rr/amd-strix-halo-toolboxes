@@ -8,8 +8,6 @@ import { JobProgress } from '../components/JobProgress.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatDuration } from '../components/format.js'
 
-const QUEUE_KEY = ['jobs', 'model-download']
-const PATH = `/jobs${qs({ type: 'model-download' })}`
 
 const LABEL = {
   queued: 'Wartet',
@@ -36,15 +34,24 @@ const BADGE = {
  * it: closing that dialog left a multi-hour download with nowhere to look. The
  * table is fed by one SSE stream for all jobs rather than one per row, and it is
  * also the only place from which an interrupted download can be picked back up.
+ *
+ * The job type is a parameter because the GGUF page and the ComfyUI page each
+ * show only their own downloads — they write to different directories and mean
+ * different things, so mixing them in one table would be misleading.
+ *
+ * @param {object} props
+ * @param {string} [props.type] job type to list
+ * @param {string[]} [props.invalidate] query key to refetch when one finishes
  */
-export function ModelDownloadQueue() {
+export function ModelDownloadQueue({ type = 'model-download', invalidate = ['models'] }) {
   const toast = useToast()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(null)
 
-  const jobs = useQuery({ queryKey: QUEUE_KEY, queryFn: () => get(PATH) })
+  const QUEUE_KEY = ['jobs', type]
+  const jobs = useQuery({ queryKey: QUEUE_KEY, queryFn: () => get(`/jobs${qs({ type })}`) })
 
-  useEventStream(`/jobs/events${qs({ type: 'model-download' })}`, {
+  useEventStream(`/jobs/events${qs({ type })}`, {
     job: (job) => {
       const list = queryClient.getQueryData(QUEUE_KEY)?.jobs ?? []
       const known = list.find((j) => j.id === job.id)
@@ -58,7 +65,7 @@ export function ModelDownloadQueue() {
       if (!known || known.status === job.status) return
       if (job.status === 'done') {
         toast.success(`${job.meta?.repo ?? job.title} ist geladen.`)
-        queryClient.invalidateQueries({ queryKey: ['models'] })
+        queryClient.invalidateQueries({ queryKey: invalidate })
       }
       if (job.status === 'failed') toast.error(job.error ?? `${job.title} fehlgeschlagen.`)
     },
