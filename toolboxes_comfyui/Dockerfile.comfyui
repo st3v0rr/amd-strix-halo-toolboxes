@@ -6,8 +6,9 @@
 # is upstream's, verbatim, so a diff against their file shows exactly what this
 # fork does differently and nothing else.
 #
-# It needs their build context — scripts/ and workflows/ — so build it with
-# ./build.sh, which fetches the matching revision first.
+# Their build context — scripts/ and workflows/ — sits next to this file, copied
+# into the fork so the image builds without their repository. See UPSTREAM.md
+# for the revision and how to bring it forward.
 
 FROM registry.fedoraproject.org/fedora:rawhide
 

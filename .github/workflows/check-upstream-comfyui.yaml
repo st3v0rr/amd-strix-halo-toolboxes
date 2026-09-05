@@ -1,0 +1,57 @@
+name: Check ComfyUI Upstream
+
+# The ComfyUI build context lives in toolboxes_comfyui/ and the image builds
+# without anyone else's repository — see toolboxes_comfyui/UPSTREAM.md. So there
+# is nothing to poll for and nothing to trigger.
+#
+# What is still worth knowing is whether the copies have fallen behind. This
+# reports that once a week and changes nothing; bringing them forward is a
+# deliberate act, done with toolboxes_comfyui/sync-upstream.sh.
+
+on:
+  schedule:
+    - cron: '30 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Compare vendored files against upstream
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          OUT=$(toolboxes_comfyui/sync-upstream.sh --check 2>&1)
+          CODE=$?
+          echo "$OUT"
+
+          {
+            echo "## ComfyUI-Vorlage"
+            echo ""
+            echo '```'
+            echo "$OUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case $CODE in
+            0)
+              echo "✅ Auf Stand."
+              ;;
+            2)
+              # The whole point of vendoring: this is news, not a failure.
+              echo "ℹ️ Das Ursprungsrepository ist nicht erreichbar." >> "$GITHUB_STEP_SUMMARY"
+              echo "ℹ️ Nicht erreichbar — der Build ist davon unabhängig."
+              ;;
+            *)
+              echo "⚠️ Abweichungen gefunden — mit sync-upstream.sh nachziehen." >> "$GITHUB_STEP_SUMMARY"
+              echo "⚠️ Abweichungen gefunden."
+              exit 1
+              ;;
+          esac
