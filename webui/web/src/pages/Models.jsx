@@ -47,6 +47,7 @@ export function Models() {
 
   const data = models.data
   const groups = data?.groups ?? []
+  const projectors = data?.projectors ?? []
 
   return (
     <>
@@ -65,8 +66,12 @@ export function Models() {
       {data?.disk?.freeBytes != null ? (
         <p className="small faint">
           {formatBytes(data.disk.freeBytes)} von {formatBytes(data.disk.totalBytes)} frei ·{' '}
-          {groups.length} Modell(e), zusammen{' '}
-          {formatBytes(groups.reduce((sum, g) => sum + g.totalBytes, 0))}
+          {groups.length} Modell(e)
+          {projectors.length ? ` und ${projectors.length} Projektor(en)` : ''}, zusammen{' '}
+          {formatBytes(
+            groups.reduce((sum, g) => sum + g.totalBytes, 0) +
+              projectors.reduce((sum, p) => sum + p.size, 0),
+          )}
         </p>
       ) : null}
 
@@ -150,6 +155,59 @@ export function Models() {
           </table>
         </div>
       )}
+
+      {projectors.length ? (
+        <div className="card table-wrap">
+          <div className="card-head">
+            <h2>Vision-Projektoren</h2>
+          </div>
+          <p className="small faint" style={{ padding: '0 1rem' }}>
+            Gehören zu einem multimodalen Modell und werden beim Serverstart als{' '}
+            <code>--mmproj</code> mitgegeben. Allein startbar sind sie nicht.
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Datei</th>
+                <th>Ordner</th>
+                <th className="right">Größe</th>
+                <th>Geändert</th>
+                <th aria-label="Aktionen" />
+              </tr>
+            </thead>
+            <tbody>
+              {projectors.map((p) => (
+                <tr key={p.rel}>
+                  <td><strong>{p.file}</strong></td>
+                  <td className="small mono faint" style={{ maxWidth: 260 }}>
+                    <span className="truncate" style={{ display: 'block' }} title={p.dir}>
+                      {p.dir || '.'}
+                    </span>
+                  </td>
+                  <td className="right mono small nowrap">{formatBytes(p.size)}</td>
+                  <td className="small faint nowrap">{formatDate(p.mtime)}</td>
+                  <td>
+                    <div className="row" style={{ justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() =>
+                          setPendingDelete({
+                            key: p.rel,
+                            group: { name: p.file, files: [p.rel], totalBytes: p.size },
+                          })
+                        }
+                      >
+                        Löschen
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {downloading ? <ModelDownloadDialog onClose={() => setDownloading(false)} /> : null}
 

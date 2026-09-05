@@ -230,7 +230,21 @@ export async function validateSpec(ctx, spec, { ignoreName } = {}) {
     )
   }
 
-  return { rel, hostPath, port }
+  // A vision model's projector gets the same treatment. Checking it here rather
+  // than letting llama-server fail matters more than for the model itself: a
+  // missing projector does not stop the server, it just makes every image
+  // request fail later with nothing pointing at the cause.
+  let mmprojRel = ''
+  if (spec.mmprojPath) {
+    mmprojRel = normalizeModelPath(spec.mmprojPath)
+    safeResolve(settings.modelsDir, mmprojRel)
+    const mmprojHostPath = hostModelPath(settings.modelsDir, mmprojRel)
+    if (!fs.existsSync(mmprojHostPath)) {
+      throw failedDependency(`Projektor nicht gefunden: ${mmprojHostPath}.`)
+    }
+  }
+
+  return { rel, mmprojRel, hostPath, port }
 }
 
 /**
@@ -284,7 +298,9 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     )
   }
 
-  const { rel } = await validateSpec(ctx, spec, { ignoreName: exists ? spec.name : undefined })
+  const { rel, mmprojRel } = await validateSpec(ctx, spec, {
+    ignoreName: exists ? spec.name : undefined,
+  })
 
   // A cluster run reaches out to other machines. Check them before we start,
   // because llama-server exits when a peer refuses — and `--restart
@@ -332,6 +348,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     role: ROLE.server,
     profileId: spec.profileId,
     modelPath: rel,
+    mmprojPath: mmprojRel,
     image: spec.image,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
@@ -347,6 +364,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     hostPort: spec.port,
     modelsDir: settings.modelsDir,
     modelPath: rel,
+    mmprojPath: mmprojRel,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
     threads: spec.threads,
@@ -360,7 +378,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   const id = await runContainer(argv)
   log.info(`Server '${spec.name}' gestartet (${id.slice(0, 12)})`)
 
-  return { name: spec.name, id, apiKey, extraArgs, rpcPeers }
+  return { name: spec.name, id, apiKey, extraArgs, mmprojPath: mmprojRel, rpcPeers }
 }
 
 /**

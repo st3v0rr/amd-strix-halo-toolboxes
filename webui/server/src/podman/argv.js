@@ -49,6 +49,7 @@ export function splitExtraArgs(extraArgs) {
  * @param {number} spec.hostPort
  * @param {string} spec.modelsDir absolute host path
  * @param {string} spec.modelPath relative to modelsDir (a leading `models/` is tolerated)
+ * @param {string} [spec.mmprojPath] vision projector, relative to modelsDir
  * @param {number} spec.ctxSize
  * @param {number} spec.gpuLayers
  * @param {number} spec.threads
@@ -65,6 +66,7 @@ export function buildRunArgv(spec) {
     hostPort,
     modelsDir,
     modelPath,
+    mmprojPath = '',
     ctxSize,
     gpuLayers,
     threads,
@@ -76,6 +78,7 @@ export function buildRunArgv(spec) {
 
   const rel = normalizeModelPath(modelPath)
   const containerModelPath = `${CONTAINER_MODELS_DIR}/${rel}`
+  const mmprojRel = normalizeModelPath(mmprojPath)
 
   const argv = [
     'run',
@@ -125,6 +128,11 @@ export function buildRunArgv(spec) {
     '--api-key',
     apiKey,
   )
+
+  // A vision model needs its projector alongside the weights; without it
+  // llama-server loads but silently refuses every image. Emitted right after
+  // the model so the two always read together in `podman inspect`.
+  if (mmprojRel) argv.push('--mmproj', `${CONTAINER_MODELS_DIR}/${mmprojRel}`)
 
   // Only emitted for a cluster run. Without peers the argv must stay byte-for-byte
   // what run-llama-server.sh produces, which is what dev/parity checks.

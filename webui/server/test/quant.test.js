@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { detectQuant, groupByQuant, isProjector } from '../../shared/quant.js'
+import { detectQuant, groupByQuant, isProjector, projectorFor } from '../../shared/quant.js'
 
 /** Verbatim listing of unsloth/Qwen3.5-35B-A3B-MTP-GGUF — 22 quants flat in
  *  the root, one shard set in a folder, three projectors. */
@@ -71,6 +71,53 @@ test('recognises multimodal projectors', () => {
   assert.equal(isProjector('mmproj-F16.gguf'), true)
   assert.equal(isProjector('BF16/mmproj-BF16.gguf'), true)
   assert.equal(isProjector('model-Q8_0.gguf'), false)
+  // The other convention in the wild puts the marker inside the name.
+  assert.equal(isProjector('Qwen3-VL-8B.mmproj-f16.gguf'), true)
+  // Only the file name counts, so a folder cannot reclassify real weights.
+  assert.equal(isProjector('mmproj-files/Qwen3-VL-8B-Q8_0.gguf'), false)
+})
+
+/* ------------------------------ projectorFor ------------------------------ */
+
+const PROJECTORS = [
+  { rel: 'Qwen3-VL-8B-GGUF/mmproj-BF16.gguf' },
+  { rel: 'Qwen3-VL-8B-GGUF/mmproj-F16.gguf' },
+  { rel: 'Other-VL-GGUF/mmproj-F16.gguf' },
+]
+
+test('a projector next to the model is picked', () => {
+  assert.equal(
+    projectorFor('Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf', PROJECTORS),
+    'Qwen3-VL-8B-GGUF/mmproj-BF16.gguf',
+  )
+})
+
+test('a large quant in its own shard folder still finds the projector above it', () => {
+  assert.equal(
+    projectorFor('Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00001-of-00002.gguf', PROJECTORS),
+    'Qwen3-VL-8B-GGUF/mmproj-BF16.gguf',
+  )
+})
+
+test('a text model gets no projector', () => {
+  assert.equal(projectorFor('Qwen3.6-27B-GGUF/Qwen3.6-27B-Q8_0.gguf', PROJECTORS), null)
+})
+
+test('a projector two levels up does not reach down', () => {
+  assert.equal(projectorFor('Qwen3-VL-8B-GGUF/BF16/deeper/x.gguf', PROJECTORS), null)
+})
+
+test('a model loose in the models root only sees a projector loose beside it', () => {
+  assert.equal(projectorFor('loose.gguf', [{ rel: 'mmproj-F16.gguf' }]), 'mmproj-F16.gguf')
+  // Nothing in the root may attach itself to a model inside a folder's parent,
+  // which for a depth-1 model would be the root itself.
+  assert.equal(projectorFor('Some-GGUF/model.gguf', [{ rel: 'mmproj-F16.gguf' }]), 'mmproj-F16.gguf')
+})
+
+test('missing or empty input yields null rather than throwing', () => {
+  assert.equal(projectorFor('', PROJECTORS), null)
+  assert.equal(projectorFor('a/b.gguf', []), null)
+  assert.equal(projectorFor('a/b.gguf', null), null)
 })
 
 /* ------------------------------ grouping ------------------------------ */

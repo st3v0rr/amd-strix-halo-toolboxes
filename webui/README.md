@@ -88,6 +88,21 @@ Modell-Liste. Der Fortschritt hängt nicht am Browser: Die Seite darf geschlosse
 werden, der Download läuft auf der Box weiter, und ein Dienstneustart macht aus
 ihm einen Eintrag „Unterbrochen“ statt eines verlorenen Downloads.
 
+### Vision-Modelle
+
+Multimodale Modelle brauchen neben den Gewichten einen Projektor
+(`mmproj-*.gguf`). Beim Download eines Vision-Repos ist er einfach mit
+auszuwählen; er landet neben der Quantisierung im selben Ordner.
+
+Auf der Modell-Seite steht er nicht bei den Modellen, sondern in einer eigenen
+Tabelle **Vision-Projektoren** — allein startbar ist er nicht. Im Dialog
+**Server starten** wird er zum gewählten Modell automatisch gefunden und als
+`--mmproj` übergeben; das Feld lässt sich auf einen anderen Projektor umstellen
+oder leeren. Gesucht wird im Ordner des Modells und eine Ebene darüber, damit
+auch große Quantisierungen in einem eigenen Shard-Ordner ihren Projektor finden.
+
+Ohne Projektor startet ein Vision-Modell zwar, nimmt aber keine Bilder an.
+
 ### Download bleibt bei 0 % stehen
 
 Mit gesetztem Token lädt `huggingface_hub` über **Xet**, und dieser Weg bleibt
@@ -348,6 +363,9 @@ Zwei Eigenheiten aus dem Skript sind dabei besonders wichtig:
   einem Pull erkennt die App automatisch neu.
 - Fehlt die Modelldatei, wird der Start verweigert. Sonst bricht llama-server
   ab und `--restart unless-stopped` erzeugt eine stille Neustart-Schleife.
+  Für den Vision-Projektor gilt dasselbe, aus einem schlimmeren Grund: ein
+  fehlender Projektor stoppt den Server nicht, er lässt nur jede Bildanfrage
+  scheitern — ohne dass im Log etwas auf die Ursache zeigt.
 
 Container werden mit `shx.*`-Labels markiert. Damit erkennt die App ihre
 eigenen wieder — auch nach einem Reboot oder einem gelöschten `state.json` —

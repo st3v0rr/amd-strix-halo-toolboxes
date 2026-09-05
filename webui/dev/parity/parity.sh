@@ -30,9 +30,12 @@ MODELS_DIR="$WORK/models"
 PASS=0
 FAIL=0
 
-mkdir -p "$MODELS_DIR/Qwen3.6-27B-GGUF/Q8_0" "$MODELS_DIR/gpt-oss-120b-GGUF/F16"
+mkdir -p "$MODELS_DIR/Qwen3.6-27B-GGUF/Q8_0" "$MODELS_DIR/gpt-oss-120b-GGUF/F16" \
+         "$MODELS_DIR/Qwen3-VL-8B-GGUF"
 : > "$MODELS_DIR/Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf"
 : > "$MODELS_DIR/gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
+: > "$MODELS_DIR/Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf"
+: > "$MODELS_DIR/Qwen3-VL-8B-GGUF/mmproj-F16.gguf"
 
 # run_case <label> <json-spec> -- <script flags...>
 # Flags travel as real argv so a value containing spaces stays one argument.
@@ -75,10 +78,11 @@ MODEL_A="Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf"
 MODEL_SHARD="gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
 
 spec() {
-  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs>
+  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs> [mmproj]
   cat <<EOF
 {"containerName":"$1","image":"$2","hostPort":$3,"modelPath":"$4","apiKey":"$5",
- "modelsDir":"$MODELS_DIR","ctxSize":$6,"gpuLayers":$7,"threads":$8,"extraArgs":"$9"}
+ "modelsDir":"$MODELS_DIR","ctxSize":$6,"gpuLayers":$7,"threads":$8,"extraArgs":"$9",
+ "mmprojPath":"${10:-}"}
 EOF
 }
 
@@ -111,6 +115,17 @@ SHX_PARITY_HELP="$WEBUI/dev/fixtures/llama-server-help-new.txt" \
 run_case "Autodetect erkennt --load-mode am Image" \
   "$(spec llamacpp-server "$IMAGE_RADV" 11434 "$MODEL_A" k5 65536 999 12 '-fa on --load-mode none')" \
   -- --model "$MODEL_A" --api-key k5
+
+MODEL_VL="Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf"
+MMPROJ_VL="Qwen3-VL-8B-GGUF/mmproj-F16.gguf"
+
+run_case "Vision-Modell mit --mmproj" \
+  "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k6 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL")" \
+  -- --model "$MODEL_VL" --api-key k6 --name llama-vl --mmproj "$MMPROJ_VL"
+
+run_case "Projektorpfad mit Praefix models/" \
+  "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k7 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL")" \
+  -- --model "$MODEL_VL" --api-key k7 --name llama-vl --mmproj "models/$MMPROJ_VL"
 
 echo
 if [[ $FAIL -eq 0 ]]; then

@@ -91,6 +91,12 @@ const SEED_MODELS = [
   ['gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf', 2_000_000],
   ['gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00002-of-00003.gguf', 2_000_000],
   ['gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00003-of-00003.gguf', 2_000_000],
+  // A vision model with its projector, so the --mmproj path is exercised in
+  // dev: one model beside the projector, one large quant a folder deeper.
+  ['Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf', 2_500_000],
+  ['Qwen3-VL-8B-GGUF/mmproj-F16.gguf', 400_000],
+  ['Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00001-of-00002.gguf', 2_000_000],
+  ['Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00002-of-00002.gguf', 2_000_000],
 ]
 for (const [rel, size] of SEED_MODELS) {
   const file = path.join(modelsDir, rel)

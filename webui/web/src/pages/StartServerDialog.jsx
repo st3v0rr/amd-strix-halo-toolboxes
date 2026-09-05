@@ -5,6 +5,7 @@ import { get, post } from '../api/client.js'
 import { normalizeRpcPeers } from '../../../shared/rpc.js'
 import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
+import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
 import { VramEstimate } from '../components/VramEstimate.jsx'
 import { useToast } from '../components/Toast.jsx'
 
@@ -28,6 +29,7 @@ export function StartServerDialog({ onClose, initial }) {
     name: 'llamacpp-server',
     image: `${IMAGE_REPO}:vulkan-radv`,
     modelPath: '',
+    mmprojPath: '',
     port: 11434,
     ctxSize: 65536,
     gpuLayers: 999,
@@ -85,6 +87,7 @@ export function StartServerDialog({ onClose, initial }) {
     const body = { ...form, replace }
     if (!body.apiKey) delete body.apiKey
     if (!body.extraArgs) delete body.extraArgs
+    if (!body.mmprojPath) delete body.mmprojPath
     if (rpcPeers.length) body.rpcPeers = rpcPeers
     start.mutate(body)
   }
@@ -147,6 +150,12 @@ export function StartServerDialog({ onClose, initial }) {
           />
           {form.modelPath ? <p className="small mono faint">{form.modelPath}</p> : null}
         </div>
+
+        <ProjectorPicker
+          modelPath={form.modelPath}
+          value={form.mmprojPath}
+          onChange={(mmprojPath) => setForm((f) => ({ ...f, mmprojPath }))}
+        />
 
         <VramEstimate
           modelPath={form.modelPath}

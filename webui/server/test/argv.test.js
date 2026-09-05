@@ -134,6 +134,31 @@ test('labels are emitted as --label key=value between --name and -v', () => {
   assert.deepEqual(withoutLabels, GOLDEN)
 })
 
+test('a vision projector is emitted as --mmproj right after the api key', () => {
+  const argv = buildRunArgv({ ...BASE, mmprojPath: 'Qwen3-VL-8B-GGUF/mmproj-F16.gguf' })
+  const at = argv.indexOf('--mmproj')
+  assert.equal(argv[at - 2], '--api-key')
+  assert.equal(argv[at + 1], '/workspace/models/Qwen3-VL-8B-GGUF/mmproj-F16.gguf')
+  // Everything before it must still be the golden argv, byte for byte.
+  assert.deepEqual(argv.slice(0, at), GOLDEN.slice(0, at))
+})
+
+test('the projector path is normalised like the model path', () => {
+  const argv = buildRunArgv({ ...BASE, mmprojPath: 'models/vl/mmproj-F16.gguf' })
+  assert.equal(argv[argv.indexOf('--mmproj') + 1], '/workspace/models/vl/mmproj-F16.gguf')
+})
+
+test('no projector means no --mmproj at all', () => {
+  assert.equal(buildRunArgv({ ...BASE, mmprojPath: '' }).includes('--mmproj'), false)
+  assert.equal(buildRunArgv(BASE).includes('--mmproj'), false)
+})
+
+test('extra args still come last when a projector is present', () => {
+  const argv = buildRunArgv({ ...BASE, mmprojPath: 'vl/mmproj-F16.gguf' })
+  assert.deepEqual(argv.slice(-3), ['-fa', '1', '--no-mmap'])
+  assert.ok(argv.indexOf('--mmproj') < argv.indexOf('-fa'))
+})
+
 test('an api key containing shell metacharacters stays a single argument', () => {
   const apiKey = "key; rm -rf / #$(whoami)"
   const argv = buildRunArgv({ ...BASE, apiKey })

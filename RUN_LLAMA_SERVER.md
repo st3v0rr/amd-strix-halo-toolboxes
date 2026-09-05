@@ -124,6 +124,25 @@ docker run -it --rm \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
+## Vision Models
+
+A multimodal model needs its projector alongside the weights. Pass it with
+`--mmproj`, relative to the models directory just like `--model`:
+
+```bash
+./run-llama-server.sh \
+  --model Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf \
+  --mmproj Qwen3-VL-8B-GGUF/mmproj-F16.gguf \
+  --api-key example-key
+```
+
+The script checks that the file exists before starting the container. Without a
+projector the server comes up fine and then refuses every image, with nothing in
+the log pointing at the cause.
+
+The web interface finds the projector for a selected model on its own — see
+[webui/README.md](webui/README.md#vision-modelle).
+
 ## Running with Custom Configuration
 
 Override multiple environment variables:
