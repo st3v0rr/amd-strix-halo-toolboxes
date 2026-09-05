@@ -148,11 +148,16 @@ von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
 Neben llama.cpp lässt sich **ComfyUI** für Bild- und Videogenerierung betreiben.
 Grundlage ist kyuz0s zweites Repo,
 [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes).
-Dessen Image ist wie die llama.cpp-Toolboxen eines zum Reinsteigen; dieser Fork
-baut daraus `toolboxes_comfyui/Dockerfile.comfyui`, das ComfyUI direkt startet.
+Dessen Image ist wie die llama.cpp-Toolboxen eines zum Reinsteigen.
+`toolboxes_comfyui/Dockerfile.comfyui` ist eine Kopie ihres Dockerfiles, bei der
+nur der abschließende `CMD` den Server startet statt einer Shell — ein Diff
+gegen ihre Datei zeigt genau diesen Unterschied und sonst nichts. Gebaut wird
+mit `toolboxes_comfyui/build.sh`, das vorher ihren Build-Kontext (`scripts/`
+und `workflows/`) holt; diese Dateien liegen bewusst nicht als Kopie im Fork,
+weil eine veraltete Kopie schlimmer wäre als keine.
 
-Auf der Server-Seite legt **ComfyUI starten** einen Container an — Image-Kanal
-(`comfyui` stabil, `comfyui-dev`), Host-Port, Name. Mehr braucht es nicht: kein
+Auf der Server-Seite legt **ComfyUI starten** einen Container an — Image,
+Host-Port, Name. Mehr braucht es nicht: kein
 Modell (das nennt der Workflow selbst), kein Context, kein API-Key. Auf der
 Detailseite führt **Oberfläche öffnen** zur ComfyUI-Weboberfläche.
 

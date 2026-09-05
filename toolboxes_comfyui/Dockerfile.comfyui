@@ -1,33 +1,120 @@
 # ComfyUI as a server instead of a shell.
 #
-# Upstream's image (kyuz0/amd-strix-halo-comfyui) is a toolbox: you enter it and
-# start ComfyUI by hand through the `start_comfy_ui` alias. This image is that
-# same environment with the alias turned into the container's command, the way
-# toolboxes_llama_server/ does it for llama.cpp.
+# A copy of the Dockerfile from kyuz0/amd-strix-halo-comfyui-toolboxes, with the
+# same one change the images in toolboxes_llama_server/ make to theirs: the
+# final CMD starts the server instead of dropping into bash. Everything above it
+# is upstream's, verbatim, so a diff against their file shows exactly what this
+# fork does differently and nothing else.
 #
-# Nothing is compiled here — upstream already carries ComfyUI, its plugins and a
-# ROCm-enabled torch. Only the start-up differs.
+# It needs their build context — scripts/ and workflows/ — so build it with
+# ./build.sh, which fetches the matching revision first.
 
-ARG BASE_TAG=latest
-FROM docker.io/kyuz0/amd-strix-halo-comfyui:${BASE_TAG}
+FROM registry.fedoraproject.org/fedora:rawhide
 
-# Upstream sets these in /etc/profile.d/01-rocm-envs.sh, which only a *login*
-# shell reads. This container starts Python directly, so without repeating them
-# here ComfyUI would run measurably slower with nothing to show why.
+# Base packages (keep compilers/headers for Triton JIT at runtime)
+RUN dnf -y install --setopt=install_weak_deps=False --nodocs \
+    libdrm-devel python3.13 python3.13-devel git rsync libatomic bash ca-certificates curl \
+    gcc gcc-c++ binutils make git ffmpeg-free vim dialog \
+    && dnf clean all && rm -rf /var/cache/dnf/*
+
+# Python venv
+RUN /usr/bin/python3.13 -m venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+ENV PIP_NO_CACHE_DIR=1
+RUN printf 'source /opt/venv/bin/activate\n' > /etc/profile.d/venv.sh
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Helper scripts (ComfyUI-only)
+COPY scripts/get_wan22.sh /opt/
+COPY scripts/set_extra_paths.sh /opt/
+COPY scripts/get_qwen_image.sh /opt/
+COPY scripts/get_hunyuan15.sh /opt/
+COPY scripts/get_ltx2.sh /opt/
+COPY scripts/get_minimax_h3.sh /opt/
+COPY scripts/benchmark_workflows.py /opt/
+COPY scripts/collect_perf_logs.py /opt/
+COPY scripts/model_manager.py /opt/
+RUN chmod 0755 /opt/model_manager.py && ln -s /opt/model_manager.py /opt/venv/bin/model_manager
+COPY workflows/API /opt/comfy-workflows
+
+
+# ROCm + PyTorch (TheRock multi-arch release, scoped to Strix Halo gfx1151)
+RUN python -m pip install \
+    --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ \
+    --pre "torch[device-gfx1151]" "torchvision[device-gfx1151]" torchaudio
+
+WORKDIR /opt
+
+# ComfyUI
+RUN git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git /opt/ComfyUI 
+WORKDIR /opt/ComfyUI
+RUN python -m pip install -r requirements.txt && \
+    python -m pip install --prefer-binary \
+    pillow opencv-python-headless imageio imageio-ffmpeg scipy "huggingface_hub[hf_transfer]" pyyaml websocket-client
+
+COPY workflows/input/ai-server.jpg /opt/ComfyUI/input/
+COPY workflows/input/ai-server-2.png /opt/ComfyUI/input/
+COPY workflows/input/example2.jpg /opt/ComfyUI/input/
+
+COPY workflows/*.json /opt/ComfyUI/user/default/workflows/
+
+# ComfyUI plugins
+WORKDIR /opt/ComfyUI/custom_nodes
+RUN git clone --depth=1 https://github.com/cubiq/ComfyUI_essentials /opt/ComfyUI/custom_nodes/ComfyUI_essentials 
+RUN git clone --depth=1 https://github.com/kyuz0/ComfyUI-AMDGPUMonitor /opt/ComfyUI/custom_nodes/ComfyUI-AMDGPUMonitor 
+RUN git clone --depth=1 https://github.com/kyuz0/ComfyUI-GGUF-H3 /opt/ComfyUI/custom_nodes/ComfyUI-GGUF && \
+    python -m pip install -r /opt/ComfyUI/custom_nodes/ComfyUI-GGUF/requirements.txt
+RUN git clone --depth=1 https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo /opt/ComfyUI/custom_nodes/ComfyUI-MiniMax-H3-Turbo
+
+# Permissions & trims (keep compilers/headers and installed shared libraries intact)
+RUN chmod -R a+rwX /opt && chmod +x /opt/*.sh || true && \
+    find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + && \
+    python -m pip cache purge || true && rm -rf /root/.cache/pip || true && \
+    dnf clean all && rm -rf /var/cache/dnf/*
+
+# Catch incompatible or damaged PyTorch shared libraries before publishing an image.
+RUN python -c 'import torch; print(torch.__version__)'
+
+# Enable torch TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL
+COPY scripts/01-rocm-envs.sh /etc/profile.d/01-rocm-envs.sh
+
+# Banner script (runs on login). Use a high sort key so it runs after venv.sh and 01-rocm-env...
+COPY scripts/99-toolbox-banner.sh /etc/profile.d/99-toolbox-banner.sh
+RUN chmod 0644 /etc/profile.d/99-toolbox-banner.sh
+
+# Keep /opt/venv/bin first after user dotfiles
+COPY scripts/zz-venv-last.sh /etc/profile.d/zz-venv-last.sh
+RUN chmod 0644 /etc/profile.d/zz-venv-last.sh
+
+# Disable core dumps in interactive shells (helps with recovering faster from ROCm crashes)
+RUN printf 'ulimit -S -c 0\n' > /etc/profile.d/90-nocoredump.sh && chmod 0644 /etc/profile.d/90-nocoredump.sh
+
+# ---------------------------------------------------------------------------
+# Everything below replaces upstream's `CMD ["/bin/bash"]`.
+# ---------------------------------------------------------------------------
+
+# comfyui-server
+
+# The two variables above are exported by /etc/profile.d/01-rocm-envs.sh, which
+# only a *login* shell reads. This container starts Python directly, so without
+# repeating them here ComfyUI would run measurably slower with nothing to show
+# why.
 ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ENV TORCH_BLAS_PREFER_HIPBLASLT=1
 
 # ComfyUI Server Configuration
 ENV PORT=8000
-# The flags upstream's alias uses, kept together so they can be replaced as one:
-# --disable-mmap (mmap is slow on gfx1151), --gpu-only, --disable-smart-memory
-# and --cache-none (keep unified memory in check), --bf16-vae (VAE memory).
+# The flags upstream's `start_comfy_ui` alias uses, kept together so they can be
+# replaced as one: --disable-mmap (mmap is slow on gfx1151), --gpu-only,
+# --disable-smart-memory and --cache-none (keep unified memory in check),
+# --bf16-vae (VAE memory).
 ENV COMFY_ARGS="--disable-mmap --gpu-only --disable-smart-memory --cache-none --bf16-vae"
 
 # Both paths are fixed rather than configurable: set_extra_paths.sh derives the
 # model directory from $HOME itself, so an env var here would be silently
-# ignored and the mounted models would never be found. Mount the host
-# directories onto these two paths.
+# ignored and the mounted models never found. Mount the host directories onto
+# these two paths.
 ENV COMFY_MODELS_DIR=/root/comfy-models
 ENV COMFY_OUTPUT_DIR=/root/comfy-outputs
 

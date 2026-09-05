@@ -25,7 +25,7 @@ export function StartComfyDialog({ onClose }) {
 
   const [form, setForm] = useState({
     name: 'comfyui',
-    image: `${IMAGE_REPO}:comfyui`,
+    image: `${IMAGE_REPO}:${COMFY_TAGS[0]}`,
     port: COMFY_PORT,
   })
   const [replace, setReplace] = useState(false)
@@ -116,7 +116,7 @@ export function StartComfyDialog({ onClose }) {
             <select id="c-image" value={form.image} onChange={set('image')}>
               {COMFY_TAGS.map((tag) => (
                 <option key={tag} value={`${IMAGE_REPO}:${tag}`}>
-                  {tag === 'comfyui' ? 'comfyui (stabil)' : 'comfyui-dev (Entwicklungsstand)'}
+                  {tag}
                 </option>
               ))}
             </select>
