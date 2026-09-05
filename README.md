@@ -30,7 +30,7 @@ only what it builds and runs itself; for the rest, go to
 | Part | Where |
 | :--- | :--- |
 | Interactive toolboxes | The Dockerfiles behind [`docker.io/kyuz0/amd-strix-halo-toolboxes`](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags) — ROCm and Vulkan stacks with llama.cpp compiled in, entered with `toolbox enter` / `distrobox enter`: [`toolboxes/`](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/toolboxes) |
-| `refresh-toolboxes.sh` | Kept here: creates and updates those interactive toolboxes on the host, with the right `/dev/dri`, `/dev/kfd` and group options. It pulls published images, so it needs nothing else from upstream's tree. |
+| `refresh-toolboxes.sh` | Creates and updates those interactive toolboxes on the host, with the right `/dev/dri`, `/dev/kfd` and group options: [refresh-toolboxes.sh](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/refresh-toolboxes.sh) |
 | [AI Toolbox Cockpit](https://github.com/kyuz0/ai-toolbox-cockpit) | Upstream's recommended installer and launcher for its toolboxes, with tested profiles for Toolbx, Distrobox, Podman and Docker. |
 | Benchmarks | The suite and the [interactive result viewer](https://kyuz0.github.io/amd-strix-halo-toolboxes/), including the [toolbox comparison](https://kyuz0.github.io/amd-strix-halo-toolboxes/toolbox-performance.html): [`benchmark/`](https://github.com/kyuz0/amd-strix-halo-toolboxes/tree/main/benchmark) |
 | VRAM estimator | Estimates VRAM for a GGUF at a given context size. A copy lives in `toolboxes_llama_server/`, which is the one the web interface runs; upstream's documentation is [docs/vram-estimator.md](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/vram-estimator.md). |
@@ -70,7 +70,6 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | `toolboxes_llama_server/` | The same backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all three keep RDMA support for llama.cpp RPC. |
 | Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds all three backends on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
-| `refresh-toolboxes-llama-server.sh` | The upstream refresh script pointed at this fork's images, for people who still want them as toolbx containers. |
 | `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. See [webui/README.md](webui/README.md). |
 
@@ -81,7 +80,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | Container starts | an interactive shell | `llama-server` |
 | Made for | experimenting, benchmarking, `llama-cli`, building | leaving a server running on the network |
 | Backends | two stable + many experimental | three `llama-server` builds |
-| Used by | `toolbox enter`, `refresh-toolboxes.sh` | `run-llama-server.sh`, the web interface |
+| Used by | `toolbox enter`, upstream's `refresh-toolboxes.sh` | the web interface, or `run-llama-server.sh` |
 
 They coexist happily on one machine — different image names, different
 containers.
@@ -144,8 +143,9 @@ toolbox enter llama-vulkan-radv
 llama-cli --list-devices
 ```
 
-`./refresh-toolboxes.sh all` updates them later. Inside the toolbox, llama.cpp's
-router mode serves several models from one process:
+Upstream's [`refresh-toolboxes.sh`](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/refresh-toolboxes.sh) updates
+them later; it is not carried here. Inside the toolbox, llama.cpp's router mode
+serves several models from one process:
 
 ```sh
 llama-server --models-preset models.ini --host 0.0.0.0 --port 8080 --models-max 1 --parallel 1
@@ -221,8 +221,7 @@ overrides the detection entirely.
 | `toolboxes_llama_server/` | fork | Dockerfiles for the three `llama-server` images |
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
-| `run-llama-server.sh`, `refresh-toolboxes-llama-server.sh` | fork | launching and refreshing this fork's images |
-| `refresh-toolboxes.sh` | upstream | creating and updating upstream's interactive toolboxes |
+| `run-llama-server.sh` | fork | starts one server from the command line, and is the reference `npm run test:parity` checks the web interface against |
 | `.github/workflows/` | fork-adjusted | polls llama.cpp, builds and prunes this fork's images |
 
 ### Merging upstream

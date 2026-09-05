@@ -17,9 +17,8 @@ const DESCRIPTIONS = {
  * The known image tags, derived from `toolboxes_llama_server/Dockerfile.<tag>`.
  *
  * That directory is the most reliable source: the same list is duplicated in
- * refresh-toolboxes-llama-server.sh, RUN_LLAMA_SERVER.md and the CI workflow,
- * and reading the Dockerfiles means a backend added upstream shows up after an
- * app update with no code change here.
+ * RUN_LLAMA_SERVER.md and the CI workflow, and reading the Dockerfiles means a
+ * backend added upstream shows up after an app update with no code change here.
  */
 export function knownTags() {
   let tags = []
