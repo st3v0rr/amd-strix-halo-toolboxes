@@ -143,6 +143,60 @@ von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
   weiterhin erreichbar. Das ist meist die bessere Wahl.
 - **Token entfernen** — öffentliche Repos laden dann wieder ohne Xet.
 
+## ComfyUI
+
+Neben llama.cpp lässt sich **ComfyUI** für Bild- und Videogenerierung betreiben.
+Grundlage ist kyuz0s zweites Repo,
+[amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes).
+Dessen Image ist wie die llama.cpp-Toolboxen eines zum Reinsteigen; dieser Fork
+baut daraus `toolboxes_comfyui/Dockerfile.comfyui`, das ComfyUI direkt startet.
+
+Auf der Server-Seite legt **ComfyUI starten** einen Container an — Image-Kanal
+(`comfyui` stabil, `comfyui-dev`), Host-Port, Name. Mehr braucht es nicht: kein
+Modell (das nennt der Workflow selbst), kein Context, kein API-Key. Auf der
+Detailseite führt **Oberfläche öffnen** zur ComfyUI-Weboberfläche.
+
+> [!WARNING]
+> ComfyUI hat **keine Anmeldung**. Wer den Port erreicht, kann Workflows
+> ausführen und Dateien auf der Box lesen und schreiben. Behandle ihn wie den
+> RPC-Port: nur im vertrauten Netz freigeben, siehe [Netzwerk und
+> Firewall](#netzwerk-und-firewall).
+
+Zwei Dinge unterscheiden das Fork-Image vom Original, beide nötig für den
+Serverbetrieb:
+
+- `--listen 0.0.0.0`. Upstreams Alias hat es nicht, ComfyUI bindet dann
+  `127.0.0.1` — im Container heißt das, dass ein veröffentlichter Port ins Leere
+  zeigt.
+- `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL` und `TORCH_BLAS_PREFER_HIPBLASLT`
+  als `ENV`. Upstream setzt sie in `/etc/profile.d/`, was nur eine Login-Shell
+  liest; ein Container, der direkt Python startet, bekäme sie nicht und liefe
+  langsamer, ohne dass etwas darauf hinweist.
+
+### ComfyUI-Modelle
+
+Eigene Seite, getrennt von den GGUFs: andere Ordner, andere Dateien, andere
+Werkzeuge. Sie zeigt die acht Ordner, die ComfyUI kennt (`checkpoints`,
+`loras`, `vae`, `diffusion_models`, …) mit Größe und Inhalt — leere inklusive,
+weil ein leeres `loras/` eine Aussage ist. Ordner, die ComfyUI *nicht* liest,
+werden als **unbekannt** markiert: dort belegen Dateien Platz, ohne je gefunden
+zu werden.
+
+**Herunterladen** startet die Skripte, die im Image liegen (`get_wan22.sh`,
+`get_qwen_image.sh`, `get_ltx2.sh`, `get_hunyuan15.sh`, `get_minimax_h3.sh`) in
+einem Wegwerf-Container mit dem Modellverzeichnis gemountet. Die Skripte sind
+getestet, kennen die richtigen Zielordner und setzen abgebrochene Downloads
+fort — deshalb werden sie benutzt statt nachgebaut. Der Fortschritt läuft über
+dieselbe Download-Liste wie die GGUF-Downloads.
+
+Bei den meisten Familien muss zuerst der Eintrag **Gemeinsame Teile** geladen
+werden; er bringt Text-Encoder und VAEs, auf die die eigentlichen Modelle
+aufbauen.
+
+**Löschen** verlangt, dass ComfyUI vorher gestoppt ist. Anders als bei einem
+llama-Server, dessen Modell in seinen Labels steht, lässt sich von außen nicht
+sagen, welche Datei ein Workflow gerade lädt.
+
 ## Netzwerk und Firewall
 
 Die Seite **Netzwerk** führt beides zusammen: alle Schnittstellen der Box mit

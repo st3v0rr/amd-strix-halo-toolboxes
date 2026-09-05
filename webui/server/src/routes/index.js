@@ -6,6 +6,7 @@ import { notFound } from '../lib/errors.js'
 import { imageRoutes } from './images.js'
 import { jobRoutes } from './jobs.js'
 import { metaRoutes } from './meta.js'
+import { comfyRoutes } from './comfy.js'
 import { modelRoutes } from './models.js'
 import { networkRoutes } from './network.js'
 import { profileRoutes } from './profiles.js'
@@ -28,6 +29,7 @@ export function apiRoutes(ctx) {
   router.use('/', metaRoutes())
 
   router.use(auth)
+  router.use('/comfy', comfyRoutes(ctx))
   router.use('/images', imageRoutes(ctx))
   router.use('/jobs', jobRoutes(ctx))
   router.use('/models', modelRoutes(ctx))

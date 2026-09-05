@@ -109,6 +109,23 @@ for (const [rel, size] of SEED_MODELS) {
   fs.writeFileSync(file, Buffer.alloc(size))
 }
 
+// A ComfyUI model tree, so its page has something to show in dev.
+const comfyModelsDir = path.join(here, 'comfy-models')
+const SEED_COMFY = [
+  ['checkpoints/qwen-image-2512-bf16.safetensors', 1_500_000],
+  ['loras/qwen-image-lightning-4step.safetensors', 300_000],
+  ['loras/wan22-lightning-rank64.safetensors', 250_000],
+  ['vae/qwen_image_vae.safetensors', 200_000],
+  ['text_encoders/umt5_xxl_fp8_scaled.safetensors', 800_000],
+  ['diffusion_models/wan2.2_t2v_14b_fp8.safetensors', 2_000_000],
+]
+for (const [rel, size] of SEED_COMFY) {
+  const file = path.join(comfyModelsDir, rel)
+  if (fs.existsSync(file)) continue
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, Buffer.alloc(size))
+}
+
 const configFile = path.join(tmp, 'config', 'config.json')
 if (!fs.existsSync(configFile)) {
   const { hashPassword } = await import('../server/src/auth/password.js')
@@ -121,6 +138,8 @@ if (!fs.existsSync(configFile)) {
     hfToken: '',
     settings: {
       modelsDir: path.join(here, 'models'),
+      comfyModelsDir: comfyModelsDir,
+      comfyOutputDir: path.join(tmp, 'comfy-outputs'),
       bindAddress: '127.0.0.1',
       port: 8420,
     },

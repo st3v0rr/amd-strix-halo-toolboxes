@@ -1,0 +1,88 @@
+name: Poll ComfyUI Toolbox & Trigger Build
+
+# Unlike the llama poller this watches an *image digest*, not a git commit:
+# upstream publishes kyuz0/amd-strix-halo-comfyui itself, and a new push there
+# is what this fork has to rebuild on.
+#
+# Daily rather than every four hours — the base image is tens of gigabytes and
+# every build pulls and pushes all of it.
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  poll-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="docker.io/kyuz0/amd-strix-halo-comfyui:latest"
+          echo "📌 Inspecting $IMAGE"
+          sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+          DIGEST=$(skopeo inspect "docker://${IMAGE}" | jq -r '.Digest')
+          if [[ -z "$DIGEST" || "$DIGEST" == "null" ]]; then echo "❌ No digest found"; exit 1; fi
+          echo "✅ Latest digest: $DIGEST"
+          echo "latest_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - id: previous
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "🔎 Checking for prior artifact 'last-comfyui-digest'…"
+          ART_ID=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GH_REPO}/actions/artifacts?per_page=100" \
+            | jq -r '.artifacts | map(select(.name=="last-comfyui-digest" and .expired==false)) | sort_by(.created_at) | reverse | .[0].id // empty')
+          if [[ -n "$ART_ID" ]]; then
+            echo "📦 Found artifact id: $ART_ID (downloading)"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -L \
+              "https://api.github.com/repos/${GH_REPO}/actions/artifacts/${ART_ID}/zip" -o artifact.zip
+            unzip -p artifact.zip source_state > source_state || true
+          else
+            echo "ℹ️ No prior artifact found"
+          fi
+          PREV=""
+          if [[ -f source_state ]]; then PREV=$(cat source_state); fi
+          echo "🕓 Previous digest: $PREV"
+          echo "previous_digest=$PREV" >> "$GITHUB_OUTPUT"
+
+      - id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.fetch.outputs.latest_digest }}" != "${{ steps.previous.outputs.previous_digest }}" ]]; then
+            echo "🔁 Upstream image changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ No change"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger build_and_publish_comfyui.yml on main
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WF="build_and_publish_comfyui.yml"
+          REF="main"
+          echo "🚀 Dispatching $WF on $REF…"
+          CODE=$(curl -s -o /tmp/resp -w "%{http_code}" \
+                 -X POST \
+                 -H "Accept: application/vnd.github+json" \
+                 -H "Authorization: Bearer $GH_TOKEN" \
+                 -d "{\"ref\":\"$REF\",\"inputs\":{\"channel\":\"latest\",\"source_state_name\":\"last-comfyui-digest\",\"source_state_value\":\"${{ steps.fetch.outputs.latest_digest }}\"}}" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WF/dispatches")
+          echo "HTTP $CODE"
+          if [[ "$CODE" != "204" ]]; then echo "Response:"; cat /tmp/resp; exit 1; fi

@@ -8,12 +8,15 @@ import {
   SERVER_DEFAULTS,
   SPEC_TYPES,
 } from '../../../shared/constants.js'
-import { defaultModelsDir } from './paths.js'
+import { defaultComfyModelsDir, defaultComfyOutputDir, defaultModelsDir } from './paths.js'
 
 const port = z.number().int().min(PORT_MIN).max(PORT_MAX)
 
 export const settingsSchema = z.object({
   modelsDir: z.string().min(1).default(defaultModelsDir),
+  /** ComfyUI keeps its own tree of .safetensors, quite separate from the GGUFs. */
+  comfyModelsDir: z.string().min(1).default(defaultComfyModelsDir),
+  comfyOutputDir: z.string().min(1).default(defaultComfyOutputDir),
   bindAddress: z.string().min(1).default('0.0.0.0'),
   port: port.default(8420),
   defaultImage: z.string().min(1).default(SERVER_DEFAULTS.image),

@@ -1,0 +1,119 @@
+name: Build & Publish ComfyUI Toolbox
+
+# Deliberately separate from build_and_publish.yml. That workflow's matrix and
+# the web interface's image catalog both read toolboxes_llama_server/, so a
+# ComfyUI Dockerfile in there would be offered as a llama-server backend.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: >
+          Upstream channel to build on top of: "latest" (stable) or "dev".
+          Published as :comfyui and :comfyui-dev respectively.
+        required: false
+        default: latest
+        type: choice
+        options:
+          - latest
+          - dev
+      source_state_name:
+        description: Artifact name used by the poller after a successful build.
+        required: false
+        default: ''
+      source_state_value:
+        description: Upstream image digest recorded after a successful build.
+        required: false
+        default: ''
+
+env:
+  DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
+  BASE_REPO: docker.io/kyuz0/amd-strix-halo-comfyui
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # The base image alone is tens of gigabytes, so the runner needs every
+      # byte it can spare — more so than for the llama builds.
+      - name: Free up runner disk space
+        run: |
+          echo "Before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/local/lib/node_modules
+          docker system prune --all --force
+          docker builder prune --all --force
+          echo "After cleanup:" && df -h /
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set build timestamp
+        run: echo "BUILD_TS=$(date +%Y%m%dT%H%M%S)" >> $GITHUB_ENV
+
+      - name: Build & push ComfyUI (${{ inputs.channel }})
+        working-directory: toolboxes_comfyui
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ inputs.channel }}"
+          [[ -z "$CHANNEL" ]] && CHANNEL=latest
+
+          # "latest" is the default channel and gets the plain :comfyui tag;
+          # anything else is suffixed, so :comfyui-dev sits beside it.
+          if [[ "$CHANNEL" == "latest" ]]; then NAME="comfyui"; else NAME="comfyui-${CHANNEL}"; fi
+
+          LI="comfyui-local"
+          IMM="${DOCKERHUB_REPO}:${NAME}_${BUILD_TS}"
+          CHN="${DOCKERHUB_REPO}:${NAME}"
+
+          echo "→ Building on ${BASE_REPO}:${CHANNEL}"
+          docker build --pull --build-arg "BASE_TAG=${CHANNEL}" \
+            -t "${LI}" -f Dockerfile.comfyui .
+
+          # Smoke test: the two things this image changes over upstream are the
+          # environment and the start-up, so both are what gets checked. Running
+          # ComfyUI itself needs a GPU the runner does not have.
+          echo "→ Running smoke test..."
+          docker run --rm "${LI}" python /opt/ComfyUI/main.py --help > /dev/null
+          docker run --rm "${LI}" bash -c '/opt/set_extra_paths.sh && test -f /opt/ComfyUI/extra_model_paths.yaml'
+          docker run --rm "${LI}" bash -c '[[ -n "$TORCH_BLAS_PREFER_HIPBLASLT" ]]'
+
+          echo "→ Tag & push immutable → ${IMM}"
+          docker tag "${LI}" "${IMM}"
+          docker push "${IMM}"
+
+          echo "→ Tag & push channel → ${CHN}"
+          docker tag "${IMM}" "${CHN}"
+          docker push "${CHN}"
+
+  # Record the upstream digest only after the image was built and pushed, so a
+  # failed build is retried on the next poll rather than skipped.
+  record-source-state:
+    needs: build-and-push
+    if: ${{ needs.build-and-push.result == 'success' && inputs.source_state_name != '' && inputs.source_state_value != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save successful upstream digest
+        env:
+          SOURCE_STATE_VALUE: ${{ inputs.source_state_value }}
+        run: printf '%s' "$SOURCE_STATE_VALUE" > source_state
+
+      - name: Upload successful upstream digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.source_state_name }}
+          path: source_state
+          retention-days: 7

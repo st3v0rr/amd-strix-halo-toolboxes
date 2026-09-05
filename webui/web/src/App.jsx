@@ -6,6 +6,7 @@ import { Layout } from './components/Layout.jsx'
 import { useDocumentTitle } from './components/useDocumentTitle.js'
 import { Dashboard } from './pages/Dashboard.jsx'
 import { Images } from './pages/Images.jsx'
+import { ComfyModels } from './pages/ComfyModels.jsx'
 import { Models } from './pages/Models.jsx'
 import { Network } from './pages/Network.jsx'
 import { Profiles } from './pages/Profiles.jsx'
@@ -38,6 +39,7 @@ export function App() {
         <Route path="servers" element={<Servers />} />
         <Route path="servers/:name" element={<ServerDetail />} />
         <Route path="models" element={<Models />} />
+        <Route path="comfy-models" element={<ComfyModels />} />
         <Route path="images" element={<Images />} />
         <Route path="network" element={<Network />} />
         <Route path="profiles" element={<Profiles />} />

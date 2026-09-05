@@ -7,6 +7,7 @@ import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatDate, shortImage } from '../components/format.js'
+import { StartComfyDialog } from './StartComfyDialog.jsx'
 import { StartRpcWorkerDialog } from './StartRpcWorkerDialog.jsx'
 import { StartServerDialog } from './StartServerDialog.jsx'
 
@@ -15,6 +16,7 @@ export function Servers() {
   const queryClient = useQueryClient()
   const [starting, setStarting] = useState(false)
   const [startingRpc, setStartingRpc] = useState(false)
+  const [startingComfy, setStartingComfy] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
 
   const servers = useQuery({
@@ -49,8 +51,11 @@ export function Servers() {
     <>
       <PageHead
         title="Server"
-        description="llama.cpp-Container, die über dieses Interface angelegt wurden."
+        description="Container, die über dieses Interface angelegt wurden."
       >
+        <button className="btn" type="button" onClick={() => setStartingComfy(true)}>
+          ComfyUI starten
+        </button>
         <button className="btn" type="button" onClick={() => setStartingRpc(true)}>
           RPC-Worker starten
         </button>
@@ -90,13 +95,19 @@ export function Servers() {
                         title={server.status}
                       />
                       <Link to={`/servers/${encodeURIComponent(server.name)}`}>{server.name}</Link>
-                      {server.role === 'rpc' ? <span className="badge badge-info">RPC</span> : null}
+                      {server.role === 'rpc' ? (
+                        <span className="badge badge-info">RPC</span>
+                      ) : server.role === 'comfy' ? (
+                        <span className="badge badge-info">ComfyUI</span>
+                      ) : null}
                     </div>
                     <span className="small faint">{server.status}</span>
                   </td>
                   <td className="small mono" style={{ maxWidth: 280 }}>
                     {server.role === 'rpc' ? (
                       <span className="faint">GPU-Worker</span>
+                    ) : server.role === 'comfy' ? (
+                      <span className="faint">Bild- und Videogenerierung</span>
                     ) : (
                       <span
                         className="truncate"
@@ -154,6 +165,8 @@ export function Servers() {
 
       {starting ? <StartServerDialog onClose={() => setStarting(false)} /> : null}
       {startingRpc ? <StartRpcWorkerDialog onClose={() => setStartingRpc(false)} /> : null}
+
+      {startingComfy ? <StartComfyDialog onClose={() => setStartingComfy(false)} /> : null}
 
       {pendingDelete ? (
         <ConfirmDialog
