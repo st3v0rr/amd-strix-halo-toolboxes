@@ -6,26 +6,16 @@ name: Build & Publish ComfyUI Toolbox
 
 on:
   workflow_dispatch:
-    inputs:
-      source_ref:
-        description: >
-          Revision of kyuz0/amd-strix-halo-comfyui-toolboxes to build from —
-          a branch or a commit SHA. Its scripts/ and workflows/ are the build
-          context our Dockerfile copies from.
-        required: false
-        default: main
-      source_state_name:
-        description: Artifact name used by the poller after a successful build.
-        required: false
-        default: ''
-      source_state_value:
-        description: Upstream commit recorded after a successful build.
-        required: false
-        default: ''
+  # The build context lives in this repository, so a change to it is the signal
+  # to rebuild — no polling of anyone else's repository involved.
+  push:
+    branches: [main]
+    paths:
+      - 'toolboxes_comfyui/**'
+      - '.github/workflows/build_and_publish_comfyui.yml'
 
 env:
   DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
-  SOURCE_REPO: https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes.git
 
 jobs:
   build-and-push:
@@ -51,23 +41,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Fetch upstream build context
-        id: ctx
-        shell: bash
-        run: |
-          set -euo pipefail
-          REF="${{ inputs.source_ref }}"
-          [[ -z "$REF" ]] && REF=main
-          # Full clone rather than --branch: the input may be a commit SHA,
-          # which --branch does not accept.
-          git clone --quiet "${SOURCE_REPO}" ctx
-          git -C ctx checkout --quiet "$REF"
-          REV="$(git -C ctx rev-parse HEAD)"
-          echo "✅ Building from $REV"
-          echo "rev=${REV}" >> "$GITHUB_OUTPUT"
-          # Our Dockerfile expects to sit in their context.
-          cp toolboxes_comfyui/Dockerfile.comfyui ctx/Dockerfile.comfyui
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -78,7 +51,7 @@ jobs:
         run: echo "BUILD_TS=$(date +%Y%m%dT%H%M%S)" >> $GITHUB_ENV
 
       - name: Build & push comfyui
-        working-directory: ctx
+        working-directory: toolboxes_comfyui
         shell: bash
         run: |
           set -euo pipefail
@@ -107,22 +80,3 @@ jobs:
           echo "→ Tag & push channel → ${CHN}"
           docker tag "${IMM}" "${CHN}"
           docker push "${CHN}"
-
-  # Record the upstream commit only after the image was built and pushed, so a
-  # failed build is retried on the next poll rather than skipped.
-  record-source-state:
-    needs: build-and-push
-    if: ${{ needs.build-and-push.result == 'success' && inputs.source_state_name != '' && inputs.source_state_value != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Save successful upstream commit
-        env:
-          SOURCE_STATE_VALUE: ${{ inputs.source_state_value }}
-        run: printf '%s' "$SOURCE_STATE_VALUE" > source_state
-
-      - name: Upload successful upstream commit
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ inputs.source_state_name }}
-          path: source_state
-          retention-days: 7

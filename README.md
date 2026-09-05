@@ -70,7 +70,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds all three backends on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `refresh-toolboxes-llama-server.sh` | The upstream refresh script pointed at this fork's images, for people who still want them as toolbx containers. |
-| `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Built with `./build.sh`, which fetches their `scripts/` and `workflows/` first. Published as `:comfyui`. |
+| `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. See [webui/README.md](webui/README.md). |
 
 ### Which images do I want?
@@ -218,7 +218,7 @@ overrides the detection entirely.
 | :--- | :--- | :--- |
 | `toolboxes/` | upstream | Dockerfiles for the interactive images, plus patches and the VRAM estimator |
 | `toolboxes_llama_server/` | fork | Dockerfiles for the three `llama-server` images |
-| `toolboxes_comfyui/` | fork | Copy of kyuz0's ComfyUI Dockerfile that starts the server, plus its build script |
+| `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh`, `refresh-toolboxes-llama-server.sh` | fork | launching and refreshing this fork's images |
 | `refresh-toolboxes.sh` | upstream | creating and updating upstream's toolboxes |

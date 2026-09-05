@@ -151,10 +151,11 @@ Grundlage ist kyuz0s zweites Repo,
 Dessen Image ist wie die llama.cpp-Toolboxen eines zum Reinsteigen.
 `toolboxes_comfyui/Dockerfile.comfyui` ist eine Kopie ihres Dockerfiles, bei der
 nur der abschließende `CMD` den Server startet statt einer Shell — ein Diff
-gegen ihre Datei zeigt genau diesen Unterschied und sonst nichts. Gebaut wird
-mit `toolboxes_comfyui/build.sh`, das vorher ihren Build-Kontext (`scripts/`
-und `workflows/`) holt; diese Dateien liegen bewusst nicht als Kopie im Fork,
-weil eine veraltete Kopie schlimmer wäre als keine.
+gegen ihre Datei zeigt genau diesen Unterschied und sonst nichts. Ihr
+Build-Kontext (`scripts/` und `workflows/`) liegt daneben im Fork, damit
+`toolboxes_comfyui/build.sh` ohne fremdes Repository baut; Herkunft, Revision
+und Nachziehen stehen in
+[toolboxes_comfyui/UPSTREAM.md](../toolboxes_comfyui/UPSTREAM.md).
 
 Auf der Server-Seite legt **ComfyUI starten** einen Container an — Image,
 Host-Port, Name. Mehr braucht es nicht: kein
