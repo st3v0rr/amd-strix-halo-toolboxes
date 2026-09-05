@@ -97,6 +97,10 @@ const SEED_MODELS = [
   ['Qwen3-VL-8B-GGUF/mmproj-F16.gguf', 400_000],
   ['Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00001-of-00002.gguf', 2_000_000],
   ['Qwen3-VL-8B-GGUF/BF16/Qwen3-VL-8B-BF16-00002-of-00002.gguf', 2_000_000],
+  // The layout Hugging Face vision repos usually have: projector in the repo
+  // root, the quant in a folder of its own.
+  ['Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf', 400_000],
+  ['Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf', 2_500_000],
 ]
 for (const [rel, size] of SEED_MODELS) {
   const file = path.join(modelsDir, rel)
