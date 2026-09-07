@@ -36,6 +36,9 @@ mkdir -p "$MODELS_DIR/Qwen3.6-27B-GGUF/Q8_0" "$MODELS_DIR/gpt-oss-120b-GGUF/F16"
 : > "$MODELS_DIR/gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
 : > "$MODELS_DIR/Qwen3-VL-8B-GGUF/Qwen3-VL-8B-Q8_0.gguf"
 : > "$MODELS_DIR/Qwen3-VL-8B-GGUF/mmproj-F16.gguf"
+mkdir -p "$MODELS_DIR/Qwen3.8-Flash-Next-GGUF/MTP" "$MODELS_DIR/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL"
+: > "$MODELS_DIR/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf"
+: > "$MODELS_DIR/Qwen3.8-Flash-Next-GGUF/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf"
 
 # run_case <label> <json-spec> -- <script flags...>
 # Flags travel as real argv so a value containing spaces stays one argument.
@@ -78,11 +81,13 @@ MODEL_A="Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf"
 MODEL_SHARD="gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
 
 spec() {
-  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs> [mmproj]
+  # spec <name> <image> <port> <modelPath> <apiKey> <ctx> <ngl> <threads> <extraArgs> \
+  #      [mmproj] [specType] [specDraftModel] [specDraftNMax]
   cat <<EOF
 {"containerName":"$1","image":"$2","hostPort":$3,"modelPath":"$4","apiKey":"$5",
  "modelsDir":"$MODELS_DIR","ctxSize":$6,"gpuLayers":$7,"threads":$8,"extraArgs":"$9",
- "mmprojPath":"${10:-}"}
+ "mmprojPath":"${10:-}","specType":"${11:-}","specDraftModel":"${12:-}",
+ "specDraftNMax":${13:-null}}
 EOF
 }
 
@@ -126,6 +131,29 @@ run_case "Vision-Modell mit --mmproj" \
 run_case "Projektorpfad mit Praefix models/" \
   "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k7 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL")" \
   -- --model "$MODEL_VL" --api-key k7 --name llama-vl --mmproj "models/$MMPROJ_VL"
+
+MODEL_FN="Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf"
+DRAFT_FN="Qwen3.8-Flash-Next-GGUF/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf"
+
+run_case "MTP mit Draft-Modell und Draft-Anzahl" \
+  "$(spec llama-mtp "$IMAGE_RADV" 11434 "$MODEL_FN" k8 65536 999 12 '-fa 1 --no-mmap' '' draft-mtp "$DRAFT_FN" 5)" \
+  -- --model "$MODEL_FN" --api-key k8 --name llama-mtp \
+     --spec-type draft-mtp --spec-draft-model "$DRAFT_FN" --spec-draft-n-max 5
+
+run_case "Speculative ohne Draft-Anzahl" \
+  "$(spec llama-mtp "$IMAGE_RADV" 11434 "$MODEL_FN" k9 65536 999 12 '-fa 1 --no-mmap' '' draft-dspark "$DRAFT_FN")" \
+  -- --model "$MODEL_FN" --api-key k9 --name llama-mtp \
+     --spec-type draft-dspark --spec-draft-model "$DRAFT_FN"
+
+run_case "Draft-Modellpfad mit Praefix models/" \
+  "$(spec llama-mtp "$IMAGE_RADV" 11434 "$MODEL_FN" k10 65536 999 12 '-fa 1 --no-mmap' '' draft-mtp "$DRAFT_FN" 3)" \
+  -- --model "$MODEL_FN" --api-key k10 --name llama-mtp \
+     --spec-type draft-mtp --spec-draft-model "models/$DRAFT_FN" --spec-draft-n-max 3
+
+run_case "Vision und Speculative zusammen" \
+  "$(spec llama-vl "$IMAGE_RADV" 11434 "$MODEL_VL" k11 65536 999 12 '-fa 1 --no-mmap' "$MMPROJ_VL" draft-mtp "$DRAFT_FN" 5)" \
+  -- --model "$MODEL_VL" --api-key k11 --name llama-vl --mmproj "$MMPROJ_VL" \
+     --spec-type draft-mtp --spec-draft-model "$DRAFT_FN" --spec-draft-n-max 5
 
 echo
 if [[ $FAIL -eq 0 ]]; then

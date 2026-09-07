@@ -101,6 +101,9 @@ const SEED_MODELS = [
   // root, the quant in a folder of its own.
   ['Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf', 400_000],
   ['Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf', 2_500_000],
+  // The MTP head lives beside the quant, in its own subfolder — the layout
+  // that made --spec-draft-model necessary in the first place.
+  ['Qwen3.8-Flash-Next-GGUF/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf', 600_000],
 ]
 for (const [rel, size] of SEED_MODELS) {
   const file = path.join(modelsDir, rel)

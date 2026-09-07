@@ -69,6 +69,9 @@ export const LABEL = {
   port: 'shx.port',
   extraArgs: 'shx.extra-args',
   mmproj: 'shx.mmproj',
+  specType: 'shx.spec-type',
+  specDraftModel: 'shx.spec-draft-model',
+  specDraftNMax: 'shx.spec-draft-n-max',
   rpcPeers: 'shx.rpc-peers',
   comfyModelsDir: 'shx.comfy-models-dir',
   comfyOutputDir: 'shx.comfy-output-dir',
@@ -99,6 +102,41 @@ export const LABEL_VERSION = '1'
  * here is reachable by the TUI and vice versa.
  */
 export const RPC_PORT = 50052
+
+/**
+ * Speculative decoding strategies, as `--spec-type` values.
+ *
+ * Every one of these drafts from a *second* model handed to
+ * `--spec-draft-model`, which is why this app requires one before it will
+ * start a server with any of them. That rule is the lesson from the first
+ * attempt at this feature: `--spec-type draft-mtp` on its own is accepted by
+ * llama-server and then quietly does nothing, because the MTP heads for
+ * Qwen3.8-Flash-Next ship as separate files in an `MTP/` subfolder that
+ * sidecar auto-discovery does not search. No error, no speed-up, nothing to
+ * explain it.
+ *
+ * - `draft-mtp` uses a multi-token-prediction head built for the model.
+ * - `draft-simple` takes any smaller model of the same family.
+ * - `draft-eagle3`, `draft-dflash`, `draft-dspark` each need a checkpoint
+ *   converted for that method and trained for one specific target; dspark
+ *   currently supports Qwen3 backbones only.
+ *
+ * `ngram-mod` and the other n-gram strategies draft from the context and need
+ * no second model, but they are not offered here — they belong to a different
+ * conversation and `--extra-args` remains open for them.
+ *
+ * See https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md
+ */
+export const SPEC_TYPES = /** @type {const} */ ([
+  'draft-mtp',
+  'draft-simple',
+  'draft-eagle3',
+  'draft-dflash',
+  'draft-dspark',
+])
+
+/** llama.cpp's own default for `--spec-draft-n-max`. */
+export const SPEC_DRAFT_N_MAX_DEFAULT = 3
 
 /** The two spellings of "flash attention + no mmap" llama.cpp has used. */
 export const EXTRA_ARGS_NEW = '-fa on --load-mode none'

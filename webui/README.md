@@ -176,6 +176,32 @@ aufbauen.
 llama-Server, dessen Modell in seinen Labels steht, lässt sich von außen nicht
 sagen, welche Datei ein Workflow gerade lädt.
 
+### Speculative Decoding
+
+Ein kleines Modell rät mehrere Tokens voraus, das große prüft sie in einem
+Durchgang. Das Ergebnis ist identisch, nur schneller — bei Qwen3.8-Flash-Next
+laut Unsloth 1,3- bis 1,7-fach.
+
+Im Start-Dialog und im Profil wählst du eine Strategie und **dazu immer ein
+Draft-Modell**. Das ist keine Bequemlichkeit, sondern Absicht: `--spec-type`
+allein nimmt llama-server an und entwirft dann nichts. Die MTP-Köpfe für
+Qwen3.8-Flash-Next liegen in einem Unterordner `MTP/`, den die automatische
+Suche nicht durchsucht — es gäbe keinen Fehler, keine Beschleunigung und keinen
+Hinweis darauf. Ohne Draft-Modell wird der Start deshalb abgelehnt.
+
+| Strategie | Was als Draft-Modell taugt |
+| :--- | :--- |
+| `draft-mtp` | Der MTP-Kopf zum Modell; für Qwen3.8-Flash-Next `mtp-…-shared-Q8_0.gguf` aus dem `MTP/`-Ordner des Repositories |
+| `draft-simple` | Ein beliebiges kleineres Modell derselben Familie |
+| `draft-eagle3`, `draft-dflash`, `draft-dspark` | Ein eigens konvertierter Checkpoint zu genau diesem Zielmodell; dspark unterstützt derzeit nur Qwen3-Backbones |
+
+Das Draft-Modell muss im Modellverzeichnis liegen, dann steht es in der
+Auswahl. **Entwürfe pro Schritt** ist `--spec-draft-n-max`, llama.cpp-Default 3;
+für die MTP-Köpfe empfiehlt Unsloth 2.
+
+Die n-Gram-Strategien von llama.cpp brauchen kein zweites Modell, stehen hier
+aber nicht zur Wahl — dafür bleibt `--extra-args` offen.
+
 ## Netzwerk und Firewall
 
 Die Seite **Netzwerk** führt beides zusammen: alle Schnittstellen der Box mit

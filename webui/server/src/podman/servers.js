@@ -166,6 +166,9 @@ export function profileFromContainer(server) {
     image: server.image ?? IMAGE_REPO,
     modelPath: server.modelPath ?? '',
     mmprojPath: server.mmprojPath ?? '',
+    specType: server.specType ?? '',
+    specDraftModel: server.specDraftModel ?? '',
+    specDraftNMax: server.specDraftNMax ?? null,
     port: server.hostPort ?? CONTAINER_PORT,
     ctxSize: server.ctxSize ?? SERVER_DEFAULTS.ctxSize,
     gpuLayers: server.gpuLayers ?? SERVER_DEFAULTS.gpuLayers,
@@ -303,7 +306,26 @@ export async function validateSpec(ctx, spec, { ignoreName } = {}) {
     }
   }
 
-  return { rel, mmprojRel, hostPath, port }
+  // Every strategy this app offers drafts from a second model. Without one
+  // llama-server starts, accepts the flag and drafts nothing — no error, no
+  // speed-up. Refusing here is the whole reason the field is mandatory.
+  let specDraftRel = ''
+  if (spec.specType) {
+    if (!spec.specDraftModel) {
+      throw badRequest(
+        `Für '${spec.specType}' fehlt das Draft-Modell. Ohne es liefe der Server ohne ` +
+          'Beschleunigung und ohne Fehlermeldung.',
+      )
+    }
+    specDraftRel = normalizeModelPath(spec.specDraftModel)
+    safeResolve(settings.modelsDir, specDraftRel)
+    const draftHostPath = hostModelPath(settings.modelsDir, specDraftRel)
+    if (!fs.existsSync(draftHostPath)) {
+      throw failedDependency(`Draft-Modell nicht gefunden: ${draftHostPath}.`)
+    }
+  }
+
+  return { rel, mmprojRel, specDraftRel, hostPath, port }
 }
 
 /**
@@ -357,7 +379,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     )
   }
 
-  const { rel, mmprojRel } = await validateSpec(ctx, spec, {
+  const { rel, mmprojRel, specDraftRel } = await validateSpec(ctx, spec, {
     ignoreName: exists ? spec.name : undefined,
   })
 
@@ -408,6 +430,9 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     profileId: spec.profileId,
     modelPath: rel,
     mmprojPath: mmprojRel,
+    specType: spec.specType,
+    specDraftModel: specDraftRel,
+    specDraftNMax: spec.specDraftNMax,
     image: spec.image,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
@@ -424,6 +449,9 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     modelsDir: settings.modelsDir,
     modelPath: rel,
     mmprojPath: mmprojRel,
+    specType: spec.specType,
+    specDraftModel: specDraftRel,
+    specDraftNMax: spec.specDraftNMax,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
     threads: spec.threads,
@@ -437,7 +465,16 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   const id = await runContainer(argv)
   log.info(`Server '${spec.name}' gestartet (${id.slice(0, 12)})`)
 
-  return { name: spec.name, id, apiKey, extraArgs, mmprojPath: mmprojRel, rpcPeers }
+  return {
+    name: spec.name,
+    id,
+    apiKey,
+    extraArgs,
+    mmprojPath: mmprojRel,
+    specType: spec.specType ?? '',
+    specDraftModel: specDraftRel,
+    rpcPeers,
+  }
 }
 
 /**
