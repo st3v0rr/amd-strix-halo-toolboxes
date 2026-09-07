@@ -182,15 +182,6 @@ export function ServerDetail() {
                   <dd>{s.mmprojPath}</dd>
                 </>
               ) : null}
-              {s.specType ? (
-                <>
-                  <dt>Speculative Decoding</dt>
-                  <dd>
-                    {s.specType}
-                    {s.specDraftNMax ? `, ${s.specDraftNMax} Entwürfe/Schritt` : null}
-                  </dd>
-                </>
-              ) : null}
               <dt>Image</dt>
               <dd>{s.image ?? '–'}</dd>
               <dt>Host-Port</dt>

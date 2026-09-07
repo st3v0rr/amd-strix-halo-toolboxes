@@ -166,8 +166,6 @@ export function profileFromContainer(server) {
     image: server.image ?? IMAGE_REPO,
     modelPath: server.modelPath ?? '',
     mmprojPath: server.mmprojPath ?? '',
-    specType: server.specType ?? '',
-    specDraftNMax: server.specDraftNMax ?? null,
     port: server.hostPort ?? CONTAINER_PORT,
     ctxSize: server.ctxSize ?? SERVER_DEFAULTS.ctxSize,
     gpuLayers: server.gpuLayers ?? SERVER_DEFAULTS.gpuLayers,
@@ -395,25 +393,11 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   // Empty extraArgs means "work it out from the image", exactly as the script's
   // empty EXTRA_ARGS does. An explicit value skips detection entirely.
   let extraArgs = (spec.extraArgs ?? '').trim()
-  let specSupported = null
   if (!extraArgs) {
     const detected = await resolveExtraArgs(ctx, spec.image, { onLog })
     extraArgs = detected.extraArgs
-    specSupported = detected.specType
   } else {
     onLog(`Nutze vorgegebene Zusatzargumente: ${extraArgs}`)
-    // Detection was skipped above, but a speculative setting still needs the
-    // capability answer — otherwise an old image takes the flag and dies.
-    if (spec.specType) specSupported = (await resolveExtraArgs(ctx, spec.image)).specType
-  }
-
-  // Only refuse when the probe actually said the flag is missing. Unknown stays
-  // permissive: an image we could not probe must not block a working setup.
-  if (spec.specType && specSupported === false) {
-    throw failedDependency(
-      `Das Image ${spec.image} kennt --spec-type nicht, Speculative Decoding ist dort also ` +
-        'nicht verfügbar. Zieh ein aktuelles Image oder stelle die Einstellung auf "Aus".',
-    )
   }
 
   const apiKey = spec.apiKey || generateApiKey()
@@ -424,8 +408,6 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     profileId: spec.profileId,
     modelPath: rel,
     mmprojPath: mmprojRel,
-    specType: spec.specType,
-    specDraftNMax: spec.specDraftNMax,
     image: spec.image,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
@@ -442,8 +424,6 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
     modelsDir: settings.modelsDir,
     modelPath: rel,
     mmprojPath: mmprojRel,
-    specType: spec.specType,
-    specDraftNMax: spec.specDraftNMax,
     ctxSize: spec.ctxSize,
     gpuLayers: spec.gpuLayers,
     threads: spec.threads,
@@ -457,15 +437,7 @@ export async function createServer(ctx, spec, { replace = false, onLog = () => {
   const id = await runContainer(argv)
   log.info(`Server '${spec.name}' gestartet (${id.slice(0, 12)})`)
 
-  return {
-    name: spec.name,
-    id,
-    apiKey,
-    extraArgs,
-    mmprojPath: mmprojRel,
-    specType: spec.specType ?? '',
-    rpcPeers,
-  }
+  return { name: spec.name, id, apiKey, extraArgs, mmprojPath: mmprojRel, rpcPeers }
 }
 
 /**
