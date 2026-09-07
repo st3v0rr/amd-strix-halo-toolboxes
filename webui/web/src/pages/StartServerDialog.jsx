@@ -7,7 +7,7 @@ import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
 import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
 import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
-import { VramEstimate } from '../components/VramEstimate.jsx'
+import { ContextPicker, VramEstimate } from '../components/VramEstimate.jsx'
 import { useToast } from '../components/Toast.jsx'
 
 const KNOWN_TAGS = ['vulkan-radv', 'rocm-10.0', 'rocm-7.14']
@@ -214,10 +214,12 @@ export function StartServerDialog({ onClose, initial }) {
         </div>
 
         <div className="form-grid">
-          <div className="field">
-            <label htmlFor="ctxSize">Context Size</label>
-            <input id="ctxSize" type="number" value={form.ctxSize} onChange={set('ctxSize')} />
-          </div>
+          <ContextPicker
+            modelPath={form.modelPath}
+            value={form.ctxSize}
+            gttTotal={system.data?.gpu?.gttTotal ?? null}
+            onChange={(ctxSize) => setForm((f) => ({ ...f, ctxSize }))}
+          />
           <div className="field">
             <label htmlFor="gpuLayers">GPU Layers</label>
             <input id="gpuLayers" type="number" value={form.gpuLayers} onChange={set('gpuLayers')} />

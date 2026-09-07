@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { post, put } from '../api/client.js'
 import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
+import { ContextPicker } from '../components/VramEstimate.jsx'
 import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
 import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
 import { useToast } from '../components/Toast.jsx'
@@ -129,10 +130,12 @@ export function ProfileDialog({ profile, onClose, onSaved }) {
         </div>
 
         <div className="form-grid">
-          <div className="field">
-            <label htmlFor="p-ctx">Context Size</label>
-            <input id="p-ctx" type="number" value={form.ctxSize} onChange={set('ctxSize')} />
-          </div>
+          <ContextPicker
+            modelPath={form.modelPath}
+            value={form.ctxSize}
+            gttTotal={null}
+            onChange={(ctxSize) => setForm((f) => ({ ...f, ctxSize }))}
+          />
           <div className="field">
             <label htmlFor="p-ngl">GPU Layers</label>
             <input id="p-ngl" type="number" value={form.gpuLayers} onChange={set('gpuLayers')} />
