@@ -166,6 +166,64 @@ test('an api key containing shell metacharacters stays a single argument', () =>
   assert.equal(argv.filter((a) => a === apiKey).length, 1)
 })
 
+test('a strategy emits type, draft model and draft count in that order', () => {
+  const argv = buildRunArgv({
+    ...BASE,
+    specType: 'draft-mtp',
+    specDraftModel: 'Qwen3.8-Flash-Next-GGUF/MTP/mtp-shared-Q8_0.gguf',
+    specDraftNMax: 5,
+  })
+  const at = argv.indexOf('--spec-type')
+  assert.deepEqual(argv.slice(at, at + 6), [
+    '--spec-type',
+    'draft-mtp',
+    '--spec-draft-model',
+    '/workspace/models/Qwen3.8-Flash-Next-GGUF/MTP/mtp-shared-Q8_0.gguf',
+    '--spec-draft-n-max',
+    '5',
+  ])
+  // Everything before it is still the golden argv, byte for byte.
+  assert.deepEqual(argv.slice(0, at), GOLDEN.slice(0, at))
+})
+
+test('the draft model path is normalised like the others', () => {
+  const argv = buildRunArgv({
+    ...BASE,
+    specType: 'draft-dspark',
+    specDraftModel: 'models/d/draft.gguf',
+  })
+  assert.equal(argv[argv.indexOf('--spec-draft-model') + 1], '/workspace/models/d/draft.gguf')
+})
+
+test('the draft count may be left out', () => {
+  const argv = buildRunArgv({ ...BASE, specType: 'draft-mtp', specDraftModel: 'd.gguf' })
+  assert.equal(argv.includes('--spec-draft-n-max'), false)
+  assert.equal(argv.includes('--spec-draft-model'), true)
+})
+
+test('nothing speculative is emitted without a strategy', () => {
+  // Not even the draft model: on its own it would be a flag llama-server has
+  // no use for, and the golden argv has to stay untouched.
+  const argv = buildRunArgv({ ...BASE, specDraftModel: 'd.gguf', specDraftNMax: 8 })
+  assert.equal(argv.includes('--spec-type'), false)
+  assert.equal(argv.includes('--spec-draft-model'), false)
+  assert.equal(argv.includes('--spec-draft-n-max'), false)
+  assert.deepEqual(argv, GOLDEN)
+})
+
+test('projector and speculative coexist, extra args still last', () => {
+  const argv = buildRunArgv({
+    ...BASE,
+    mmprojPath: 'vl/mmproj-F16.gguf',
+    specType: 'draft-mtp',
+    specDraftModel: 'd.gguf',
+    specDraftNMax: 5,
+  })
+  assert.ok(argv.indexOf('--mmproj') < argv.indexOf('--spec-type'))
+  assert.ok(argv.indexOf('--spec-type') < argv.indexOf('-fa'))
+  assert.deepEqual(argv.slice(-3), ['-fa', '1', '--no-mmap'])
+})
+
 test('hostModelPath joins without doubling separators', () => {
   assert.equal(hostModelPath('/home/s/models', 'a/b.gguf'), '/home/s/models/a/b.gguf')
   assert.equal(hostModelPath('/home/s/models/', 'models/a/b.gguf'), '/home/s/models/a/b.gguf')

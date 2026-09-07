@@ -6,6 +6,7 @@ import {
   PORT_MAX,
   PORT_MIN,
   SERVER_DEFAULTS,
+  SPEC_TYPES,
 } from '../../../shared/constants.js'
 import { defaultComfyModelsDir, defaultComfyOutputDir, defaultModelsDir } from './paths.js'
 
@@ -56,6 +57,10 @@ export const profileSchema = z.object({
   modelPath: z.string().min(1),
   /** Vision projector for a multimodal model; '' means an ordinary text model. */
   mmprojPath: z.string().default(''),
+  /** Speculative decoding; '' means off. A strategy always needs a draft model. */
+  specType: z.enum(SPEC_TYPES).or(z.literal('')).default(''),
+  specDraftModel: z.string().default(''),
+  specDraftNMax: z.number().int().min(1).max(64).nullable().default(null),
   port,
   ctxSize: z.number().int().min(256).max(4_000_000),
   gpuLayers: z.number().int().min(0).max(9999),

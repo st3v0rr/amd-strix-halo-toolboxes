@@ -31,6 +31,9 @@ const SERVER = {
   image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0',
   modelPath: 'Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/m.gguf',
   mmprojPath: 'Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf',
+  specType: 'draft-mtp',
+  specDraftModel: 'Qwen3.8-Flash-Next-GGUF/MTP/mtp-shared-Q8_0.gguf',
+  specDraftNMax: 5,
   hostPort: 11555,
   ctxSize: 90000,
   gpuLayers: 999,
@@ -46,6 +49,9 @@ test('every setting a container carries reaches the profile', () => {
     image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0',
     modelPath: 'Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/m.gguf',
     mmprojPath: 'Qwen3.8-Flash-Next-GGUF/mmproj-F16.gguf',
+    specType: 'draft-mtp',
+    specDraftModel: 'Qwen3.8-Flash-Next-GGUF/MTP/mtp-shared-Q8_0.gguf',
+    specDraftNMax: 5,
     port: 11555,
     ctxSize: 90000,
     gpuLayers: 999,
@@ -71,6 +77,9 @@ test('a container predating a label falls back to the defaults a new profile has
   assert.equal(profile.threads, SERVER_DEFAULTS.threads)
   assert.equal(profile.modelPath, '')
   assert.equal(profile.mmprojPath, '')
+  assert.equal(profile.specType, '')
+  assert.equal(profile.specDraftModel, '')
+  assert.equal(profile.specDraftNMax, null)
   assert.equal(profile.extraArgs, '')
   assert.deepEqual(profile.rpcPeers, [])
   // An empty key means the profiles endpoint generates one, rather than the

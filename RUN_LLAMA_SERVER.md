@@ -151,6 +151,30 @@ the log pointing at the cause.
 The web interface finds the projector for a selected model on its own — see
 [webui/README.md](webui/README.md#vision-modelle).
 
+## Speculative Decoding
+
+A small model drafts several tokens ahead, the real one verifies them in a
+single pass. `--spec-type` always travels with `--spec-draft-model`: on its own
+llama-server accepts the flag and drafts nothing, which is silent — the MTP
+heads for Qwen3.8-Flash-Next live in an `MTP/` subfolder its auto-discovery
+does not search. The script refuses rather than start something that quietly
+does nothing.
+
+```bash
+./run-llama-server.sh \
+  --model Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf \
+  --spec-type draft-mtp \
+  --spec-draft-model Qwen3.8-Flash-Next-GGUF/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf \
+  --spec-draft-n-max 5 \
+  --api-key example-key
+```
+
+`draft-simple` takes any smaller model of the same family; `draft-eagle3`,
+`draft-dflash` and `draft-dspark` each need a checkpoint converted for that
+method and trained for the specific target, and dspark currently supports Qwen3
+backbones only. See
+[docs/speculative.md](https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md).
+
 ## Running with Custom Configuration
 
 Override multiple environment variables:

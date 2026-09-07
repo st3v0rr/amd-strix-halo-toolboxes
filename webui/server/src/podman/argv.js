@@ -53,6 +53,9 @@ export function splitExtraArgs(extraArgs) {
  * @param {string} spec.modelsDir absolute host path
  * @param {string} spec.modelPath relative to modelsDir (a leading `models/` is tolerated)
  * @param {string} [spec.mmprojPath] vision projector, relative to modelsDir
+ * @param {string} [spec.specType] speculative decoding strategy; '' means off
+ * @param {string} [spec.specDraftModel] draft model, relative to modelsDir
+ * @param {number} [spec.specDraftNMax] draft tokens per step
  * @param {number} spec.ctxSize
  * @param {number} spec.gpuLayers
  * @param {number} spec.threads
@@ -70,6 +73,9 @@ export function buildRunArgv(spec) {
     modelsDir,
     modelPath,
     mmprojPath = '',
+    specType = '',
+    specDraftModel = '',
+    specDraftNMax,
     ctxSize,
     gpuLayers,
     threads,
@@ -136,6 +142,19 @@ export function buildRunArgv(spec) {
   // llama-server loads but silently refuses every image. Emitted right after
   // the model so the two always read together in `podman inspect`.
   if (mmprojRel) argv.push('--mmproj', `${CONTAINER_MODELS_DIR}/${mmprojRel}`)
+
+  // Speculative decoding. The draft model travels with the strategy and is
+  // never emitted without one: every strategy this app offers drafts from a
+  // second model, and llama-server accepts `--spec-type` on its own only to
+  // then draft nothing at all.
+  if (specType) {
+    argv.push('--spec-type', specType)
+    const draftRel = normalizeModelPath(specDraftModel)
+    if (draftRel) argv.push('--spec-draft-model', `${CONTAINER_MODELS_DIR}/${draftRel}`)
+    if (Number.isFinite(specDraftNMax)) {
+      argv.push('--spec-draft-n-max', String(specDraftNMax))
+    }
+  }
 
   // Only emitted for a cluster run. Without peers the argv must stay byte-for-byte
   // what run-llama-server.sh produces, which is what dev/parity checks.

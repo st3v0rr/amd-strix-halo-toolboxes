@@ -8,6 +8,9 @@ GPU_LAYERS=999
 THREADS=12
 MODEL_PATH=""
 MMPROJ_PATH=""
+SPEC_TYPE=""
+SPEC_DRAFT_MODEL=""
+SPEC_DRAFT_N_MAX=""
 API_KEY=""
 IMAGE="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv"
 MODELS_DIR="./models"
@@ -42,6 +45,11 @@ Options:
                         Modelle, relativ zum Modellverzeichnis. Ohne ihn
                         laedt ein Vision-Modell zwar, nimmt aber keine
                         Bilder an.
+    --spec-type TYP     Speculative Decoding, z.B. "draft-mtp". Braucht immer
+                        --spec-draft-model.
+    --spec-draft-model PFAD  Draft-Modell, relativ zum Modellverzeichnis. Bei
+                        Qwen3.8-Flash-Next liegt es im Unterordner MTP/.
+    --spec-draft-n-max N  Entwuerfe pro Schritt (llama.cpp-Default: 3).
     --models-dir DIR    Modellverzeichnis auf dem Host (default: $MODELS_DIR)
     --extra-args ARGS   Zusaetzliche llama-server-Argumente. Ohne Angabe
                         ermittelt das Script am Image, ob
@@ -90,6 +98,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mmproj)
             MMPROJ_PATH="$2"
+            shift 2
+            ;;
+        --spec-type)
+            SPEC_TYPE="$2"
+            shift 2
+            ;;
+        --spec-draft-model)
+            SPEC_DRAFT_MODEL="$2"
+            shift 2
+            ;;
+        --spec-draft-n-max)
+            SPEC_DRAFT_N_MAX="$2"
             shift 2
             ;;
         --api-key)
@@ -193,6 +213,28 @@ if [ -n "$MMPROJ_PATH" ]; then
     MMPROJ_ARGS=(--mmproj "$FULL_MMPROJ_PATH")
 fi
 
+# Speculative Decoding. Ohne Draft-Modell nimmt llama-server --spec-type zwar
+# an, entwirft aber nichts — deshalb wird hier darauf bestanden.
+SPEC_ARGS=()
+if [ -n "$SPEC_TYPE" ]; then
+    if [ -z "$SPEC_DRAFT_MODEL" ]; then
+        echo "Fehler: --spec-type braucht --spec-draft-model."
+        echo "Sonst laeuft der Server ohne Beschleunigung und ohne Fehlermeldung."
+        exit 1
+    fi
+    REL_SPEC_DRAFT="${SPEC_DRAFT_MODEL#models/}"
+    REL_SPEC_DRAFT="${REL_SPEC_DRAFT#/}"
+    if [ ! -f "${MODELS_DIR}/${REL_SPEC_DRAFT}" ]; then
+        echo "Fehler: Draft-Modell nicht gefunden: ${MODELS_DIR}/${REL_SPEC_DRAFT}"
+        exit 1
+    fi
+    FULL_SPEC_DRAFT="/workspace/models/${REL_SPEC_DRAFT}"
+    SPEC_ARGS=(--spec-type "$SPEC_TYPE" --spec-draft-model "$FULL_SPEC_DRAFT")
+    if [ -n "$SPEC_DRAFT_N_MAX" ]; then
+        SPEC_ARGS+=(--spec-draft-n-max "$SPEC_DRAFT_N_MAX")
+    fi
+fi
+
 # Passende Schreibweise fuer Flash Attention / mmap am Image ermitteln, falls
 # nicht per --extra-args vorgegeben. Kostet einen kurzen Container-Start ohne
 # GPU-Zugriff. Schlaegt die Erkennung fehl, gilt die alte Schreibweise: die
@@ -226,6 +268,10 @@ echo "  Model (Host):   ${MODELS_DIR}/${REL_MODEL_PATH}"
 echo "  Model (Cont.):  $FULL_MODEL_PATH"
 if [ -n "$MMPROJ_PATH" ]; then
     echo "  Projektor:      $FULL_MMPROJ_PATH"
+fi
+if [ -n "$SPEC_TYPE" ]; then
+    echo "  Speculative:    $SPEC_TYPE"
+    echo "  Draft-Modell:   $FULL_SPEC_DRAFT${SPEC_DRAFT_N_MAX:+ (n-max $SPEC_DRAFT_N_MAX)}"
 fi
 echo "  Port:           ${PORT} -> 11434"
 echo "  Context Size:   $CTX_SIZE"
@@ -262,6 +308,7 @@ podman run -d \
     --threads "$THREADS" \
     --api-key "$API_KEY" \
     "${MMPROJ_ARGS[@]}" \
+    "${SPEC_ARGS[@]}" \
     $EXTRA_ARGS
 
 if [ $? -eq 0 ]; then
