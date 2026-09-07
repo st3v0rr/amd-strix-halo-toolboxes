@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { parseEstimate } from '../src/models/estimator.js'
+import { estimateAt } from '../../shared/vram.js'
+
+const GIB = 1024 ** 3
 
 /**
  * Verbatim shape of gguf-vram-estimator.py's output (see its lines 125-144):
@@ -66,4 +69,47 @@ test('mixed MiB and GiB units are both converted to bytes', () => {
 `)
   assert.equal(rows[0].kvBytes, 128 * 1024 ** 2)
   assert.equal(rows[0].totalBytes, Math.round(3.5 * 1024 ** 3))
+})
+
+/* ------------------------------ estimateAt ------------------------------ */
+
+// The slider shows a figure for any context by scaling one measured row. That
+// only holds because the KV cache is exactly linear in the context length —
+// these rows are the estimator's own output, and they double as it doubles.
+const ROWS = [
+  { ctxSize: 16384, kvBytes: 1.12 * GIB, totalBytes: 21.54 * GIB },
+  { ctxSize: 32768, kvBytes: 2.25 * GIB, totalBytes: 22.67 * GIB },
+  { ctxSize: 65536, kvBytes: 4.5 * GIB, totalBytes: 24.92 * GIB },
+  { ctxSize: 131072, kvBytes: 9.0 * GIB, totalBytes: 29.42 * GIB },
+]
+
+test('the interpolation reproduces every measured row', () => {
+  for (const row of ROWS) {
+    const at = estimateAt(ROWS, row.ctxSize)
+    // Within a hundredth of a GiB: the rows themselves are rounded to 2 dp.
+    assert.ok(Math.abs(at.kvBytes - row.kvBytes) < 0.02 * GIB, `kv at ${row.ctxSize}`)
+    assert.ok(Math.abs(at.totalBytes - row.totalBytes) < 0.02 * GIB, `total at ${row.ctxSize}`)
+  }
+})
+
+test('a value between the rows lands between them', () => {
+  // 90 000 is the case the five-row table cannot answer at all.
+  const at = estimateAt(ROWS, 90000)
+  assert.ok(at.totalBytes > ROWS[2].totalBytes, 'above 65536')
+  assert.ok(at.totalBytes < ROWS[3].totalBytes, 'below 131072')
+})
+
+test('the constant part is the model plus overhead, not scaled', () => {
+  // Doubling the context must add KV cache only, never duplicate the weights.
+  const a = estimateAt(ROWS, 20000)
+  const b = estimateAt(ROWS, 40000)
+  assert.ok(Math.abs(b.kvBytes - 2 * a.kvBytes) < 1024, 'kv doubles')
+  assert.ok(Math.abs(b.totalBytes - a.totalBytes - a.kvBytes) < 1024, 'base stays put')
+})
+
+test('missing or nonsensical input yields null rather than a wrong number', () => {
+  assert.equal(estimateAt([], 65536), null)
+  assert.equal(estimateAt(undefined, 65536), null)
+  assert.equal(estimateAt(ROWS, 0), null)
+  assert.equal(estimateAt(ROWS, NaN), null)
 })
