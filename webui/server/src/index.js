@@ -4,6 +4,7 @@ import { scheduleReconcile } from './podman/autostart.js'
 import { createContext } from './context.js'
 import { isMock } from './lib/exec.js'
 import { log } from './lib/log.js'
+import { loopbackUrl } from './mcp/routes.js'
 
 const ctx = createContext()
 const app = createApp(ctx)
@@ -18,6 +19,8 @@ if (!ctx.config.data.jwtSecret) {
 }
 
 const server = app.listen(port, bindAddress, () => {
+  // The MCP tools call the REST API over this address.
+  ctx.selfUrl = loopbackUrl(server.address())
   log.info(`Strix Halo WebUI lauscht auf http://${bindAddress}:${port}${isMock() ? ' (Mock-Modus)' : ''}`)
   if (!ctx.config.data.passwordHash) {
     log.warn('Es ist noch kein Passwort gesetzt — eine Anmeldung ist derzeit nicht möglich.')

@@ -344,6 +344,76 @@ als „keine IP“. Die Liste ist nirgends fest verdrahtet:
 Auf einem Rechner ohne `/proc/net/dev` (etwa einem Mac zur Entwicklung) entfällt
 der Abschnitt ersatzlos, wie die GPU-Kacheln auch.
 
+## MCP-Server
+
+Unter `http://<box>:8420/mcp` spricht die Webapp das
+[Model Context Protocol](https://modelcontextprotocol.io). Ein Agent wie
+Claude Desktop, Claude Code oder Hermes Agent kann die Box damit genauso steuern
+wie diese Oberfläche: Server, RPC-Worker und ComfyUI starten und stoppen, Logs
+lesen, Modelle suchen, laden, schätzen und löschen, Profile pflegen, Images
+ziehen, Firewall-Ports freigeben, Einstellungen ändern, Updates einspielen.
+Jede Box ist ihr eigener MCP-Server — bei mehreren Boxen trägt man jede einzeln
+ein.
+
+**Einrichten:** *Einstellungen → MCP-Zugang → Token erzeugen.* Der Token
+erscheint genau einmal, fertig eingesetzt in die Konfiguration für den
+gewählten Client. Gespeichert wird nur sein SHA-256-Hash; wer ihn verliert,
+erzeugt einen neuen, der den alten sofort ablöst.
+
+Claude Desktop kennt für lokale Konfigurationen nur Prozesse über stdio, daher
+übersetzt [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) (braucht
+Node.js auf dem Rechner mit Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "strix-halo": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://box:8420/mcp", "--allow-http",
+               "--header", "Authorization:${SHX_AUTH}"],
+      "env": { "SHX_AUTH": "Bearer shx_…" }
+    }
+  }
+}
+```
+
+`--allow-http` ist nötig, weil die Box kein TLS spricht; der Header steht in
+einer Umgebungsvariablen, weil Claude Desktop Argumente mit Leerzeichen nicht
+zuverlässig weiterreicht.
+
+Hermes Agent (`~/.hermes/config.yaml`) und Claude Code sprechen HTTP direkt:
+
+```yaml
+mcp_servers:
+  strix-halo:
+    url: "http://box:8420/mcp"
+    headers:
+      Authorization: "Bearer shx_…"
+```
+
+```bash
+claude mcp add --transport http strix-halo http://box:8420/mcp \
+  --header "Authorization: Bearer shx_…"
+```
+
+Wie es gebaut ist:
+
+- **Jedes Tool ist ein Aufruf der REST-API**, die auch der Browser benutzt —
+  per Loopback und mit dem Token des Aufrufers. Validierung und alle
+  Ablehnungen („Modell wird von ‚qwen‘ benutzt“, „Port gehört zu keinem
+  verwalteten Dienst“) gelten für einen Agenten also genauso wie für einen
+  Klick. Die Tools ergänzen nur Bequemlichkeit: Standardwerte aus den
+  Einstellungen, Profile per Name statt ID, `wait_for_job` für Downloads und
+  `get_overview` als Einstieg.
+- **Zustandslos, nur JSON.** Streamable HTTP ohne Session und ohne
+  Server-Stream; `GET /mcp` beantwortet der Server mit 405, wie das Protokoll es
+  erlaubt. Kein SDK — für vier JSON-RPC-Methoden hätte es Express, ajv und
+  einen OAuth-Client ein zweites Mal mitgebracht.
+- **Kein OAuth.** Der Token ist der einzige Zugang. Ein Client, der nach einer
+  401 OAuth-Metadaten unter `/.well-known/` sucht, bekommt eine klare 404
+  statt der Startseite.
+- Tool-Beschreibungen und Fehlermeldungen sind deutsch, wie die Oberfläche.
+
 ## Betrieb
 
 Als normaler Benutzer:
@@ -422,6 +492,12 @@ Was sie tut:
   beliebige Referenzen lassen sich in den Einstellungen freischalten.
 - HF-Token und API-Keys werden aus Logs, SSE-Streams und Fehlermeldungen
   entfernt.
+- Der MCP-Token (`Authorization: Bearer shx_…`) öffnet `/mcp` und die
+  REST-API, nie aber Benutzername, Passwort, JWT-Secret oder den Token selbst —
+  dafür braucht es eine angemeldete Browser-Sitzung. Ein Agent kann die Box also
+  steuern, aber den Besitzer nicht aussperren und sich keinen Nachfolger
+  ausstellen. Ein Passwortwechsel widerruft den Token **nicht**; das geht
+  getrennt unter *Einstellungen → MCP-Zugang*.
 
 Bekannter Vorbehalt: der API-Key eines Servers steht im Container-Argv und ist
 über `podman inspect` für jeden Prozess desselben Benutzers sichtbar — genauso
@@ -549,6 +625,7 @@ webui/
     images/    catalog, registry, pullparse, service
     system/    amdgpu, host, network, firewall, monitor
     updates/   git, apply
+    mcp/       MCP-Endpunkt: Protokoll, Tools, Loopback zur REST-API
     routes/    die REST-API
   web/src/     React + Vite
   shared/      Konstanten, Quant-Gruppierung, RPC-Peers, Firewall-Regeln

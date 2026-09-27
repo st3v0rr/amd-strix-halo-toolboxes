@@ -5,6 +5,7 @@ import { MIN_PASSWORD_LENGTH, USERNAME_RE } from '../../../shared/constants.js'
 import { del, get, post, put } from '../api/client.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { PageHead } from '../components/Layout.jsx'
+import { formatDate } from '../components/format.js'
 import { useToast } from '../components/Toast.jsx'
 
 export function Settings() {
@@ -281,6 +282,8 @@ export function Settings() {
         </div>
       </form>
 
+      <McpCard apiToken={data.apiToken} />
+
       <ServiceCard />
 
       <AccountCard username={data.username} />
@@ -437,6 +440,179 @@ function AccountCard({ username }) {
       </p>
     </section>
   )
+}
+
+/**
+ * The token that lets Claude Desktop, Hermes Agent or any other MCP client run
+ * the box. Shown once, right after it is issued — the server keeps only a
+ * hash, so the snippets below can carry the real token only in that moment.
+ */
+function McpCard({ apiToken }) {
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  const [fresh, setFresh] = useState(null)
+  const [client, setClient] = useState('claude-desktop')
+
+  const issue = useMutation({
+    mutationFn: () => post('/settings/api-token'),
+    onSuccess: (result) => {
+      setFresh(result.token)
+      toast.success(result.replaced ? 'Neuer Token erzeugt, der alte gilt nicht mehr.' : 'Token erzeugt.')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (err) => toast.error(err),
+  })
+
+  const revoke = useMutation({
+    mutationFn: () => del('/settings/api-token'),
+    onSuccess: () => {
+      setFresh(null)
+      toast.success('Token widerrufen. MCP-Clients kommen nicht mehr herein.')
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    },
+    onError: (err) => toast.error(err),
+  })
+
+  const url = `${window.location.origin}/mcp`
+  const token = fresh ?? '<API-Token>'
+
+  return (
+    <section className="card stack">
+      <div>
+        <h2>MCP-Zugang</h2>
+        <p className="small muted">
+          Unter <code>{url}</code> spricht diese Box das Model Context Protocol. Ein Agent wie
+          Claude Desktop oder Hermes Agent kann damit alles, was diese Oberfläche kann: Server
+          starten und stoppen, Modelle laden und löschen, Firewall und Einstellungen ändern.
+          Nur Benutzername, Passwort und diesen Token selbst kann er nicht anfassen.
+        </p>
+      </div>
+
+      <div className="row wrap">
+        {apiToken?.configured ? (
+          <span className="small">
+            Token <code>{apiToken.hint}</code>, erzeugt {formatDate(apiToken.createdAt)}
+          </span>
+        ) : (
+          <span className="small faint">Kein Token — der MCP-Endpunkt lehnt jede Anfrage ab.</span>
+        )}
+      </div>
+
+      <div className="row wrap">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={issue.isPending}
+          onClick={() => issue.mutate()}
+        >
+          {apiToken?.configured ? 'Neuen Token erzeugen' : 'Token erzeugen'}
+        </button>
+        {apiToken?.configured ? (
+          <button
+            type="button"
+            className="btn btn-danger"
+            disabled={revoke.isPending}
+            onClick={() => revoke.mutate()}
+          >
+            Token widerrufen
+          </button>
+        ) : null}
+        {apiToken?.configured && !fresh ? (
+          <span className="small faint">Ein neuer Token ersetzt den alten sofort.</span>
+        ) : null}
+      </div>
+
+      {fresh ? (
+        <div className="alert alert-warn small stack-sm">
+          <span>
+            Dieser Token wird nur jetzt angezeigt. Wer ihn hat, steuert die Box — behandle ihn
+            wie ein Passwort.
+          </span>
+          <div className="row">
+            <input
+              className="grow mono"
+              type="text"
+              readOnly
+              value={fresh}
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => navigator.clipboard?.writeText(fresh)}
+            >
+              Kopieren
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="stack-sm">
+        <div className="row wrap">
+          {Object.entries(MCP_CLIENTS).map(([key, entry]) => (
+            <button
+              key={key}
+              type="button"
+              className={`btn btn-sm${client === key ? ' btn-primary' : ''}`}
+              onClick={() => setClient(key)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <span className="hint">{MCP_CLIENTS[client].where}</span>
+        <pre className="snippet">{MCP_CLIENTS[client].snippet(url, token)}</pre>
+        <div className="row">
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => navigator.clipboard?.writeText(MCP_CLIENTS[client].snippet(url, token))}
+          >
+            Kopieren
+          </button>
+          {!fresh ? (
+            <span className="small faint">
+              Den Platzhalter ersetzen — oder einen neuen Token erzeugen, dann steht er hier schon drin.
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+const MCP_CLIENTS = {
+  'claude-desktop': {
+    label: 'Claude Desktop',
+    where:
+      'In claude_desktop_config.json (Einstellungen → Entwickler → Konfiguration bearbeiten), dann Claude Desktop neu starten. Braucht Node.js auf dem Rechner; mcp-remote übersetzt zwischen Claude Desktop und diesem Endpunkt.',
+    snippet: (url, token) =>
+      JSON.stringify(
+        {
+          mcpServers: {
+            'strix-halo': {
+              command: 'npx',
+              args: ['-y', 'mcp-remote', url, '--allow-http', '--header', 'Authorization:${SHX_AUTH}'],
+              env: { SHX_AUTH: `Bearer ${token}` },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+  },
+  hermes: {
+    label: 'Hermes Agent',
+    where: 'In ~/.hermes/config.yaml, danach Hermes neu starten.',
+    snippet: (url, token) =>
+      `mcp_servers:\n  strix-halo:\n    url: "${url}"\n    headers:\n      Authorization: "Bearer ${token}"\n`,
+  },
+  'claude-code': {
+    label: 'Claude Code',
+    where: 'Im Terminal ausführen.',
+    snippet: (url, token) =>
+      `claude mcp add --transport http strix-halo ${url} \\\n  --header "Authorization: Bearer ${token}"`,
+  },
 }
 
 /** Restart the service from the browser — the counterpart to systemctl restart. */

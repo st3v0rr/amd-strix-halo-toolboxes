@@ -380,6 +380,20 @@ textarea:focus-visible,
   color: var(--text-muted);
 }
 
+/* A config file to copy: the log box's look, sized to its content. */
+.snippet {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
 /* ---------- tables ---------- */
 
 .table { width: 100%; border-collapse: collapse; }

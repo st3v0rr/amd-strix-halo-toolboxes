@@ -2,6 +2,8 @@ import express from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { apiTokenHint, generateApiToken, hashApiToken } from '../auth/apitoken.js'
+import { requireSession } from '../auth/middleware.js'
 import { settingsPatchSchema } from '../config/schema.js'
 import { badRequest } from '../lib/errors.js'
 import { mask, registerSecret, unregisterSecret } from '../lib/redact.js'
@@ -16,6 +18,9 @@ export function settingsRoutes(ctx) {
       settings: config.settings,
       // Write-only: the token itself is never handed back out.
       hfToken: { configured: Boolean(config.hfToken), hint: mask(config.hfToken) },
+      apiToken: config.apiToken
+        ? { configured: true, hint: config.apiToken.hint, createdAt: config.apiToken.createdAt }
+        : { configured: false },
       username: config.username,
     })
   })
@@ -76,6 +81,50 @@ export function settingsRoutes(ctx) {
       unregisterSecret(previous)
       ctx.log.info('Hugging-Face-Token entfernt.')
       res.json({ ok: true, wasSet: true })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  /**
+   * Issue the API token for MCP clients, replacing any previous one.
+   *
+   * The response is the only place the plain token ever appears; the config
+   * keeps its hash. Losing it means issuing a new one, which is cheap.
+   */
+  router.post('/api-token', requireSession, async (req, res, next) => {
+    try {
+      const token = generateApiToken()
+      const apiToken = {
+        hash: hashApiToken(token),
+        hint: apiTokenHint(token),
+        createdAt: new Date().toISOString(),
+      }
+      const replaced = Boolean(ctx.config.data.apiToken)
+      await ctx.config.update((c) => {
+        c.apiToken = apiToken
+        return c
+      })
+      await ctx.config.flush()
+      ctx.log.info(replaced ? 'API-Token ersetzt.' : 'API-Token erzeugt.')
+      res.status(201).json({ token, hint: apiToken.hint, createdAt: apiToken.createdAt, replaced })
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  router.delete('/api-token', requireSession, async (req, res, next) => {
+    try {
+      const wasSet = Boolean(ctx.config.data.apiToken)
+      if (wasSet) {
+        await ctx.config.update((c) => {
+          c.apiToken = null
+          return c
+        })
+        await ctx.config.flush()
+        ctx.log.info('API-Token widerrufen.')
+      }
+      res.json({ ok: true, wasSet })
     } catch (err) {
       next(err)
     }

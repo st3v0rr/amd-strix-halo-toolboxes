@@ -10,6 +10,7 @@ import { originGuard } from './auth/middleware.js'
 import { errorHandler } from './lib/errors.js'
 import { log } from './lib/log.js'
 import { redact } from './lib/redact.js'
+import { mcpRoutes } from './mcp/routes.js'
 import { apiRoutes } from './routes/index.js'
 
 export function createApp(ctx) {
@@ -49,6 +50,16 @@ export function createApp(ctx) {
   )
 
   app.use(cookieParser())
+  // Ahead of the JSON parser below: the MCP router parses its own bodies so it
+  // can answer a malformed one as JSON-RPC.
+  app.use('/mcp', mcpRoutes(ctx))
+  // MCP clients probe here for OAuth metadata after a 401. Without this the SPA
+  // fallback would answer with index.html, and they would choke on it.
+  app.use('/.well-known', (req, res) => {
+    res.status(404).json({
+      error: { code: 'not_found', message: 'Kein OAuth — der MCP-Endpunkt nimmt einen API-Token.' },
+    })
+  })
   app.use(express.json({ limit: '256kb' }))
 
   // No CORS middleware anywhere, by design: without it a cross-origin

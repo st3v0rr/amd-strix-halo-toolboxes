@@ -5,7 +5,7 @@ import { AUTH_COOKIE, MIN_PASSWORD_LENGTH, USERNAME_RE } from '../../../shared/c
 import { badRequest, unauthorized } from '../lib/errors.js'
 import { registerSecret, unregisterSecret } from '../lib/redact.js'
 import { validate } from '../lib/validate.js'
-import { cookieOptions, makeLoginLimiter, requireAuth } from './middleware.js'
+import { cookieOptions, makeLoginLimiter, requireAuth, requireSession } from './middleware.js'
 import { generatePassword, hashPassword, verifyPassword } from './password.js'
 import { TOKEN_TTL_SECONDS, generateSecret, signToken } from './tokens.js'
 
@@ -42,6 +42,7 @@ export function authRoutes(ctx) {
   const router = express.Router()
   const login = makeLoginLimiter()
   const auth = requireAuth(ctx.getConfig)
+  const sessionOnly = [auth, requireSession]
 
   router.post('/login', login.limiter, validate({ body: loginBody }), async (req, res, next) => {
     try {
@@ -87,7 +88,7 @@ export function authRoutes(ctx) {
     })
   })
 
-  router.post('/account', auth, validate({ body: accountBody }), async (req, res, next) => {
+  router.post('/account', sessionOnly, validate({ body: accountBody }), async (req, res, next) => {
     try {
       const config = ctx.config.data
       const ok = await verifyPassword(req.body.currentPassword, config.passwordHash)
@@ -149,7 +150,7 @@ export function authRoutes(ctx) {
   })
 
   // Rotating the secret invalidates every issued token, including our own.
-  router.post('/rotate-secret', auth, async (req, res, next) => {
+  router.post('/rotate-secret', sessionOnly, async (req, res, next) => {
     try {
       const old = ctx.config.data.jwtSecret
       const secret = generateSecret()

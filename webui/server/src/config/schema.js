@@ -47,6 +47,15 @@ export const configSchema = z.object({
    * compromise would leave the attacker's session valid for up to 12 hours.
    */
   credentialsChangedAt: z.number().int().min(0).default(0),
+  /**
+   * The bearer token for MCP clients, stored as a SHA-256 hash. The plain
+   * token is shown once when it is created and never again. Null: no token,
+   * so the MCP endpoint answers every request with 401.
+   */
+  apiToken: z
+    .object({ hash: z.string().length(64), hint: z.string(), createdAt: z.string() })
+    .nullable()
+    .default(null),
   settings: settingsSchema.default({}),
 })
 

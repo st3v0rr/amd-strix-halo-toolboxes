@@ -93,7 +93,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds `vulkan-radv` and `rocm-10.0` on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
-| `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. See [webui/README.md](webui/README.md). |
+| `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. The same app is an MCP server at `/mcp`, so Claude Desktop, Claude Code or Hermes Agent can run the box too. See [webui/README.md](webui/README.md). |
 
 ### Which images do I want?
 

@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit'
 
 import { AUTH_COOKIE, CSRF_HEADER, CSRF_VALUE } from '../../../shared/constants.js'
 import { forbidden, unauthorized } from '../lib/errors.js'
+import { bearerFrom, verifyApiToken } from './apitoken.js'
 import { REFRESH_AFTER_SECONDS, TOKEN_TTL_SECONDS, signToken, verifyToken } from './tokens.js'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
@@ -36,6 +37,12 @@ export function cookieOptions(req) {
 export function originGuard(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next()
 
+  // A browser never attaches a bearer token on its own, and a page cannot add
+  // an Authorization header cross-origin without the preflight that always
+  // fails here. So a request carrying one is no CSRF candidate — and a bad
+  // token is still rejected by requireAuth right after.
+  if (bearerFrom(req)) return next()
+
   if (req.get(CSRF_HEADER) !== CSRF_VALUE) {
     return next(forbidden('Fehlender oder falscher X-Requested-With-Header.'))
   }
@@ -64,6 +71,18 @@ export function originGuard(req, res, next) {
 export function requireAuth(getConfig) {
   return async (req, res, next) => {
     const config = getConfig()
+
+    // A bearer token is an alternative to the cookie, not a fallback: a client
+    // that presents one gets judged on it alone.
+    const bearer = bearerFrom(req)
+    if (bearer) {
+      if (!verifyApiToken(bearer, config.apiToken?.hash)) {
+        return next(unauthorized('Der API-Token ist ungültig oder wurde widerrufen.'))
+      }
+      req.user = { username: config.username, via: 'token' }
+      return next()
+    }
+
     const token = req.cookies?.[AUTH_COOKIE] || ticketFromQuery(req)
     const payload = await verifyToken(config.jwtSecret, token)
     if (!payload) return next(unauthorized())
@@ -83,7 +102,7 @@ export function requireAuth(getConfig) {
       return next(unauthorized('Der Benutzername wurde geändert. Bitte neu anmelden.'))
     }
 
-    req.user = { username: payload.sub, expiresAt: payload.exp }
+    req.user = { username: payload.sub, expiresAt: payload.exp, via: 'session' }
 
     // Sliding session: refresh a token that is more than an hour old so an
     // actively used tab never expires mid-session.
@@ -94,6 +113,19 @@ export function requireAuth(getConfig) {
     }
     return next()
   }
+}
+
+/**
+ * For what only a person at the browser may do: changing the credentials,
+ * rotating the JWT secret, issuing or revoking the API token. An agent holding
+ * the token can run the whole box, but it cannot lock the owner out of it or
+ * mint itself a successor.
+ */
+export function requireSession(req, res, next) {
+  if (req.user?.via !== 'session') {
+    return next(forbidden('Das geht nur mit einer angemeldeten Browser-Sitzung, nicht per API-Token.'))
+  }
+  return next()
 }
 
 /**
