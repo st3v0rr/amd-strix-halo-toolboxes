@@ -10,7 +10,7 @@ import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
 import { ContextPicker, VramEstimate } from '../components/VramEstimate.jsx'
 import { useToast } from '../components/Toast.jsx'
 
-const KNOWN_TAGS = ['vulkan-radv', 'rocm-10.0', 'rocm-7.14']
+const KNOWN_TAGS = ['vulkan-radv', 'rocm-10.0', 'rocm-10.0-strix-llama']
 const IMAGE_REPO = 'docker.io/st3v0rr/amd-strix-halo-toolboxes'
 
 export function StartServerDialog({ onClose, initial }) {
@@ -279,7 +279,8 @@ export function StartServerDialog({ onClose, initial }) {
           <span className="hint">
             Leer bedeutet: am Image ermitteln, ob <code>-fa on --load-mode none</code> oder{' '}
             <code>-fa 1 --no-mmap</code> unterstützt wird. Auf Strix Halo ist eines von beiden
-            zwingend.
+            zwingend. Kennt der Build <code>--lazy-mode on-direct</code> (strix-llama), kommt
+            das dazu.
           </span>
         </div>
       </form>

@@ -7,6 +7,7 @@ on:
         description: >
           Comma-separated backends to build (e.g. "rocm-10.0", "vulkan-radv").
           Use "all" to build the standard auto-built set.
+          rocm-10.0-strix-llama is not in it and must be named explicitly (40-60 min).
           Only backends with a Dockerfile in toolboxes_llama_server/ can be built.
         required: false
         default: all
@@ -37,7 +38,7 @@ jobs:
           IN='${{ inputs.backends }}'
 
           if [[ "$IN" == "all" || -z "$IN" ]]; then
-            JSON='["rocm-7.14","rocm-10.0","vulkan-radv"]'
+            JSON='["rocm-10.0","vulkan-radv"]'
           else
             # Remove spaces and build JSON array from comma list
             IN_CLEAN=$(echo "$IN" | tr -d '[:space:]')

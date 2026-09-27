@@ -1,4 +1,8 @@
-import { EXTRA_ARGS_NEW, EXTRA_ARGS_OLD } from '../../../shared/constants.js'
+import {
+  EXTRA_ARGS_LAZY_DIRECT,
+  EXTRA_ARGS_NEW,
+  EXTRA_ARGS_OLD,
+} from '../../../shared/constants.js'
 import { run } from '../lib/exec.js'
 import { log } from '../lib/log.js'
 import { imageId } from './client.js'
@@ -10,14 +14,18 @@ import { imageId } from './client.js'
  * On Strix Halo both are mandatory, but llama.cpp renamed them: the old
  * `-fa 1 --no-mmap` became `-fa on --load-mode none`. Old builds abort on
  * `--load-mode`, new builds only warn about `--no-mmap` — so when detection
- * fails, the old spelling is the safe default. This mirrors
- * run-llama-server.sh lines 183-195 exactly.
+ * fails, the old spelling is the safe default. A build that also offers
+ * `--lazy-mode on-direct` gets it on top, see EXTRA_ARGS_LAZY_DIRECT. This
+ * mirrors the detection in run-llama-server.sh exactly.
  *
  * @param {string} helpOutput combined stdout+stderr of `llama-server --help`
  */
 export function detectExtraArgs(helpOutput) {
   if (!helpOutput || !helpOutput.trim()) return EXTRA_ARGS_OLD
-  return helpOutput.includes('--load-mode') ? EXTRA_ARGS_NEW : EXTRA_ARGS_OLD
+  if (!helpOutput.includes('--load-mode')) return EXTRA_ARGS_OLD
+  return helpOutput.includes('on-direct')
+    ? `${EXTRA_ARGS_NEW} ${EXTRA_ARGS_LAZY_DIRECT}`
+    : EXTRA_ARGS_NEW
 }
 
 /**

@@ -6,7 +6,7 @@ of unified memory as VRAM.
 This repository is a fork of
 **[kyuz0/amd-strix-halo-toolboxes](https://github.com/kyuz0/amd-strix-halo-toolboxes)**.
 Upstream builds container images you *enter* and work in interactively. This fork
-takes three of those backends, turns them into containers that *start a
+takes a few of those backends, turns them into containers that *start a
 server* instead of a shell, and adds a web interface to manage the whole box —
 models, servers, images, updates — from a browser.
 
@@ -46,16 +46,38 @@ Qwen3.8-Flash-Next, TheRock nightlies, PR builds) and lives only upstream — se
 its [README](https://github.com/kyuz0/amd-strix-halo-toolboxes#supported-toolboxes)
 and [DockerHub tags](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags).
 
-This fork builds those two, plus `rocm-7.14` as a fallback for the ROCm jump:
+This fork builds those two, plus one of the experimental ones:
 
 | Tag | Backend | Notes |
 | :--- | :--- | :--- |
 | `vulkan-radv` | Vulkan (Mesa RADV, Fedora 44) | Most compatible. The default here, and the right first choice. |
 | `rocm-10.0` | ROCm 10.0 (Fedora 44) | Current ROCm Core SDK build for gfx1151. |
-| `rocm-7.14` | ROCm 7.14 (Fedora 44) | The previous ROCm branch, kept here after upstream replaced it — useful if 10.0 misbehaves. |
+| `rocm-10.0-strix-llama` | ROCm 10.0 + custom ROCr/HIP (Experimental) | [`halo-box/strix-llama.cpp`](https://github.com/halo-box/strix-llama.cpp) on a retained-PM4 runtime built from [`pwilkin/rocm-systems:ilintar-experiments`](https://github.com/pwilkin/rocm-systems/tree/ilintar-experiments). Upstream measured 1207 t/s prompt processing and 43.9 t/s decode on Qwen3.8-Flash-Next Q4_K_XL with its MTP head. **Manual build only** (40–60 minutes); see [below](#the-strix-llama-image). |
 
-`vulkan-amdvlk` and `rocm-6.4.4` are no longer built. Upstream retired both, and
-maintaining them alone was not worth the CI time; the images already on Docker
+#### The strix-llama image
+
+Nothing in it is pinned: every build takes the heads of both branches, and
+`/opt/strix/versions.txt` inside the image records which revisions went in. It
+is therefore not in the automatic `all` set — start it by hand with
+`backends=rocm-10.0-strix-llama`.
+
+Its llama-server knows `--lazy-mode on-direct`, which reads Qwen3.8-Flash-Next's
+28.8 GB per-layer embedding table with `pread()` instead of keeping it resident.
+The web interface and `run-llama-server.sh` detect that from `llama-server --help`
+and start it with `-fa on --load-mode none --lazy-mode on-direct`; set extra
+arguments by hand and that detection is skipped, so include all three then.
+Vision (`--mmproj`) and `draft-mtp` with the MTP head work as with the other
+images. Upstream's measured command adds more, which fits in the extra arguments
+if you want to reproduce it:
+`-b 16384 -ub 16384 --parallel 1 --spec-draft-device ROCm0 --spec-draft-ngl all --mmproj-device ROCm0`.
+
+Two warnings from upstream. Never set `GGML_CUDA_ENABLE_UNIFIED_MEMORY` — with
+retained PM4 it corrupts output (garbage tokens, `init: invalid token` with the
+MTP draft). And a fork of ROCm is a fork of ROCm: compare a few real prompts at
+`temp 0` against `vulkan-radv` before relying on it.
+
+`vulkan-amdvlk`, `rocm-6.4.4` and `rocm-7.14` are no longer built. Upstream retired all
+three, and maintaining them alone was not worth the CI time; the images already on Docker
 Hub keep working, they just stop receiving new llama.cpp builds.
 
 > Upstream's support is the reason this fork exists at all. If the toolboxes are
@@ -67,8 +89,8 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 
 | Part | What it is |
 | :--- | :--- |
-| `toolboxes_llama_server/` | The same backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all three keep RDMA support for llama.cpp RPC. |
-| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds all three backends on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
+| `toolboxes_llama_server/` | The same backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all of them keep RDMA support for llama.cpp RPC. |
+| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds `vulkan-radv` and `rocm-10.0` on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. See [webui/README.md](webui/README.md). |
@@ -79,7 +101,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | :--- | :--- | :--- |
 | Container starts | an interactive shell | `llama-server` |
 | Made for | experimenting, benchmarking, `llama-cli`, building | leaving a server running on the network |
-| Backends | two stable + many experimental | three `llama-server` builds |
+| Backends | two stable + many experimental | two stable + `rocm-10.0-strix-llama` |
 | Used by | `toolbox enter`, upstream's `refresh-toolboxes.sh` | the web interface, or `run-llama-server.sh` |
 
 They coexist happily on one machine — different image names, different
@@ -209,8 +231,9 @@ On Strix Halo, `llama-server` must run with flash attention and without mmap, or
 it crashes and slows to a crawl. The spelling of those flags changed in llama.cpp:
 older builds want `-fa 1 --no-mmap`, newer ones `-fa on --load-mode none`, and
 each rejects or warns about the other. `run-llama-server.sh` and the web interface
-both probe the image's `--help` output and pick the right pair; `--extra-args`
-overrides the detection entirely.
+both probe the image's `--help` output and pick the right pair, adding
+`--lazy-mode on-direct` where the build offers it (`rocm-10.0-strix-llama`);
+`--extra-args` overrides the detection entirely.
 
 ---
 
@@ -218,7 +241,7 @@ overrides the detection entirely.
 
 | Path | Origin | Contents |
 | :--- | :--- | :--- |
-| `toolboxes_llama_server/` | fork | Dockerfiles for the three `llama-server` images |
+| `toolboxes_llama_server/` | fork | Dockerfiles for the `llama-server` images |
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh` | fork | starts one server from the command line, and is the reference `npm run test:parity` checks the web interface against |
@@ -262,4 +285,3 @@ sync left three genuine conflicts instead of twenty-two.
 * [Upstream project](https://github.com/kyuz0/amd-strix-halo-toolboxes) and its [website](https://strix-halo-toolboxes.com)
 * [Strix Halo Home Lab (deseven)](https://strixhalo-homelab.d7.wtf/) — including the [hardware database](https://strixhalo-homelab.d7.wtf/Hardware)
 * [Strix Halo Testing Builds (lhl)](https://github.com/lhl/strix-halo-testing/tree/main)
-* [AMD ROCm 7.14 installation guide](https://rocm.docs.amd.com/en/docs-7.14.0/install/rocm.html)

@@ -10,7 +10,7 @@ Upstream's own parts — the interactive toolboxes, the benchmark suite, the Git
 *   **Hardware / Drivers**: AMD "Strix Halo" APUs (Gfx1151). Implementations depend on ROCm (v6.4.4, v7.x) and Vulkan (Mesa RADV, AMDVLK).
 
 ## Repository Structure Overview
-*   `/toolboxes_llama_server/`: Dockerfiles for the `llama-server` images (`vulkan-radv`, `rocm-10.0`, `rocm-7.14`). Each is upstream's file with the shell CMD replaced by a server start. Also holds the VRAM estimator the web interface runs, and this directory's `Dockerfile.<tag>` names are what the image catalog offers.
+*   `/toolboxes_llama_server/`: Dockerfiles for the `llama-server` images (`vulkan-radv`, `rocm-10.0`, and the experimental, manually built `rocm-10.0-strix-llama`). Each is upstream's file with the shell CMD replaced by a server start. Also holds the VRAM estimator the web interface runs, and this directory's `Dockerfile.<tag>` names are what the image catalog offers.
 *   `/toolboxes_comfyui/`: ComfyUI as a server image. Upstream's Dockerfile plus their `scripts/` and `workflows/`, vendored so the build needs no other repository — see its `UPSTREAM.md`.
 *   `/webui/`: Express + React management interface (JWT-protected) for models, containers, images and app updates. Runs as a `systemd --user` service on the box. Node backend, no native npm modules by design, so `npm ci` stays reliable across Node upgrades.
 *   `run-llama-server.sh`: starts one server from the command line. Kept above all because `dev/parity` runs *this* script against a fake podman and diffs its arguments against `argv.js` — delete it and that check dies.

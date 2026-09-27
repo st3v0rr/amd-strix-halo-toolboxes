@@ -54,7 +54,9 @@ Options:
     --extra-args ARGS   Zusaetzliche llama-server-Argumente. Ohne Angabe
                         ermittelt das Script am Image, ob
                         "-fa on --load-mode none" (neu) oder
-                        "-fa 1 --no-mmap" (alt) unterstuetzt wird.
+                        "-fa 1 --no-mmap" (alt) unterstuetzt wird. Kennt
+                        der Build "--lazy-mode on-direct" (strix-llama),
+                        kommt das dazu.
     --help              Zeigt diese Hilfe
 
 Beispiele:
@@ -70,14 +72,6 @@ Beispiele:
       --name llama-rocm-10.0 \\
       --model Qwen3.6-35B-A3B-GGUF/UD-Q4_K_XL/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \\
       --api-key example-key
-
-  ROCm 7.14 (Vorgaengerzweig, falls 10.0 zickt):
-    $(basename "$0") \\
-      --image docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14 \\
-      --name llama-rocm-7.14 \\
-      --model gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16.gguf \\
-      --api-key example-key \\
-      --ctx-size 90000
 
   Zweiter Server parallel auf anderem Port:
     $(basename "$0") \\
@@ -249,6 +243,12 @@ if [ -z "$EXTRA_ARGS" ]; then
         echo "  Erkennung fehlgeschlagen, nutze die alte Schreibweise."
     elif grep -q -- "--load-mode" <<< "$HELP_OUTPUT"; then
         EXTRA_ARGS="-fa on --load-mode none"
+        # Der strix-llama-Fork liest mit on-direct die Per-Layer-Embeddings
+        # per pread(), statt sie komplett im Speicher zu halten. Mainlines
+        # --lazy-mode on braucht mmap und faellt mit --load-mode none weg.
+        if grep -q -- "on-direct" <<< "$HELP_OUTPUT"; then
+            EXTRA_ARGS="$EXTRA_ARGS --lazy-mode on-direct"
+        fi
     else
         EXTRA_ARGS="-fa 1 --no-mmap"
     fi

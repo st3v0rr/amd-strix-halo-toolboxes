@@ -142,6 +142,15 @@ export const SPEC_DRAFT_N_MAX_DEFAULT = 3
 export const EXTRA_ARGS_NEW = '-fa on --load-mode none'
 export const EXTRA_ARGS_OLD = '-fa 1 --no-mmap'
 
+/**
+ * Appended to the new spelling when the build knows `--lazy-mode on-direct`
+ * (today: the strix-llama fork). `--load-mode none` rules out mainline's lazy
+ * mode, which needs mmap, so Qwen3.8-Flash-Next would otherwise keep its
+ * 28.8 GB per-layer embedding table resident; on-direct reads the rows with
+ * pread() instead.
+ */
+export const EXTRA_ARGS_LAZY_DIRECT = '--lazy-mode on-direct'
+
 /** Header that must accompany every mutating request (CSRF defence). */
 export const CSRF_HEADER = 'x-requested-with'
 export const CSRF_VALUE = 'shx'

@@ -5,9 +5,9 @@ import { parseRef, stampToIso } from '../src/images/registry.js'
 import { catalog, isKnownRef, knownTags } from '../src/images/catalog.js'
 
 test('parses a docker.io reference into repository and tag', () => {
-  assert.deepEqual(parseRef('docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14'), {
+  assert.deepEqual(parseRef('docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0'), {
     repository: 'st3v0rr/amd-strix-halo-toolboxes',
-    tag: 'rocm-7.14',
+    tag: 'rocm-10.0',
   })
 })
 
@@ -38,7 +38,7 @@ test('the catalog is derived from the Dockerfile directories', () => {
   const tags = knownTags()
   const names = tags.map((t) => t.tag)
   // The llama-server backends this repository builds …
-  for (const expected of ['vulkan-radv', 'rocm-7.14', 'rocm-10.0']) {
+  for (const expected of ['vulkan-radv', 'rocm-10.0', 'rocm-10.0-strix-llama']) {
     assert.ok(names.includes(expected), `expected tag ${expected} in ${names.join(', ')}`)
     assert.equal(tags.find((t) => t.tag === expected).kind, 'llama')
   }

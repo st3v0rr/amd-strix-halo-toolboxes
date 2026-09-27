@@ -97,7 +97,7 @@ test('peers become a single comma-separated --rpc argument before the extra args
 
 const WORKER_BASE = {
   containerName: 'rpc-worker',
-  image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14',
+  image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0',
   hostPort: 50052,
 }
 
@@ -121,7 +121,7 @@ test('the worker argv runs ggml-rpc-server with the on-disk cache enabled', () =
     '50052:50052',
     '--name',
     'rpc-worker',
-    'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14',
+    'docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0',
     'ggml-rpc-server',
     '-H',
     '0.0.0.0',

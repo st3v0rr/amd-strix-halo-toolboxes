@@ -76,7 +76,7 @@ run_case() {
 }
 
 IMAGE_RADV="docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv"
-IMAGE_ROCM="docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14"
+IMAGE_ROCM="docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0"
 MODEL_A="Qwen3.6-27B-GGUF/Q8_0/Qwen3.6-27B-Q8_0.gguf"
 MODEL_SHARD="gpt-oss-120b-GGUF/F16/gpt-oss-120b-F16-00001-of-00003.gguf"
 
@@ -103,8 +103,8 @@ run_case "Praefix models/ im Modellpfad" \
   -- --model "models/$MODEL_A" --api-key example-key
 
 run_case "Gesharded, zweiter Port, eigener Name, ROCm-Image" \
-  "$(spec llama-rocm-7.14 "$IMAGE_ROCM" 11435 "$MODEL_SHARD" k2 65536 999 12 '-fa 1 --no-mmap')" \
-  -- --model "$MODEL_SHARD" --api-key k2 --name llama-rocm-7.14 --port 11435 --image "$IMAGE_ROCM"
+  "$(spec llama-rocm-10.0 "$IMAGE_ROCM" 11435 "$MODEL_SHARD" k2 65536 999 12 '-fa 1 --no-mmap')" \
+  -- --model "$MODEL_SHARD" --api-key k2 --name llama-rocm-10.0 --port 11435 --image "$IMAGE_ROCM"
 
 run_case "Abweichende ctx/threads/gpu-layers" \
   "$(spec llamacpp-server "$IMAGE_RADV" 11434 "$MODEL_A" k3 90000 99 16 '-fa 1 --no-mmap')" \

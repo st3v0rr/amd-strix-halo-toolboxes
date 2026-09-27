@@ -80,7 +80,7 @@ test('never reports 100 percent before the manifest is written', () => {
 test('parses a realistic sequence end to end', () => {
   const p = new PullProgress()
   const lines = [
-    'Trying to pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14...',
+    'Trying to pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0...',
     'Getting image source signatures',
     'Copying blob 1a2b3c4d [>---------] 100.0MiB / 2.0GiB',
     'Copying blob 5e6f7a8b [>---------] 50.0MiB / 1.0GiB',

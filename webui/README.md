@@ -446,8 +446,10 @@ Zwei Eigenheiten aus dem Skript sind dabei besonders wichtig:
 
 - Auf Strix Halo sind Flash Attention und kein mmap zwingend. Die Schreibweise
   hat sich geändert (`-fa 1 --no-mmap` → `-fa on --load-mode none`), deshalb
-  wird sie am Image ermittelt und pro **Image-ID** zwischengespeichert — nach
-  einem Pull erkennt die App automatisch neu.
+  wird sie am Image ermittelt. Bietet der Build `--lazy-mode on-direct`
+  (`rocm-10.0-strix-llama`), kommt das dazu. Das Ergebnis wird pro
+  **Image-ID** zwischengespeichert — nach einem Pull erkennt die App
+  automatisch neu.
 - Fehlt die Modelldatei, wird der Start verweigert. Sonst bricht llama-server
   ab und `--restart unless-stopped` erzeugt eine stille Neustart-Schleife.
   Für den Vision-Projektor gilt dasselbe, aus einem schlimmeren Grund: ein

@@ -8,13 +8,13 @@ This guide shows how to pull and run the AMD Strix Halo Llama Server Docker imag
 |-------|-------------|
 | `vulkan-radv` | Vulkan backend with RADV driver (Mesa, Fedora 44). Most stable and compatible — recommended for most models. |
 | `rocm-10.0` | ROCm 10.0 backend (Fedora 44). Current stable ROCm Core SDK build. |
-| `rocm-7.14` | ROCm 7.14 backend (Fedora 44). The previous ROCm branch, kept as a fallback if 10.0 misbehaves. |
+| `rocm-10.0-strix-llama` | Experimental: `halo-box/strix-llama.cpp` on a custom retained-PM4 ROCr/HIP runtime. Upstream reports it as the fastest stack for Qwen3.8-Flash-Next. Built by hand only. |
 
 These mirror the stable backends of the upstream project
 [`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes),
-with `llama-server` as the container entrypoint instead of a shell. Upstream
-builds `vulkan-radv` and `rocm-10.0`; `rocm-7.14` is kept here after upstream
-replaced it.
+plus its experimental `rocm-10.0-strix-llama`, with `llama-server` as the
+container entrypoint instead of a shell. For that one, see
+[the README](README.md#the-strix-llama-image).
 
 > **This is the manual path.** [`webui/`](webui/README.md) does everything on
 > this page — pulling images, downloading models, starting and stopping servers,
@@ -27,7 +27,7 @@ replaced it.
 > diffs its arguments against the ones the web interface builds. It is the
 > independent reference that keeps the two honest.
 
-> The retired tags `rocm-7.1.1`, `rocm-7.2`, `rocm7-nightlies`, `rocm-6.4.4` and
+> The retired tags `rocm-7.14`, `rocm-7.1.1`, `rocm-7.2`, `rocm7-nightlies`, `rocm-6.4.4` and
 > `vulkan-amdvlk` are no longer built. Existing images stay on Docker Hub but
 > receive no new llama.cpp builds — use `rocm-10.0` or `vulkan-radv` instead.
 
@@ -42,7 +42,6 @@ Pull all images:
 ```bash
 docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:vulkan-radv
 docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
-docker pull docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
 ```
 
 ## Running Images
@@ -86,17 +85,9 @@ docker run -it --rm \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-10.0
 ```
 
-**rocm-7.14:**
-```bash
-docker run -it --rm \
-  --device /dev/dri \
-  --device /dev/kfd \
-  --group-add video \
-  --group-add render \
-  --security-opt seccomp=unconfined \
-  -p 11434:11434 \
-  docker.io/st3v0rr/amd-strix-halo-toolboxes:rocm-7.14
-```
+**rocm-10.0-strix-llama** runs the same way, with the image name swapped. Via
+`run-llama-server.sh` it additionally gets `--lazy-mode on-direct`, detected from
+the image.
 
 ## Looking inside an image
 
