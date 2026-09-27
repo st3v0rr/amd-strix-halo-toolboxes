@@ -52,14 +52,16 @@ This fork builds those two, plus one of the experimental ones:
 | :--- | :--- | :--- |
 | `vulkan-radv` | Vulkan (Mesa RADV, Fedora 44) | Most compatible. The default here, and the right first choice. |
 | `rocm-10.0` | ROCm 10.0 (Fedora 44) | Current ROCm Core SDK build for gfx1151. |
-| `rocm-10.0-strix-llama` | ROCm 10.0 + custom ROCr/HIP (Experimental) | [`halo-box/strix-llama.cpp`](https://github.com/halo-box/strix-llama.cpp) on a retained-PM4 runtime built from [`pwilkin/rocm-systems:ilintar-experiments`](https://github.com/pwilkin/rocm-systems/tree/ilintar-experiments). Upstream measured 1207 t/s prompt processing and 43.9 t/s decode on Qwen3.8-Flash-Next Q4_K_XL with its MTP head. **Manual build only** (40–60 minutes); see [below](#the-strix-llama-image). |
+| `rocm-10.0-strix-llama` | ROCm 10.0 + custom ROCr/HIP (Experimental) | [`halo-box/strix-llama.cpp`](https://github.com/halo-box/strix-llama.cpp) on a retained-PM4 runtime built from [`pwilkin/rocm-systems:ilintar-experiments`](https://github.com/pwilkin/rocm-systems/tree/ilintar-experiments). Upstream measured 1207 t/s prompt processing and 43.9 t/s decode on Qwen3.8-Flash-Next Q4_K_XL with its MTP head. Rebuilt when either source branch moves (40–60 minutes); see [below](#the-strix-llama-image). |
 
 #### The strix-llama image
 
 Nothing in it is pinned: every build takes the heads of both branches, and
-`/opt/strix/versions.txt` inside the image records which revisions went in. It
-is therefore not in the automatic `all` set — start it by hand with
-`backends=rocm-10.0-strix-llama`.
+`/opt/strix/versions.txt` inside the image records which revisions went in.
+It does not follow llama.cpp master either, so it is not in the `all` set that
+the llama.cpp poller builds. Its own poller, `poll-strix-llama.yaml`, checks
+both branches every four hours and builds only when one of them has moved. To
+force a build, run *Build & Publish* with `backends=rocm-10.0-strix-llama`.
 
 Its llama-server knows `--lazy-mode on-direct`, which reads Qwen3.8-Flash-Next's
 28.8 GB per-layer embedding table with `pread()` instead of keeping it resident.
@@ -245,7 +247,7 @@ both probe the image's `--help` output and pick the right pair, adding
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh` | fork | starts one server from the command line, and is the reference `npm run test:parity` checks the web interface against |
-| `.github/workflows/` | fork-adjusted | polls llama.cpp, builds and prunes this fork's images |
+| `.github/workflows/` | fork-adjusted | polls llama.cpp and the strix-llama sources, builds and prunes this fork's images |
 
 ### Merging upstream
 

@@ -1,0 +1,90 @@
+name: Poll strix-llama Sources & Trigger Build
+
+# rocm-10.0-strix-llama does not build from llama.cpp master, so the llama.cpp
+# poller is the wrong trigger for it. Its Dockerfile pins nothing and takes the
+# heads of two branches — the strix-llama.cpp engine and the retained-PM4
+# ROCr/HIP runtime — so a change to either is what makes a new image. This
+# watches both and builds only then, which matters for a 40-60 minute build.
+
+on:
+  schedule:
+    - cron: '30 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  BACKEND: rocm-10.0-strix-llama
+  STATE_NAME: last-strix-llama-sources
+
+jobs:
+  poll-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      # Keep these in step with the REPO/BRANCH and ROCM_SYSTEMS_* build args in
+      # toolboxes_llama_server/Dockerfile.rocm-10.0-strix-llama.
+      - id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_of() {
+            local sha
+            sha=$(git ls-remote "$1" "refs/heads/$2" | cut -f1)
+            if [[ -z "$sha" ]]; then echo "❌ No SHA for $1 $2" >&2; exit 1; fi
+            echo "$sha"
+          }
+          ENGINE=$(head_of https://github.com/halo-box/strix-llama.cpp.git master)
+          RUNTIME=$(head_of https://github.com/pwilkin/rocm-systems.git ilintar-experiments)
+          echo "✅ strix-llama.cpp master:           $ENGINE"
+          echo "✅ rocm-systems ilintar-experiments: $RUNTIME"
+          echo "state=engine=${ENGINE},runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
+
+      - id: previous
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "🔎 Checking for prior artifact '${STATE_NAME}'…"
+          ART_ID=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GH_REPO}/actions/artifacts?per_page=100&name=${STATE_NAME}" \
+            | jq -r --arg n "$STATE_NAME" '.artifacts | map(select(.name==$n and .expired==false)) | sort_by(.created_at) | reverse | .[0].id // empty')
+          PREV=""
+          if [[ -n "$ART_ID" ]]; then
+            echo "📦 Found artifact id: $ART_ID (downloading)"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -L \
+              "https://api.github.com/repos/${GH_REPO}/actions/artifacts/${ART_ID}/zip" -o artifact.zip
+            PREV=$(unzip -p artifact.zip source_state || true)
+          else
+            echo "ℹ️ No prior artifact found"
+          fi
+          echo "🕓 Previous: $PREV"
+          echo "state=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger build_and_publish.yml on main
+        if: steps.fetch.outputs.state != steps.previous.outputs.state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STATE: ${{ steps.fetch.outputs.state }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WF="build_and_publish.yml"
+          echo "🔁 Sources changed — dispatching $WF for $BACKEND…"
+          BODY=$(jq -n --arg b "$BACKEND" --arg n "$STATE_NAME" --arg v "$STATE" \
+            '{ref: "main", inputs: {backends: $b, source_state_name: $n, source_state_value: $v}}')
+          CODE=$(curl -s -o /tmp/resp -w "%{http_code}" \
+                 -X POST \
+                 -H "Accept: application/vnd.github+json" \
+                 -H "Authorization: Bearer $GH_TOKEN" \
+                 -d "$BODY" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WF/dispatches")
+          echo "HTTP $CODE"
+          if [[ "$CODE" != "204" ]]; then echo "Response:"; cat /tmp/resp; exit 1; fi
+
+      - name: No change
+        if: steps.fetch.outputs.state == steps.previous.outputs.state
+        run: echo "✅ No change in either source branch"

@@ -6,8 +6,9 @@ on:
       backends:
         description: >
           Comma-separated backends to build (e.g. "rocm-10.0", "vulkan-radv").
-          Use "all" to build the standard auto-built set.
-          rocm-10.0-strix-llama is not in it and must be named explicitly (40-60 min).
+          Use "all" to build the set that follows llama.cpp master.
+          rocm-10.0-strix-llama is not in it: poll-strix-llama.yaml builds it when
+          its own sources move. Name it here to force a build (40-60 min).
           Only backends with a Dockerfile in toolboxes_llama_server/ can be built.
         required: false
         default: all
@@ -65,7 +66,9 @@ jobs:
             /usr/share/dotnet \
             /usr/local/lib/android \
             /opt/ghc \
-            /opt/hostedtoolcache/CodeQL
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/local/lib/node_modules
           docker system prune --all --force
           docker builder prune --all --force
           echo "After cleanup:" && df -h /
