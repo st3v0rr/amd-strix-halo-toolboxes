@@ -1,0 +1,6 @@
+body{font-family:system-ui,sans-serif;background:#111827;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0}
+.card{background:#1f2937;padding:2rem;border-radius:12px;max-width:26rem;width:90%}
+h1{margin-top:0;font-size:1.3rem}label{display:block;margin:.8rem 0 .3rem}
+input{width:100%;padding:.55rem;border-radius:6px;border:1px solid #374151;background:#111827;color:inherit;box-sizing:border-box}
+button{margin-top:1rem;padding:.55rem 1.2rem;border:0;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer}
+.error{color:#f87171;min-height:1.2em}

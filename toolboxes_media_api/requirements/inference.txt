@@ -1,0 +1,14 @@
+# The real backend. torch, torchvision and torchaudio are NOT listed here: they
+# come from TheRock's gfx1151 index in the Dockerfile, and pip keeps them
+# because everything below accepts the installed pre-release.
+#
+# diffusers 0.40 is the first release with the MiniMax-H3 modular pipeline;
+# transformers 5.17 carries Qwen2.5-VL and Qwen3-VL. The key mappings in
+# providers/loaders.py were checked against these exact versions.
+diffusers==0.40.0
+transformers==5.17.0
+accelerate==1.15.0
+peft==0.21.0
+safetensors==0.8.0
+gguf==0.19.0
+huggingface-hub==1.33.0

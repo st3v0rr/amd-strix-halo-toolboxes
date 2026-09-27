@@ -95,6 +95,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds `vulkan-radv` and `rocm-10.0` on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
+| `toolboxes_media_api/` | Image and video generation as an authenticated API: Qwen-Image-2512 (text → image), Qwen-Image-Edit-2511 (edit) and MiniMax-H3 (text/image/start-end/reference → video with audio) on diffusers, with a browser playground, a single-GPU job queue and lazy model loading. No ComfyUI involved; reuses the ComfyUI model tree. Port **8100**, fails closed without `MEDIA_API_KEY`. Published as `:media-api`; see [its README](toolboxes_media_api/README.md). |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. The same app is an MCP server at `/mcp`, so Claude Desktop, Claude Code or Hermes Agent can run the box too. See [webui/README.md](webui/README.md). |
 
 ### Which images do I want?
@@ -223,6 +224,7 @@ for the GTT memory setup.
 | 8420 | the web interface | password + JWT cookie |
 | 11434 | `llama-server` (default per server) | `--api-key` |
 | 8000 | ComfyUI (default per container) | **nothing** — it has no login at all |
+| 8100 | Media API (image/video generation) | API key (`Bearer`), playground: session cookie + CSRF |
 | 50052 | RPC worker (`ggml-rpc-server`) | **nothing** — never expose it |
 
 ---
@@ -245,6 +247,7 @@ both probe the image's `--help` output and pick the right pair, adding
 | :--- | :--- | :--- |
 | `toolboxes_llama_server/` | fork | Dockerfiles for the `llama-server` images |
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
+| `toolboxes_media_api/` | fork | the media API image: Python/FastAPI service, playground, tests, `build.sh`, `smoke-test.sh` |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh` | fork | starts one server from the command line, and is the reference `npm run test:parity` checks the web interface against |
 | `.github/workflows/` | fork-adjusted | polls llama.cpp and the strix-llama sources, builds and prunes this fork's images |
@@ -277,6 +280,7 @@ sync left three genuine conflicts instead of twenty-two.
 * [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md) — the `llama-server` images in detail
 * [webui/README.md](webui/README.md) — installation, operation, security, development
 * [toolboxes_comfyui/UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md) — where the ComfyUI build came from
+* [toolboxes_media_api/README.md](toolboxes_media_api/README.md) — the media API: routes, profiles and loader compatibility, security model
 * Upstream, for the host side: [vram-estimator](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/vram-estimator.md),
   [building](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/building.md),
   [docker-compose](https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/docker-compose-how-to.md),

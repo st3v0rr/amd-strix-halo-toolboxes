@@ -1,0 +1,65 @@
+# Media API: image and video generation behind an authenticated HTTP API.
+#
+# Built on the same base as toolboxes_comfyui/Dockerfile.comfyui — Fedora with
+# Python 3.13 in /opt/venv and TheRock's multi-arch PyTorch scoped to gfx1151 —
+# but it does not contain or talk to ComfyUI. No model weights: models, the
+# Hugging Face cache, outputs, uploads and job state all live in mounts.
+#
+# TORCH_INDEX_URL / TORCH_PACKAGES exist only so the mock-mode smoke test can
+# build on a machine without the multi-gigabyte ROCm wheels
+# (./build.sh --cpu-torch). Published images always use the defaults.
+
+FROM registry.fedoraproject.org/fedora:rawhide
+
+# Compilers and Python headers stay for Triton's runtime launcher builds, as in
+# the ComfyUI image. FFmpeg comes with PyAV's wheel (it has libx264 and aac).
+RUN dnf -y install --setopt=install_weak_deps=False --nodocs \
+    python3.13 python3.13-devel gcc libatomic libdrm ca-certificates curl \
+    && dnf clean all && rm -rf /var/cache/dnf/*
+
+RUN /usr/bin/python3.13 -m venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+ENV PIP_NO_CACHE_DIR=1
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# ROCm + PyTorch (TheRock multi-arch release, scoped to Strix Halo gfx1151).
+# torchvision: Qwen3-VL's processor needs it. torchaudio is not needed: the API
+# takes no audio references.
+ARG TORCH_INDEX_URL=https://rocm.nightlies.amd.com/whl-multi-arch/
+ARG TORCH_PACKAGES="torch[device-gfx1151] torchvision[device-gfx1151]"
+RUN python -m pip install --index-url "${TORCH_INDEX_URL}" --pre ${TORCH_PACKAGES}
+
+WORKDIR /opt/media-api
+COPY requirements/ requirements/
+RUN python -m pip install -r requirements/api.txt -r requirements/inference.txt
+COPY pyproject.toml README.md ./
+COPY src/ src/
+RUN python -m pip install --no-deps . && \
+    find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + && \
+    rm -rf /root/.cache/pip src build
+
+# Catch a broken torch, a missing diffusers class or an unloadable registry
+# before publishing an image.
+RUN python -c 'import torch; print(torch.__version__)' && \
+    python -c 'import diffusers, transformers; from diffusers import MiniMaxH3Blocks, QwenImageEditPlusPipeline, QwenImagePipeline; print(diffusers.__version__, transformers.__version__)' && \
+    MEDIA_API_KEY=build-check-0123456789abcdef python -c 'from media_api.config import load_settings; print(len(load_settings().registry.models), "models")'
+
+# The two variables toolboxes_comfyui/scripts/01-rocm-envs.sh exports for
+# login shells; this container starts Python directly, so they are set here.
+ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+ENV TORCH_BLAS_PREFER_HIPBLASLT=1
+
+ENV MEDIA_HOST=0.0.0.0
+ENV MEDIA_PORT=8100
+ENV MEDIA_MODELS_DIR=/models
+ENV MEDIA_OUTPUT_DIR=/data/outputs
+ENV MEDIA_UPLOAD_DIR=/data/uploads
+ENV MEDIA_STATE_DIR=/data/state
+ENV HF_HOME=/models/huggingface
+ENV HF_HUB_DISABLE_TELEMETRY=1
+
+EXPOSE 8100
+
+# Refuses to start without MEDIA_API_KEY (exit status 2).
+CMD ["python", "-m", "media_api"]

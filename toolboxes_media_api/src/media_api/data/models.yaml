@@ -1,0 +1,368 @@
+# Built-in model registry. Paths are relative to MEDIA_MODELS_DIR and follow
+# the ComfyUI tree (diffusion_models/, text_encoders/, loras/, unet/), so an
+# existing ~/comfy-models can be mounted read-only and its files reused. The
+# diffusers/ subtree holds the configs, tokenizers, schedulers and VAEs the
+# single files need, plus MiniMax-H3's own weights.
+#
+# Every repo is pinned to the revision whose safetensors headers were checked
+# against the loaders (see README "Compatibility"). `status: unsupported`
+# profiles are listed on purpose: they document formats this stack cannot
+# load, and requesting one returns a capability error with the reason.
+#
+# estimated_memory_gb is the unified memory a job needs with that profile
+# resident (weights + activations at the default size); the admission check
+# compares it with what the box has free before loading anything.
+
+models:
+  - id: qwen-image-2512
+    label: Qwen-Image-2512
+    provider: qwen-image
+    license: Apache-2.0
+    description: Text-to-image, 20B MMDiT with a Qwen2.5-VL-7B text encoder.
+    tasks: [text-to-image]
+    default_profile: fp8
+    base:
+      path: diffusers/Qwen-Image-2512
+      repo: Qwen/Qwen-Image-2512
+      revision: 25468b98e3276ca6700de15c6628e51b7de54a26
+      include: [model_index.json, scheduler/*, tokenizer/*, vae/*, transformer/config.json, text_encoder/config.json]
+    constraints:
+      size_multiple: 16
+      min_side: 256
+      max_side: 2048
+      max_pixels: 4194304
+      guidance: true
+      negative_prompt: true
+    defaults:
+      width: 1328
+      height: 1328
+      steps: 20
+      guidance: 2.5
+      # Qwen's own negative prompt for 2512 (from ModelTC/Qwen-Image-Lightning).
+      negative_prompt: "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲。"
+    profiles:
+      - id: fp8
+        label: FP8 E4M3FN (recommended)
+        estimated_memory_gb: 36
+        description: >
+          Comfy-Org's FP8 E4M3FN transformer kept in FP8 and computed in BF16, the FP8-scaled
+          Qwen2.5-VL text encoder kept in FP8 with its per-tensor scales, BF16 VAE.
+        components:
+          transformer:
+            format: comfy-single-file
+            storage: fp8
+            file:
+              path: diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors
+              repo: Comfy-Org/Qwen-Image_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors
+              revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
+          text_encoder: &qwen_te_fp8
+            format: comfy-qwen2.5-vl
+            storage: fp8
+            file:
+              path: text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
+              repo: Comfy-Org/Qwen-Image_ComfyUI
+              filename: split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
+              revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
+          vae: &qwen_vae
+            format: diffusers
+            subfolder: vae
+            storage: bf16
+      - id: bf16
+        label: BF16 (quality, opt-in)
+        estimated_memory_gb: 64
+        description: >
+          Full BF16 transformer and text encoder. About twice the peak memory of fp8 — only
+          worth it when nothing else needs the unified memory.
+        components:
+          transformer:
+            format: comfy-single-file
+            storage: bf16
+            file:
+              path: diffusion_models/qwen_image_2512_bf16.safetensors
+              repo: Comfy-Org/Qwen-Image_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_2512_bf16.safetensors
+              revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
+          text_encoder: &qwen_te_bf16
+            format: comfy-qwen2.5-vl
+            storage: bf16
+            file:
+              path: text_encoders/qwen_2.5_vl_7b.safetensors
+              repo: Comfy-Org/Qwen-Image_ComfyUI
+              filename: split_files/text_encoders/qwen_2.5_vl_7b.safetensors
+              revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
+          vae: *qwen_vae
+      - id: lightning-4step
+        label: Lightning 4-step (fast)
+        estimated_memory_gb: 36
+        description: >
+          The fp8 profile with lightx2v's Qwen-Image-2512 Lightning 4-step LoRA fused in
+          (the text-to-image LoRA, never the Edit one), 4 steps without CFG.
+        scheduler: lightning
+        defaults: {steps: 4, guidance: 1.0}
+        lora:
+          base_model: qwen-image-2512
+          scale: 1.0
+          file:
+            path: loras/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors
+            repo: lightx2v/Qwen-Image-2512-Lightning
+            filename: Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors
+            revision: a52649c9d0f6e1a248bff13f0df33bb8a2abdb52
+        components:
+          transformer:
+            format: comfy-single-file
+            storage: fp8
+            file:
+              path: diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors
+              repo: Comfy-Org/Qwen-Image_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors
+              revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
+          text_encoder: *qwen_te_fp8
+          vae: *qwen_vae
+      - id: gguf-q4km
+        label: GGUF Q4_K_M (low memory, experimental)
+        status: experimental
+        estimated_memory_gb: 28
+        description: >
+          unsloth's Q4_K_M transformer through diffusers' GGUF loader, which dequantizes in plain
+          PyTorch (its optional CUDA kernels stay off). Loads on any torch device, but its speed on
+          gfx1151 has not been measured.
+        components:
+          transformer:
+            format: gguf
+            storage: gguf
+            file:
+              path: unet/qwen-image-2512-Q4_K_M.gguf
+              repo: unsloth/Qwen-Image-2512-GGUF
+              filename: qwen-image-2512-Q4_K_M.gguf
+              revision: 1626d7531f84b4d2ea1cd6d2e69f41ec027dd354
+          text_encoder: *qwen_te_fp8
+          vae: *qwen_vae
+      - id: nf4-bitsandbytes
+        label: NF4 via bitsandbytes
+        status: unsupported
+        reason: >
+          bitsandbytes has no verified gfx1151 build for this image's ROCm torch (compilation and
+          precision issues are open upstream, ROCm/TheRock#2945). Use gguf-q4km for low memory.
+      - id: gguf-q4km-text-encoder
+        label: GGUF Qwen2.5-VL text encoder
+        status: unsupported
+        reason: >
+          The Qwen2.5-VL GGUF text encoder (with its separate mmproj) is only loadable by
+          ComfyUI-GGUF; transformers cannot load it. The GGUF profile keeps the FP8 text encoder.
+
+  - id: qwen-image-edit-2511
+    label: Qwen-Image-Edit-2511
+    provider: qwen-image-edit
+    license: Apache-2.0
+    description: Instruction image editing from one to three input images.
+    tasks: [image-edit]
+    default_profile: fp8mixed
+    base:
+      path: diffusers/Qwen-Image-Edit-2511
+      repo: Qwen/Qwen-Image-Edit-2511
+      revision: 6f3ccc0b56e431dc6a0c2b2039706d7d26f22cb9
+      include: [model_index.json, scheduler/*, tokenizer/*, processor/*, vae/*, transformer/config.json, text_encoder/config.json]
+    constraints:
+      size_multiple: 16
+      min_side: 256
+      max_side: 2048
+      max_pixels: 4194304
+      guidance: true
+      negative_prompt: true
+      max_input_images: 3
+    defaults:
+      steps: 20
+      guidance: 4.0
+      negative_prompt: " "
+    profiles:
+      - id: fp8mixed
+        label: FP8 mixed (recommended)
+        estimated_memory_gb: 36
+        description: >
+          Comfy-Org's fp8mixed transformer kept in FP8 with its per-tensor scales (the layers it
+          stores in BF16 stay BF16), the shared FP8-scaled text encoder, BF16 VAE.
+        components:
+          transformer:
+            format: comfy-scaled-fp8
+            storage: fp8
+            file:
+              path: diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
+              repo: Comfy-Org/Qwen-Image-Edit_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
+              revision: f68ace85e60b4a02a323e394253731947657b7d2
+          text_encoder: *qwen_te_fp8
+          vae: *qwen_vae
+      - id: bf16
+        label: BF16 (quality, opt-in)
+        estimated_memory_gb: 64
+        description: Full BF16 transformer and text encoder; about twice the peak memory of fp8mixed.
+        components:
+          transformer:
+            format: comfy-single-file
+            storage: bf16
+            file:
+              path: diffusion_models/qwen_image_edit_2511_bf16.safetensors
+              repo: Comfy-Org/Qwen-Image-Edit_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors
+              revision: f68ace85e60b4a02a323e394253731947657b7d2
+          text_encoder: *qwen_te_bf16
+          vae: *qwen_vae
+      - id: lightning-4step
+        label: Lightning 4-step (fast)
+        estimated_memory_gb: 36
+        description: >
+          fp8mixed with the dedicated Qwen-Image-Edit-2511 Lightning 4-step LoRA fused in, 4 steps
+          without CFG.
+        scheduler: lightning
+        defaults: {steps: 4, guidance: 1.0}
+        lora:
+          base_model: qwen-image-edit-2511
+          scale: 1.0
+          file:
+            path: loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+            repo: lightx2v/Qwen-Image-Edit-2511-Lightning
+            filename: Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+            revision: d74eba145674fd7e31b949324e148e21e7118abd
+        components:
+          transformer:
+            format: comfy-scaled-fp8
+            storage: fp8
+            file:
+              path: diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
+              repo: Comfy-Org/Qwen-Image-Edit_ComfyUI
+              filename: split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
+              revision: f68ace85e60b4a02a323e394253731947657b7d2
+          text_encoder: *qwen_te_fp8
+          vae: *qwen_vae
+      - id: gguf-q4km
+        label: GGUF Q4_K_M (low memory, experimental)
+        status: experimental
+        estimated_memory_gb: 28
+        description: unsloth's Q4_K_M transformer through diffusers' plain-PyTorch GGUF loader.
+        components:
+          transformer:
+            format: gguf
+            storage: gguf
+            file:
+              path: unet/qwen-image-edit-2511-Q4_K_M.gguf
+              repo: unsloth/Qwen-Image-Edit-2511-GGUF
+              filename: qwen-image-edit-2511-Q4_K_M.gguf
+              revision: 0d33d9692b4b26212297240d87b0d4719aa4fd06
+          text_encoder: *qwen_te_fp8
+          vae: *qwen_vae
+      - id: int8-convrot
+        label: INT8 ConvRot
+        status: unsupported
+        reason: >
+          qwen_image_edit_2511_int8_convrot.safetensors uses ComfyUI's own quantization layout
+          (comfy_quant int8 with a rotation), which only ComfyUI can load.
+
+  - id: minimax-h3
+    label: MiniMax-H3
+    provider: minimax-h3
+    license: MiniMax H3 Community License (read it before use; some regions need an application)
+    description: >
+      Joint video + stereo audio, 33B DiT with a Qwen3-VL-32B conditioner. 24 fps, 5-15 s,
+      768-pixel short edge. Guidance-distilled: no CFG, no negative prompt.
+    tasks: [text-to-video, image-to-video, start-end-to-video, reference-to-video]
+    default_profile: int8
+    base:
+      path: diffusers/MiniMax-H3
+      repo: MiniMaxAI/MiniMax-H3
+      revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+      include: [modular_model_index.json, scheduler/*, audio_scheduler/*, tokenizer/*, processor/*]
+    constraints:
+      size_multiple: 32
+      min_side: 256
+      max_side: 2048
+      max_pixels: 1032192
+      min_aspect: 0.25
+      max_aspect: 4.0
+      fps: [24]
+      frame_grid: [17, 5]
+      min_frames: 124
+      max_frames: 345
+      guidance: false
+      negative_prompt: false
+      audio: true
+      max_reference_images: 9
+    defaults:
+      width: 1344
+      height: 768
+      steps: 20
+      fps: 24
+      duration_seconds: 5
+    profiles:
+      - id: int8
+        label: INT8 weight-only (recommended)
+        estimated_memory_gb: 86
+        description: >
+          The official BF16 diffusers weights, quantized to INT8 per output row while they stream
+          from disk (transformer and Qwen3-VL conditioner; the embedders, token refiner, norms
+          and output projections stay BF16) and dequantized per forward in plain PyTorch. Video
+          VAE in BF16, audio VAE in FP32.
+        components:
+          transformer: &h3_transformer
+            format: diffusers
+            subfolder: transformer
+            storage: int8
+            options:
+              exclude: [proj_in, audio_proj_in, context_embedder, time_embedder, time_proj, token_refiner, norm_out, proj_out, audio_proj_out]
+          transformer_ref: &h3_transformer_ref
+            format: diffusers
+            subfolder: transformer_ref
+            storage: int8
+            options:
+              exclude: [proj_in, audio_proj_in, context_embedder, time_embedder, time_proj, token_refiner, norm_out, proj_out, audio_proj_out]
+          text_encoder: &h3_text_encoder
+            format: diffusers
+            subfolder: text_encoder
+            storage: int8
+            options:
+              exclude: [model.visual, model.language_model.embed_tokens, model.language_model.norm, lm_head]
+          vae: &h3_vae
+            format: diffusers
+            subfolder: vae
+            storage: bf16
+          audio_vae: &h3_audio_vae
+            format: diffusers
+            subfolder: audio_vae
+            storage: fp32
+      - id: turbo
+        label: Turbo LoRA, 6 steps (fast)
+        estimated_memory_gb: 86
+        description: >
+          The int8 profile with larryvrh's MiniMax-H3 Turbo LoRA (v4 step600 EMA) fused into the
+          BF16 weights before quantization. Trained on the fl2va partition, so reference-to-video
+          is not offered here.
+        tasks: [text-to-video, image-to-video, start-end-to-video]
+        defaults: {steps: 6}
+        lora:
+          base_model: minimax-h3
+          scale: 1.0
+          file:
+            path: loras/minimax_h3_turbo_v4_step600_ema.safetensors
+            repo: larryvrh/MiniMax-H3-Turbo-Lora
+            filename: minimax_h3_turbo_v4_step600_ema.safetensors
+            revision: 43a74557ac3f6539db8e0f2a959d03feb7a81480
+        components:
+          transformer: *h3_transformer
+          text_encoder: *h3_text_encoder
+          vae: *h3_vae
+          audio_vae: *h3_audio_vae
+      - id: comfy-pruned-int8-convrot
+        label: Comfy pruned INT8 ConvRot + NVFP4-AWQ text encoder
+        status: unsupported
+        reason: >
+          Comfy-Org's minimax_h3_*_pruned_int8_convrot transformers replace the AdaLN MLP with a
+          precomputed timestep table (a different architecture: diffusers reports a size
+          mismatch) and store ComfyUI's int8 ConvRot layout; the NVFP4-AWQ Qwen3-VL encoder is a
+          ComfyUI format too. Only ComfyUI loads these files; use the int8 profile.
+      - id: gguf-q2
+        label: GGUF Q2 (pruned)
+        status: unsupported
+        reason: >
+          unsloth's MiniMax-H3 GGUF files are quantized from the pruned checkpoint and are only
+          loadable by ComfyUI-GGUF. Documented as a possible later profile; no non-Comfy loader
+          exists today.

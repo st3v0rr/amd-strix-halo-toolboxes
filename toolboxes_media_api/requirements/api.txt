@@ -1,0 +1,11 @@
+# The HTTP API and the mock backend. Pinned so an image rebuild months later
+# serves the same API; bump deliberately and rerun the tests.
+fastapi==0.141.1
+uvicorn==0.54.0
+pydantic==2.13.5
+python-multipart==0.0.32
+PyYAML==6.0.3
+pillow==12.3.0
+numpy==2.4.6
+# Bundles an FFmpeg with libx264 and aac, which the MP4 output needs.
+av==18.1.0

@@ -1,0 +1,98 @@
+name: Build & Publish Media API
+
+# Deliberately separate from build_and_publish.yml: that workflow's matrix and
+# the web interface's image catalog read toolboxes_llama_server/, and this is
+# not a llama-server backend.
+#
+# Manual only, like the ComfyUI build: the image pulls a full ROCm torch, too
+# expensive to hang off a push. The tests run first, so a broken tree never
+# gets as far as the build.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: toolboxes_media_api
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Lint, type-check and test (mock backend)
+        run: |
+          python -m pip install -r requirements/dev.txt
+          python -m pip install --no-deps -e .
+          ruff check src tests
+          ruff format --check src tests
+          mypy
+          pytest
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      # A full ROCm torch needs every byte the runner can spare.
+      - name: Free up runner disk space
+        run: |
+          echo "Before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/local/lib/node_modules
+          docker system prune --all --force
+          docker builder prune --all --force
+          echo "After cleanup:" && df -h /
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set build timestamp
+        run: echo "BUILD_TS=$(date +%Y%m%dT%H%M%S)" >> "$GITHUB_ENV"
+
+      - name: Build & push media-api
+        working-directory: toolboxes_media_api
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="media-api"
+          LI="media-api-local"
+          IMM="${DOCKERHUB_REPO}:${NAME}_${BUILD_TS}"
+          CHN="${DOCKERHUB_REPO}:${NAME}"
+
+          echo "→ Building Dockerfile.media-api"
+          docker build --no-cache -t "${LI}" -f Dockerfile.media-api .
+
+          # No GPU on the runner: the smoke test runs the real image in mock
+          # mode — health, key and session auth, one image, edit and video job.
+          echo "→ Running smoke test..."
+          ./smoke-test.sh "${LI}"
+
+          echo "→ Tag & push immutable → ${IMM}"
+          docker tag "${LI}" "${IMM}"
+          docker push "${IMM}"
+
+          echo "→ Tag & push channel → ${CHN}"
+          docker tag "${IMM}" "${CHN}"
+          docker push "${CHN}"
