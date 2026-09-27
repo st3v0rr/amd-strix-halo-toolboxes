@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import { buildLabels, parseLabels } from '../src/podman/labels.js'
 import { apiKeyFromCommand, profileFromContainer } from '../src/podman/servers.js'
 import { SERVER_DEFAULTS } from '../../shared/constants.js'
 
@@ -85,4 +86,23 @@ test('a container predating a label falls back to the defaults a new profile has
   // An empty key means the profiles endpoint generates one, rather than the
   // profile being saved with a key of ''.
   assert.equal(profile.apiKey, '')
+})
+
+test('a server without speculative decoding yields a draft the profiles endpoint accepts', () => {
+  // buildLabels writes an unset draft limit as ''. Read back as 0 it failed
+  // the profile schema's min(1), so saving such a server as a profile broke.
+  const labels = buildLabels({
+    role: 'server',
+    modelPath: 'a.gguf',
+    image: 'img',
+    ctxSize: 4096,
+    gpuLayers: 999,
+    threads: 12,
+    hostPort: 8080,
+    extraArgs: '',
+    rpcPeers: [],
+  })
+  const parsed = parseLabels(labels)
+  assert.equal(parsed.specDraftNMax, null)
+  assert.equal(profileFromContainer({ name: 'a', ...parsed, command: [] }).specDraftNMax, null)
 })

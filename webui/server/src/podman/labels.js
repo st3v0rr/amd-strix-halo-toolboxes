@@ -71,6 +71,9 @@ export function buildComfyLabels(spec) {
 /** Recover a server spec from a container's labels. */
 export function parseLabels(labels = {}) {
   const num = (key, fallback) => {
+    // An empty label is how an unset optional value is written, and
+    // Number('') is 0 — which would turn "no draft limit" into an invalid one.
+    if (labels[key] === undefined || labels[key] === '') return fallback
     const n = Number(labels[key])
     return Number.isFinite(n) ? n : fallback
   }
