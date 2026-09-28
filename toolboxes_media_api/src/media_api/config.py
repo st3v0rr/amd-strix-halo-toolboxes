@@ -278,7 +278,14 @@ def derive_session_secret(api_key: str, explicit: str | None) -> bytes:
     return hmac.new(api_key.encode(), b"media-api/session/v1", hashlib.sha256).digest()
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+def load_settings(env: Mapping[str, str] | None = None, *, require_secrets: bool = True) -> Settings:
+    """Read and validate the configuration.
+
+    `require_secrets=False` is for `media-api-models` alone: it reads the registry
+    and the model tree, never serves a request, and has to work in a one-shot
+    container that holds no key. Such settings carry an empty key and cannot
+    authenticate anything; the service itself always loads with the default.
+    """
     env = os.environ if env is None else env
     raw_config = env.get("MEDIA_CONFIG") or None
     config_path = Path(raw_config).expanduser() if raw_config else None
@@ -316,8 +323,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         }
     )
 
-    api_key = validate_api_key(_read_secret(env, "MEDIA_API_KEY"))
-    session_secret = derive_session_secret(api_key, _read_secret(env, "MEDIA_SESSION_SECRET"))
+    if require_secrets:
+        api_key = validate_api_key(_read_secret(env, "MEDIA_API_KEY"))
+        session_secret = derive_session_secret(api_key, _read_secret(env, "MEDIA_SESSION_SECRET"))
+    else:
+        api_key, session_secret = "", b""
     registry = load_registry(data.get("models"), include_defaults=data.get("include_default_models", True))
 
     known = {f.name for f in fields(Settings)}

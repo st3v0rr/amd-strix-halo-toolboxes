@@ -202,6 +202,107 @@ für die MTP-Köpfe empfiehlt Unsloth 2.
 Die n-Gram-Strategien von llama.cpp brauchen kein zweites Modell, stehen hier
 aber nicht zur Wahl — dafür bleibt `--extra-args` offen.
 
+## Media API
+
+Die [Media API](../toolboxes_media_api/README.md) — Qwen-Image-2512,
+Qwen-Image-Edit-2511 und MiniMax-H3 hinter einer API mit Schlüssel und einem
+Playground — wird hier verwaltet wie die anderen Container, nicht nur verlinkt.
+Die Seite **Media API** hat alles, was nur dieser Dienst hat; Starten, Stoppen,
+Neustart, Entfernen, Logs und Gesundheit laufen über dieselben Wege wie bei
+jedem llama-server, und der Container steht auch unter **Server**.
+
+- **Einstellungen**, eine Konfiguration pro Box
+  (`~/.config/strix-halo-webui/media-api.json`): Name, Image, Host-Port und
+  Bind-Adresse, Modell- und Datenverzeichnis, Backend (`real` mit GPU oder `mock`
+  ohne), Download-Regel, Speicherprüfung, Cookie-, CORS- und Sitzungsoptionen,
+  die Grenzen des Dienstes (leer = dessen Standard) und Autostart. Gespeichert
+  wird erst einmal nur; **Neu anlegen** bringt eine Änderung in den laufenden
+  Container. Bis dahin sagt die Seite, dass er mit alten Einstellungen läuft —
+  der Container trägt einen Hash seines vollständigen Aufrufs als Label.
+- **Der Aufruf** ist der gehärtete aus der README der Media API, Flag für Flag:
+  rootless mit `--userns=keep-id`, `--cap-drop=all`,
+  `--security-opt=no-new-privileges`, Modelle schreibgeschützt, der Port nur auf
+  `127.0.0.1`. Das Mock-Backend bekommt weder GPU noch `seccomp=unconfined`. Ob
+  Podman rootless läuft, fragt das Webinterface Podman selbst (`podman info`,
+  also auch hinter `CONTAINER_HOST`); rootful oder ohne Antwort werden Anlegen und
+  Laden verweigert. Das reale Backend braucht für ROCm weiterhin
+  `seccomp=unconfined` — ein Restrisiko, das die README der Media API beschreibt,
+  kein gelöstes Problem. Auch hier gilt die Image-Beschränkung auf dieses
+  Repository, solange „Beliebige Images“ in den Einstellungen aus ist.
+- **Schlüssel.** API-Schlüssel und Sitzungsgeheimnis erzeugt das Webinterface
+  selbst, als 0600-Dateien in `~/.config/strix-halo-webui/media-api/` (0700). Sie
+  werden einzeln schreibgeschützt eingehängt und über `MEDIA_API_KEY_FILE` bzw.
+  `MEDIA_SESSION_SECRET_FILE` gelesen — kein Wert steht je in einem Argv, einem
+  Label oder in `podman inspect`. Die Oberfläche zeigt nur einen Fingerabdruck
+  — ein HMAC mit einem lokalen Zufallsschlüssel, kein bloßer Hash, gegen den sich
+  ein schwacher eigener Schlüssel offline durchprobieren ließe —,
+  auch dem Besitzer: Den Schlüssel liest man auf der Box mit `cat`, oder man setzt
+  einen eigenen, den die Clients schon kennen. Neu erzeugen und Setzen gehen nur
+  in einer Browser-Sitzung, nie mit dem MCP-Token. Der Dienst liest Schlüssel
+  beim Start; die Seite meldet, wenn er noch den alten hat, und fragt ihn dann
+  auch nicht mit dem neuen an — das würde nur seine Sperre für Fehlversuche
+  füttern, die sich die Playground-Nutzer auf dieser Box mit dem Webinterface
+  teilen.
+- **Modelle.** Welche Modelle und Profile es gibt, weiß das Image selbst: Die
+  Übersicht ruft `media-api-models check --json` auf — im laufenden Container per
+  `podman exec`, sonst in einem Wegwerf-Container ohne Netz, ohne GPU und ohne
+  Schlüssel. Sie zeigt je Profil Speicherbedarf, Aufgaben, was fehlt (auch je
+  Aufgabe) und bei nicht unterstützten Formaten den Grund. **Laden** startet
+  `media-api-models fetch --json` in einem Wegwerf-Container, dem einzigen mit
+  beschreibbarem Modellbaum; der Dienst behält seinen schreibgeschützten Mount
+  und sieht neue Dateien ohne Neustart. Fortschritt, Abbrechen und Fortsetzen
+  laufen über dieselbe Download-Liste wie bei den GGUFs; es läuft immer nur einer,
+  auf einer eigenen Warteschlange, und jeder in einem Container mit eigenem Namen.
+  Der HF-Token geht als 0600-Datei nur dieses Jobs hinein, schreibgeschützt
+  gemountet und über `HF_TOKEN_PATH` gelesen — nie als Wert in einer Umgebung,
+  also auch nicht in `podman inspect` —, und wird mit dem Ende des Jobs gelöscht,
+  auch bei Abbruch. Die Übersicht und „Laden“ beziehen sich immer auf die
+  *gespeicherten* Einstellungen; läuft der Container noch mit einem anderen Image
+  oder Modellbaum, sagt die Seite das dazu.
+- **Platz.** Vor dem Download prüft `media-api-models fetch` die Größen beim Hub:
+  frei sein müssen die Dateien, die Reserve des Dienstes
+  (`MEDIA_MIN_FREE_DISK_BYTES`, 1 GiB) und Luft für Teildateien, Staging und
+  Xet-Cache (2 %, mindestens 1 GiB). Während des Downloads bricht ein Wächter ab,
+  sobald der freie Platz unter die Reserve fällt; Teildateien bleiben für
+  „Fortsetzen“. Nur dieser Wächter macht Einträge ohne bekannte Größe zulässig —
+  der Dienst selbst (`MEDIA_ALLOW_DOWNLOADS`) hat keinen und lädt sie nicht.
+- **Modellbaum.** Standard ist der ComfyUI-Baum: Die Media API liest dessen
+  Layout direkt und benutzt vorhandene FP8-Dateien mit. Ihre eigenen Ordner dort
+  (`diffusers/`, `huggingface/`) stehen auf der ComfyUI-Seite als „Media API“
+  statt als „unbekannt“.
+- **Playground.** Der Link entsteht aus den eigenen Einstellungen, nie aus einer
+  Anfrage, und trägt keinen Schlüssel — der Playground hat sein eigenes
+  Anmeldeformular. Bei der Standardbindung an `127.0.0.1` ist er nur auf der Box
+  selbst erreichbar; von anderswo nennt die Seite den SSH-Tunnel. Für Zugriff im
+  Netz gehört ein TLS-Reverse-Proxy davor, dessen Adresse als „öffentliche URL“
+  eingetragen wird, dazu „Cookie nur über HTTPS“.
+- **Downloads durch den Dienst selbst** (`MEDIA_ALLOW_DOWNLOADS`) lassen sich
+  einschalten, verlangen dann aber einen beschreibbaren Modell-Mount und werden
+  mit einer Warnung quittiert; der HF-Token kommt dann ebenfalls als
+  schreibgeschützte Datei (`HF_TOKEN_PATH`). Wird der Token in den Einstellungen
+  geändert oder entfernt, schreibt das Webinterface dieselbe Datei sofort neu bzw.
+  leert sie — ein laufender Dienst hat den alten Token also nicht mehr; „Neu
+  anlegen“ entfernt danach auch den Mount.
+
+Verzeichnisse, die den Container an Zugangsdaten ließen — das Home-Verzeichnis
+selbst, `~/.ssh`, `~/.config`, die Konfiguration dieses Webinterfaces,
+Podmans Speicher und Socket (`/run/user`), Systemverzeichnisse —, werden als
+Modell- oder Datenverzeichnis abgelehnt, und zwar am aufgelösten Pfad: Ein
+symbolischer Link irgendwo im Pfad wird nicht verfolgt, sondern abgelehnt. Die
+einzige Ausnahme sind Links, die root in einem nur für root beschreibbaren
+Verzeichnis angelegt hat — das Systemlayout, etwa `/home` → `/var/home` auf Fedora
+Atomic und Bazzite. Kein Verzeichnis auf dem Pfad darf für andere als
+den Benutzer und root beschreibbar sein (ausgenommen Sticky-Verzeichnisse wie
+`/tmp`), sonst könnte ein fremder Prozess ihn austauschen. Gemountet wird der
+kanonische Pfad, und zwar in drei Schritten: `podman create`, dann Abgleich jeder
+Bind-Quelle mit dem geprüften Verzeichnis (Pfad, Gerät und Inode), erst dann
+`podman start` — beim Dienst wie bei Modellübersicht und Download. Ein unterwegs
+ausgetauschtes Verzeichnis bricht ab, der Container wird entfernt, ohne gelaufen
+zu sein. Start, Neustart und Autostart eines Media-Containers fragen Podman jedes
+Mal, ob es rootless läuft. Solange „Beliebige Images“ aus ist, bekommt nur das
+Media-API-Image dieses Repositorys Modellbaum, Netz oder Token — beim Speichern,
+Anlegen, Prüfen und Laden.
+
 ## Netzwerk und Firewall
 
 Die Seite **Netzwerk** führt beides zusammen: alle Schnittstellen der Box mit
@@ -234,6 +335,7 @@ drei:
 |---|---|---|
 | 8420 | das Webinterface selbst | Passwort + JWT-Cookie |
 | 11434 | llama-server (Default je Server) | `--api-key` |
+| 8100 | Media API — standardmäßig nur an `127.0.0.1` gebunden | API-Schlüssel, Playground mit Sitzung + CSRF |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
 
 Zwei Dinge macht die Oberfläche bewusst nicht:
@@ -349,7 +451,7 @@ der Abschnitt ersatzlos, wie die GPU-Kacheln auch.
 Unter `http://<box>:8420/mcp` spricht die Webapp das
 [Model Context Protocol](https://modelcontextprotocol.io). Ein Agent wie
 Claude Desktop, Claude Code oder Hermes Agent kann die Box damit genauso steuern
-wie diese Oberfläche: Server, RPC-Worker und ComfyUI starten und stoppen, Logs
+wie diese Oberfläche: Server, RPC-Worker, ComfyUI und die Media API starten und stoppen, Logs
 lesen, Modelle suchen, laden, schätzen und löschen, Profile pflegen, Images
 ziehen, Firewall-Ports freigeben, Einstellungen ändern, Updates einspielen.
 Jede Box ist ihr eigener MCP-Server — bei mehreren Boxen trägt man jede einzeln
@@ -461,6 +563,9 @@ SHX_PASSWORD=… webui/scripts/smoke.sh http://box:8420
 |---|---|
 | `~/.config/strix-halo-webui/config.json` | Zugangsdaten, JWT-Secret, HF-Token, Einstellungen (0600) |
 | `~/.config/strix-halo-webui/profiles.json` | Server-Profile inkl. API-Keys (0600) |
+| `~/.config/strix-halo-webui/media-api.json` | Einstellungen der Media API (0600, ohne Geheimnisse) |
+| `~/.config/strix-halo-webui/media-api/` | API-Schlüssel und Sitzungsgeheimnis der Media API als Dateien (0700/0600) |
+| `~/media-api-data` (konfigurierbar) | Ergebnisse, Uploads und Aufträge der Media API |
 | `~/.local/state/strix-halo-webui/state.json` | Job-Historie, Image-Digests, Feature-Cache |
 | `~/.local/state/strix-halo-webui/app.log` | Anwendungslog, rotiert bei 5 MB |
 | `~/models` (konfigurierbar) | die GGUF-Dateien |
@@ -491,7 +596,8 @@ Was sie tut:
 - Nur Images aus `docker.io/st3v0rr/amd-strix-halo-toolboxes` sind erlaubt;
   beliebige Referenzen lassen sich in den Einstellungen freischalten.
 - HF-Token und API-Keys werden aus Logs, SSE-Streams und Fehlermeldungen
-  entfernt.
+  entfernt — die Schlüssel der Media API ebenso; sie verlassen die Box nie über
+  die API, nur als Fingerabdruck.
 - Der MCP-Token (`Authorization: Bearer shx_…`) öffnet `/mcp` und die
   REST-API, nie aber Benutzername, Passwort, JWT-Secret oder den Token selbst —
   dafür braucht es eine angemeldete Browser-Sitzung. Ein Agent kann die Box also
@@ -517,6 +623,16 @@ npm run test:parity
 
 Dabei läuft das **echte** Skript gegen ein Fake-podman, das nur seine Argumente
 ausgibt, und das Ergebnis wird mit dem unseres Builders verglichen.
+
+Für die Media API gibt es kein Skript; ihre Referenzen sind der gehärtete Aufruf
+in `toolboxes_media_api/README.md` — `server/test/media-parity.test.js` liest
+genau diesen Block und verlangt jedes Flag daraus, ohne unerwartete Zugaben —
+und ihr eigener Konfigurationslader: `test:parity` füttert
+`media_api.config.load_settings()` mit der Umgebung, die das Webinterface baut,
+bis an die Grenzen jedes Limits. Ein Variablenname, den der Dienst nicht kennt,
+fiele sonst nie auf; er ignoriert ihn einfach. Braucht ein Python mit PyYAML
+(`toolboxes_media_api/.venv` oder `python3`), sonst wird dieser Teil sichtbar
+übersprungen.
 
 Zwei Eigenheiten aus dem Skript sind dabei besonders wichtig:
 
@@ -600,8 +716,8 @@ abspielen — inklusive Carriage-Return-Fortschritt und wachsender
 getestet, nicht Umgehungen davon.
 
 ```bash
-npm test           # Unit-Tests (node --test)
-npm run test:parity  # Argv-Vergleich gegen run-llama-server.sh
+npm test           # Unit- und Routentests (node --test), auch web/test
+npm run test:parity  # Argv-Vergleich gegen run-llama-server.sh, Media-API-Umgebung gegen config.py
 npm run lint
 npm run build
 ```
@@ -622,6 +738,7 @@ webui/
     lib/       exec (Subprozesse), sse, jobs, ansi, redact, ringbuffer
     podman/    argv, labels, features, client, servers, logstream, autostart
     models/    scan, paths (Traversal-Schutz), estimator, hfapi, download
+    media/     Media API: Einstellungen, Schlüsseldateien, Modellübersicht, Downloads, Status
     images/    catalog, registry, pullparse, service
     system/    amdgpu, host, network, firewall, monitor
     updates/   git, apply

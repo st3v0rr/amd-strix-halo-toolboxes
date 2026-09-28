@@ -408,6 +408,11 @@ function Firewall({ firewall, ports, others, otherRules, busy, onOpen, onClose, 
                         ohne Authentifizierung
                       </span>
                     ) : null}
+                    {port.kind === 'media' ? (
+                      <span className="badge badge-info" style={{ marginLeft: 8 }} title={port.detail}>
+                        nur HTTP — TLS-Proxy empfohlen
+                      </span>
+                    ) : null}
                     {port.running === false ? (
                       <div className="small faint">Container läuft nicht</div>
                     ) : null}

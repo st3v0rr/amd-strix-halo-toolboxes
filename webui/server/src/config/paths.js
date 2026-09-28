@@ -49,6 +49,9 @@ export const stateDir =
 
 export const configFile = path.join(configDir, 'config.json')
 export const profilesFile = path.join(configDir, 'profiles.json')
+/** The media API's settings; its secrets sit beside it in their own 0700 directory. */
+export const mediaConfigFile = path.join(configDir, 'media-api.json')
+export const mediaSecretsDir = path.join(configDir, 'media-api')
 export const stateFile = path.join(stateDir, 'state.json')
 export const logFile = path.join(stateDir, 'app.log')
 
@@ -61,6 +64,9 @@ export const defaultModelsDir = path.join(home, 'models')
  */
 export const defaultComfyModelsDir = path.join(home, 'comfy-models')
 export const defaultComfyOutputDir = path.join(home, 'comfy-outputs')
+
+/** Outputs, uploads and job records of the media API — the one writable mount. */
+export const defaultMediaDataDir = path.join(home, 'media-api-data')
 
 /** Where the built frontend ends up. */
 export const webDist = path.join(webuiRoot, 'web', 'dist')
@@ -80,6 +86,7 @@ export const vramEstimator = path.join(
  */
 export const dockerfileDir = path.join(repoRoot, 'toolboxes_llama_server')
 export const comfyDockerfileDir = path.join(repoRoot, 'toolboxes_comfyui')
+export const mediaDockerfileDir = path.join(repoRoot, 'toolboxes_media_api')
 
 /**
  * Root of the sysfs tree to read GPU metrics from (swappable for dev fixtures).

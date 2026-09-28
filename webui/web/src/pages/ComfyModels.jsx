@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 
 import { del, get, post, qs } from '../api/client.js'
 import { COMFY_TAGS, IMAGE_REPO } from '../../../shared/constants.js'
@@ -139,6 +140,9 @@ export function ComfyModels() {
 
 /** One folder plus, when expanded, its files. */
 function FolderRows({ folder, expanded, onToggle, onDelete }) {
+  // The media API's own folders are nested trees it manages; they are measured,
+  // not listed, and their files are fetched on its page.
+  const media = folder.owner === 'media'
   const empty = folder.files.length === 0
   return (
     <>
@@ -155,13 +159,25 @@ function FolderRows({ folder, expanded, onToggle, onDelete }) {
             {empty ? '·' : expanded ? '−' : '+'}
           </button>{' '}
           <strong className="mono">{folder.name}</strong>
-          {folder.known ? null : (
+          {media ? (
+            <Link to="/media" className="badge badge-info" title="Gehört der Media API, die diesen Modellbaum mitliest">
+              Media API
+            </Link>
+          ) : folder.known ? null : (
             <span className="badge badge-warn" title="ComfyUI sucht hier nicht nach Modellen">
               unbekannt
             </span>
           )}
         </td>
-        <td className="small">{empty ? <span className="faint">leer</span> : folder.files.length}</td>
+        <td className="small">
+          {media ? (
+            `${folder.fileCount} Dateien`
+          ) : empty ? (
+            <span className="faint">leer</span>
+          ) : (
+            folder.files.length
+          )}
+        </td>
         <td className="right mono small nowrap">{formatBytes(folder.totalBytes)}</td>
         <td />
       </tr>

@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/middleware.js'
 import { notFound } from '../lib/errors.js'
 import { imageRoutes } from './images.js'
 import { jobRoutes } from './jobs.js'
+import { mediaRoutes } from './media.js'
 import { metaRoutes } from './meta.js'
 import { comfyRoutes } from './comfy.js'
 import { modelRoutes } from './models.js'
@@ -32,6 +33,7 @@ export function apiRoutes(ctx) {
   router.use('/comfy', comfyRoutes(ctx))
   router.use('/images', imageRoutes(ctx))
   router.use('/jobs', jobRoutes(ctx))
+  router.use('/media', mediaRoutes(ctx))
   router.use('/models', modelRoutes(ctx))
   router.use('/network', networkRoutes(ctx))
   router.use('/profiles', profileRoutes(ctx))

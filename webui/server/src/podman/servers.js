@@ -6,6 +6,9 @@ import {
   COMFY_PORT,
   CONTAINER_PORT,
   IMAGE_REPO,
+  MEDIA_CONTAINER_DATA_DIR,
+  MEDIA_CONTAINER_MODELS_DIR,
+  MEDIA_PORT,
   NAME_RE,
   PORT_MAX,
   PORT_MIN,
@@ -19,16 +22,34 @@ import { log } from '../lib/log.js'
 import { registerSecret } from '../lib/redact.js'
 import { safeResolve } from '../models/paths.js'
 import {
+  assertMediaImageAllowed,
+  assertRootlessPodman,
+  checkMediaConfig,
+  mediaModelsDir,
+  mediaSpec,
+  pinMediaDir,
+  verifyMediaMounts,
+} from '../media/config.js'
+import {
   buildComfyRunArgv,
+  buildMediaRunArgv,
   buildRpcRunArgv,
   buildRunArgv,
   hostModelPath,
   normalizeModelPath,
   rpcCacheVolume,
 } from './argv.js'
-import { buildComfyLabels, buildLabels, buildRpcLabels, parseLabels } from './labels.js'
+import {
+  buildComfyLabels,
+  buildLabels,
+  buildMediaLabels,
+  buildRpcLabels,
+  parseLabels,
+} from './labels.js'
 import {
   containerExists,
+  createVerified,
+  imageId,
   inspectContainer,
   invalidatePsCache,
   listAll,
@@ -36,6 +57,7 @@ import {
   removeContainer,
   runContainer,
   startContainer,
+  startVerifiedContainer,
   stopContainer,
 } from './client.js'
 import { resolveExtraArgs } from './features.js'
@@ -89,7 +111,9 @@ export function describeContainer(entry) {
       ? RPC_PORT
       : labels.role === ROLE.comfy
         ? COMFY_PORT
-        : CONTAINER_PORT
+        : labels.role === ROLE.media
+          ? MEDIA_PORT
+          : CONTAINER_PORT
   const published = (entry.Ports ?? []).find((p) => p.container_port === innerPort)
   return {
     name,
@@ -580,9 +604,121 @@ export async function createComfyServer(ctx, spec, { replace = false, onLog = ()
   return { name: spec.name, id, role: ROLE.comfy, port: spec.port, modelsDir, outputDir }
 }
 
-export async function startServer(name) {
-  await getServer(name)
-  await startContainer(name)
+/**
+ * Create and start the media API from its stored settings (ctx.media).
+ *
+ * Unlike the other three this takes no spec from the request: the service is
+ * one per box and configured on its own page, so "create" means "materialise
+ * what is saved there". Before podman sees anything, every way the container
+ * could fail closed on start is ruled out — secrets that exist and that the
+ * service would accept, directories that exist, an image that is present —
+ * because the service exits 2 on a bad configuration and
+ * `--restart unless-stopped` would turn that into a loop.
+ */
+export async function createMediaServer(ctx, { replace = false, onLog = () => {} } = {}) {
+  await assertRootlessPodman()
+  const config = ctx.media.data
+  assertMediaImageAllowed(ctx, config.image)
+  checkMediaConfig(ctx, config)
+
+  const exists = await containerExists(config.name)
+  if (exists && !replace) {
+    throw conflict(`Ein Container namens '${config.name}' existiert bereits.`, { existing: config.name })
+  }
+  await validateCommon(
+    ctx,
+    { name: config.name, port: config.port, image: config.image },
+    { ignoreName: exists ? config.name : undefined },
+  )
+
+  // `podman run` would pull a missing image itself — tens of gigabytes inside
+  // a request with a two-minute timeout. The images page does that properly.
+  if (!(await imageId(config.image))) {
+    throw failedDependency(`Das Image ${config.image} liegt nicht lokal vor. Lade es zuerst unter „Images“.`)
+  }
+
+  ctx.mediaSecrets.ensure()
+  // Only a service allowed to download gets the Hugging Face token, and then as
+  // a read-only file, like the key.
+  ctx.mediaSecrets.syncHfToken(config.allowDownloads ? ctx.config.data.hfToken || null : null)
+
+  if (exists) {
+    onLog(`Ersetze vorhandenen Container '${config.name}' …`)
+    closeLogSession(config.name)
+    await stopContainer(config.name)
+    await removeContainer(config.name, { force: true })
+  }
+
+  // The mount sources once more, as close to podman as it gets: created if
+  // missing, links and protected trees refused, and exactly the paths the
+  // spec mounts — a directory swapped for a link since the first check fails
+  // here instead of being mounted.
+  const pins = [
+    { ...pinMediaDir('Das Modellverzeichnis', mediaModelsDir(ctx, config), 0o755), destination: MEDIA_CONTAINER_MODELS_DIR },
+    { ...pinMediaDir('Das Datenverzeichnis', config.dataDir, 0o700), destination: MEDIA_CONTAINER_DATA_DIR },
+  ]
+  const [modelsDir, dataDir] = pins.map((p) => p.path)
+  const spec = mediaSpec(ctx, config)
+  if (spec.modelsDir !== modelsDir || spec.dataDir !== dataDir) {
+    throw conflict('Ein Verzeichnis hat sich beim Anlegen verändert. Bitte erneut versuchen.')
+  }
+
+  const labels = buildMediaLabels(spec)
+  const argv = buildMediaRunArgv({ ...spec, labels })
+  onLog(`Starte Media API ${config.name} (${config.image}) auf ${config.bindAddress}:${config.port} …`)
+  const verify = (mounts) => verifyMediaMounts(mounts, pins)
+  const id = await createVerified(argv, verify)
+  await startVerifiedContainer(id, verify)
+  log.info(`Media API '${config.name}' gestartet (${id.slice(0, 12)})`)
+
+  return {
+    name: config.name,
+    id,
+    role: ROLE.media,
+    port: config.port,
+    bindAddress: config.bindAddress,
+    modelsDir,
+    dataDir,
+  }
+}
+
+/**
+ * Where to reach a published port from this host. Loopback unless the port is
+ * published on one specific address — then only that address answers. Both
+ * come from our own labels, never from a request.
+ */
+export function probeHost(bindAddress) {
+  return !bindAddress || bindAddress === '0.0.0.0' ? '127.0.0.1' : bindAddress
+}
+
+/**
+ * A media container runs only under rootless podman — asked of the podman we
+ * actually talk to on every start, restart and autostart, not just at apply.
+ */
+async function guardStart(ctx, server) {
+  if (server.role !== ROLE.media) return
+  await assertRootlessPodman()
+  // Check the image recorded on the container, not merely today's saved
+  // settings. A custom image may have been created while custom images were
+  // enabled and stopped after the policy was tightened.
+  assertMediaImageAllowed(ctx, server.image)
+  const info = await inspectContainer(server.name)
+  const wanted = [
+    ['Das Modellverzeichnis', MEDIA_CONTAINER_MODELS_DIR, 0o755],
+    ['Das Datenverzeichnis', MEDIA_CONTAINER_DATA_DIR, 0o700],
+  ]
+  const pins = wanted.map(([label, destination, mode]) => {
+    const mount = (info?.Mounts ?? []).find((m) => m.Destination === destination)
+    if (!mount?.Source) throw conflict(`${label}: der Container hat keinen Mount für ${destination}.`)
+    return { ...pinMediaDir(label, mount.Source, mode), destination }
+  })
+  return (mounts) => verifyMediaMounts(mounts, pins)
+}
+
+export async function startServer(ctx, name) {
+  const verify = await guardStart(ctx, await getServer(name))
+  if (verify) await startVerifiedContainer(name, verify)
+  else await startContainer(name)
   return getServer(name)
 }
 
@@ -592,9 +728,11 @@ export async function stopServer(name) {
   return getServer(name)
 }
 
-export async function restartServer(name) {
+export async function restartServer(ctx, name) {
+  // Asked before stopping: a refused start must not leave the service down.
+  await guardStart(ctx, await getServer(name))
   await stopServer(name)
-  return startServer(name)
+  return startServer(ctx, name)
 }
 
 export async function deleteServer(name) {
@@ -637,6 +775,24 @@ export async function serverHealth(name) {
       return { reachable: res.ok, status: res.status, role: ROLE.comfy }
     } catch (err) {
       return { reachable: false, reason: err.name === 'AbortError' ? 'Zeitüberschreitung' : err.message, role: ROLE.comfy }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  // The media API has an unauthenticated liveness route that says nothing but
+  // "ok" — exactly the question asked here. Everything richer needs the key and
+  // lives on the media page.
+  if (server.role === ROLE.media) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 3000)
+    try {
+      const res = await fetch(`http://${probeHost(server.bindAddress)}:${server.hostPort}/healthz`, {
+        signal: controller.signal,
+      })
+      return { reachable: res.ok, status: res.status, role: ROLE.media }
+    } catch (err) {
+      return { reachable: false, reason: err.name === 'AbortError' ? 'Zeitüberschreitung' : err.message, role: ROLE.media }
     } finally {
       clearTimeout(timer)
     }

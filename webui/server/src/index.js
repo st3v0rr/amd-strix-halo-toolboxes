@@ -48,7 +48,7 @@ async function shutdown(signal) {
   server.close()
   server.closeAllConnections?.()
   try {
-    await Promise.all([ctx.config.flush(), ctx.profiles.flush(), ctx.state.flush()])
+    await Promise.all([ctx.config.flush(), ctx.profiles.flush(), ctx.state.flush(), ctx.media.flush()])
   } catch (err) {
     log.warn('Konfiguration konnte beim Herunterfahren nicht geschrieben werden', err)
   }

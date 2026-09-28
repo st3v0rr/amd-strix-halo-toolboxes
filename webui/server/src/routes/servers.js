@@ -112,6 +112,9 @@ export function serverRoutes(ctx) {
         if (server.role === ROLE.rpc) {
           throw badRequest('Ein RPC-Worker hat keine Profil-Einstellungen.')
         }
+        if (server.role === ROLE.media) {
+          throw badRequest('Die Media API wird auf ihrer eigenen Seite eingestellt, nicht über Profile.')
+        }
         res.json({ profile: profileFromContainer(server) })
       } catch (err) {
         next(err)
@@ -175,9 +178,9 @@ export function serverRoutes(ctx) {
   })
 
   for (const [action, fn] of [
-    ['start', startServer],
+    ['start', (name) => startServer(ctx, name)],
     ['stop', stopServer],
-    ['restart', restartServer],
+    ['restart', (name) => restartServer(ctx, name)],
   ]) {
     router.post(`/:name/${action}`, validate({ params: nameParams }), async (req, res, next) => {
       try {

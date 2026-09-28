@@ -56,6 +56,10 @@ export function Servers() {
         <button className="btn" type="button" onClick={() => setStartingRpc(true)}>
           RPC-Worker starten
         </button>
+        {/* One service per box, configured on its own page rather than in a dialog. */}
+        <Link className="btn" to="/media">
+          Media API
+        </Link>
         {/* The two things you actually start here, side by side. */}
         <button className="btn btn-primary" type="button" onClick={() => setStartingComfy(true)}>
           ComfyUI starten
@@ -100,6 +104,8 @@ export function Servers() {
                         <span className="badge badge-info">RPC</span>
                       ) : server.role === 'comfy' ? (
                         <span className="badge badge-info">ComfyUI</span>
+                      ) : server.role === 'media' ? (
+                        <span className="badge badge-info">Media API</span>
                       ) : null}
                     </div>
                     <span className="small faint">{server.status}</span>
@@ -109,6 +115,10 @@ export function Servers() {
                       <span className="faint">GPU-Worker</span>
                     ) : server.role === 'comfy' ? (
                       <span className="faint">Bild- und Videogenerierung</span>
+                    ) : server.role === 'media' ? (
+                      <Link to="/media" className="faint">
+                        Bild- und Videogenerierung per API
+                      </Link>
                     ) : (
                       <span
                         className="truncate"

@@ -25,6 +25,7 @@ export function ServerDetail() {
 
   const isRpc = server.data?.server?.role === 'rpc'
   const isComfy = server.data?.server?.role === 'comfy'
+  const isMedia = server.data?.server?.role === 'media'
 
   // Filled from the container, then handed to the normal profile dialog — so
   // the user still names it and decides about autostart before anything is
@@ -121,7 +122,7 @@ export function ServerDetail() {
         <button className="btn" type="button" onClick={() => action.mutate('restart')} disabled={action.isPending}>
           Neu starten
         </button>
-        {isRpc || isComfy ? null : (
+        {isRpc || isComfy || isMedia ? null : (
           <button
             className="btn"
             type="button"
@@ -140,6 +141,11 @@ export function ServerDetail() {
           >
             Oberfläche öffnen
           </a>
+        ) : null}
+        {isMedia ? (
+          <Link className="btn btn-primary" to="/media">
+            Einstellungen und Modelle
+          </Link>
         ) : null}
         <button className="btn btn-danger" type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
           Entfernen
@@ -160,9 +166,11 @@ export function ServerDetail() {
                   ? 'RPC-Worker (stellt GPU bereit)'
                   : s.role === 'comfy'
                     ? 'ComfyUI (Bild- und Videogenerierung)'
-                    : 'llama-server'}
+                    : s.role === 'media'
+                      ? 'Media API (Bild- und Videogenerierung per API)'
+                      : 'llama-server'}
               </dd>
-              {s.role === 'rpc' || s.role === 'comfy' ? null : (
+              {s.role === 'rpc' || s.role === 'comfy' || s.role === 'media' ? null : (
                 <>
                   <dt>Modell</dt>
                   <dd>{s.modelPath ?? '–'}</dd>
@@ -174,6 +182,19 @@ export function ServerDetail() {
                   <dd className="mono small">{s.comfyModelsDir ?? '–'}</dd>
                   <dt>Ausgaben</dt>
                   <dd className="mono small">{s.comfyOutputDir ?? '–'}</dd>
+                </>
+              ) : null}
+              {s.role === 'media' ? (
+                <>
+                  <dt>Modelle</dt>
+                  <dd className="mono small">
+                    {s.mediaModelsDir ?? '–'}
+                    {s.mediaModelsReadOnly ? <span className="faint"> (schreibgeschützt)</span> : null}
+                  </dd>
+                  <dt>Daten</dt>
+                  <dd className="mono small">{s.mediaDataDir ?? '–'}</dd>
+                  <dt>Backend</dt>
+                  <dd>{s.mediaBackend ?? '–'}</dd>
                 </>
               ) : null}
               {s.mmprojPath ? (
@@ -197,9 +218,11 @@ export function ServerDetail() {
               <dd>{s.image ?? '–'}</dd>
               <dt>Host-Port</dt>
               <dd>
-                {s.hostPort ?? '–'} → {s.role === 'rpc' ? 50052 : 11434}
+                {s.bindAddress && s.role === 'media' ? `${s.bindAddress}:` : ''}
+                {s.hostPort ?? '–'} →{' '}
+                {s.role === 'rpc' ? 50052 : s.role === 'comfy' ? 8000 : s.role === 'media' ? 8100 : 11434}
               </dd>
-              {s.role === 'rpc' || s.role === 'comfy' ? null : (
+              {s.role === 'rpc' || s.role === 'comfy' || s.role === 'media' ? null : (
                 <>
                   <dt>Context Size</dt>
                   <dd>{s.ctxSize ?? '–'}</dd>
@@ -271,7 +294,9 @@ export function ServerDetail() {
                 <dd>
                   {s.role === 'rpc'
                     ? `${s.hostPort} (RPC, kein HTTP)`
-                    : `http://<host>:${s.hostPort}/v1`}
+                    : s.role === 'media'
+                      ? `http://${s.bindAddress === '0.0.0.0' ? '<host>' : s.bindAddress}:${s.hostPort}/api/v1`
+                      : `http://<host>:${s.hostPort}/v1`}
                 </dd>
                 <dt>Status</dt>
                 <dd>{health.data?.status ?? health.data?.reason ?? 'wird geprüft …'}</dd>

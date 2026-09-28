@@ -204,7 +204,11 @@ export function Dashboard() {
                       </td>
                       <td className="small mono" style={{ maxWidth: 240 }}>
                         <span className="truncate" style={{ display: 'block' }}>
-                          {server.modelPath}
+                          {server.role === 'media'
+                            ? 'Media API'
+                            : server.role === 'comfy'
+                              ? 'ComfyUI'
+                              : server.modelPath}
                         </span>
                       </td>
                       <td className="small">{shortImage(server.image)}</td>

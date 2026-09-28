@@ -53,18 +53,32 @@ const DETAIL = {
     'und damit Dateien auf dieser Maschine lesen und schreiben. Nur in einem ' +
     'vertrauenswürdigen Netz öffnen.',
   server: 'llama-server, geschützt durch seinen API-Key.',
+  media:
+    'Media API, geschützt durch ihren API-Schlüssel — spricht aber nur HTTP: Schlüssel und ' +
+    'Anmeldung gehen im Klartext über das Netz. Von außen besser über einen TLS-Reverse-Proxy.',
+  mediaLoopback:
+    'Media API, nur an 127.0.0.1 gebunden: eine Freigabe in der Firewall bewirkt nichts. ' +
+    'Zugriff von außen über einen TLS-Reverse-Proxy auf dieser Box.',
 }
 
 /** Ports without authentication. The UI warns harder for these. */
 const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
 
 /** What a container's port is for, by role. */
-function describeRole(server) {
+export function describeRole(server) {
   if (server.role === ROLE.rpc) {
     return { purpose: `RPC-Worker '${server.name}'`, detail: DETAIL.rpc, kind: 'rpc' }
   }
   if (server.role === ROLE.comfy) {
     return { purpose: `ComfyUI '${server.name}'`, detail: DETAIL.comfy, kind: 'comfy' }
+  }
+  if (server.role === ROLE.media) {
+    const loopback = /^127\./.test(server.bindAddress ?? '')
+    return {
+      purpose: `Media API '${server.name}'`,
+      detail: loopback ? DETAIL.mediaLoopback : DETAIL.media,
+      kind: 'media',
+    }
   }
   return { purpose: `Server '${server.name}'`, detail: DETAIL.server, kind: 'server' }
 }

@@ -143,6 +143,8 @@ function baseEnv(extra = {}) {
       'SHX_MOCK_XET',
       'SHX_MOCK_FIREWALL',
       'SHX_MOCK_FIREWALL_STATE',
+      'SHX_MOCK_ROOTFUL',
+      'SHX_MOCK_SWAP_ON_CREATE',
     ]) {
       if (process.env[key]) env[key] = process.env[key]
     }
@@ -256,6 +258,8 @@ export function stream(binKey, argv, opts = {}) {
   return child
 }
 
+const MAX_LINE = 1024 * 1024
+
 /** Feed complete lines to `onLine`, buffering partial ones across chunks. */
 export function attachLineReader(readable, onLine) {
   let buffer = ''
@@ -266,6 +270,11 @@ export function attachLineReader(readable, onLine) {
     const parts = buffer.split(/\r\n|\r|\n/)
     buffer = parts.pop() ?? ''
     for (const line of parts) onLine(line)
+    // A child that never ends a line must not grow this without bound.
+    if (buffer.length > MAX_LINE) {
+      onLine(buffer.slice(0, MAX_LINE))
+      buffer = ''
+    }
   })
   readable.on('end', () => {
     if (buffer) {

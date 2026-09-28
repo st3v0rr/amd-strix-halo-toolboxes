@@ -36,6 +36,33 @@ export const COMFY_CONTAINER_OUTPUT_DIR = '/root/comfy-outputs'
 export const COMFY_TAGS = /** @type {const} */ (['comfyui'])
 
 /**
+ * The media API (toolboxes_media_api/): its port inside the container, the
+ * paths its image expects, and the one tag this fork publishes.
+ *
+ * Secrets travel as files, never as values: the webui writes them 0600 into
+ * its own config directory and mounts each one read-only at these paths,
+ * which the image reads through MEDIA_API_KEY_FILE and friends.
+ */
+export const MEDIA_PORT = 8100
+export const MEDIA_TAGS = /** @type {const} */ (['media-api'])
+export const MEDIA_CONTAINER_MODELS_DIR = '/models'
+export const MEDIA_CONTAINER_DATA_DIR = '/data'
+export const MEDIA_SECRET_MOUNTS = /** @type {const} */ ({
+  apiKey: '/run/secrets/media-api-key',
+  sessionSecret: '/run/secrets/media-api-session',
+  hfToken: '/run/secrets/hf-token',
+  hfTokenDir: '/run/secrets/hf-token.d',
+  hfTokenFile: '/run/secrets/hf-token.d/token',
+})
+
+/**
+ * Folders in the shared model tree that belong to the media API rather than to
+ * ComfyUI: diffusers configs and weights, and the Hugging Face cache its image
+ * points HF_HOME at. The ComfyUI page names them instead of calling them stray.
+ */
+export const MEDIA_MODEL_DIRS = /** @type {const} */ (['diffusers', 'huggingface'])
+
+/**
  * The model subfolders ComfyUI expects, as created by set_extra_paths.sh.
  * Listing them explicitly is what lets the models page show empty ones too —
  * an absent folder is a normal state, not an error.
@@ -75,6 +102,14 @@ export const LABEL = {
   rpcPeers: 'shx.rpc-peers',
   comfyModelsDir: 'shx.comfy-models-dir',
   comfyOutputDir: 'shx.comfy-output-dir',
+  bindAddress: 'shx.bind-address',
+  mediaModelsDir: 'shx.media-models-dir',
+  mediaModelsReadOnly: 'shx.media-models-ro',
+  mediaDataDir: 'shx.media-data-dir',
+  mediaBackend: 'shx.media-backend',
+  mediaDownloads: 'shx.media-downloads',
+  /** Hash of the run argv, so a later config change shows up as drift. */
+  specHash: 'shx.spec-hash',
   created: 'shx.created',
 }
 
@@ -82,14 +117,15 @@ export const LABEL = {
  * What a managed container actually is.
  *
  * `server` is a llama-server serving HTTP; `rpc` is a ggml-rpc-server offering
- * its GPU to someone else's llama-server; `comfy` is ComfyUI. Containers
- * created before this label existed carry no role and are read as `server` —
- * which is what they are.
+ * its GPU to someone else's llama-server; `comfy` is ComfyUI; `media` is the
+ * media API. Containers created before this label existed carry no role and
+ * are read as `server` — which is what they are.
  */
 export const ROLE = /** @type {const} */ ({
   server: 'server',
   rpc: 'rpc',
   comfy: 'comfy',
+  media: 'media',
 })
 
 /** Schema version of the label set, so a future migration can tell them apart. */
@@ -211,6 +247,7 @@ export const JOB_FINISHED_STATUS = /** @type {const} */ ([
 export const JOB_TYPE = /** @type {const} */ ([
   'model-download',
   'comfy-model-download',
+  'media-model-fetch',
   'image-pull',
   'feature-detect',
   'app-update',

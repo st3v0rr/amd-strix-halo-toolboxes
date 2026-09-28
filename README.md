@@ -96,7 +96,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `toolboxes_comfyui/` | The same treatment for kyuz0's second project, [amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes): a copy of their Dockerfile whose final `CMD` starts ComfyUI on port 8000 instead of a shell — with `--listen 0.0.0.0` and the ROCm environment upstream only sets for login shells. Their `scripts/` and `workflows/` are vendored alongside it, so `./build.sh` needs no other repository; see [UPSTREAM.md](toolboxes_comfyui/UPSTREAM.md). Published as `:comfyui`. |
 | `toolboxes_media_api/` | Image and video generation as an authenticated API: Qwen-Image-2512 (text → image), Qwen-Image-Edit-2511 (edit) and MiniMax-H3 (text/image/start-end/reference → video with audio) on diffusers, with a browser playground, a single-GPU job queue and lazy model loading. No ComfyUI involved; reuses the ComfyUI model tree. Port **8100**, fails closed without `MEDIA_API_KEY`. Published as `:media-api`; see [its README](toolboxes_media_api/README.md). |
-| `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and ComfyUI, and manages both model trees. The same app is an MCP server at `/mcp`, so Claude Desktop, Claude Code or Hermes Agent can run the box too. See [webui/README.md](webui/README.md). |
+| `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers, ComfyUI and the media API — for the latter with the hardened rootless command, its key and session secret as read-only files it never displays, the image's own model inventory and fetches — and manages both model trees. The same app is an MCP server at `/mcp`, so Claude Desktop, Claude Code or Hermes Agent can run the box too. See [webui/README.md](webui/README.md). |
 
 ### Which images do I want?
 
@@ -224,7 +224,7 @@ for the GTT memory setup.
 | 8420 | the web interface | password + JWT cookie |
 | 11434 | `llama-server` (default per server) | `--api-key` |
 | 8000 | ComfyUI (default per container) | **nothing** — it has no login at all |
-| 8100 | Media API (image/video generation) | API key (`Bearer`), playground: session cookie + CSRF |
+| 8100 | Media API (image/video generation) — the web interface publishes it on `127.0.0.1` only | API key (`Bearer`), playground: session cookie + CSRF |
 | 50052 | RPC worker (`ggml-rpc-server`) | **nothing** — never expose it |
 
 ---

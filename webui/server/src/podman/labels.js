@@ -68,6 +68,36 @@ export function buildComfyLabels(spec) {
   }
 }
 
+/**
+ * Labels for the media API container.
+ *
+ * What it was started with, so the detail pages can say where its models and
+ * outputs live and how it is reachable, plus a hash of the whole run argv:
+ * comparing that with the hash of what the current settings would produce is
+ * how the media page tells "running as configured" from "settings changed
+ * since". Secrets are not in here — only the paths of the files holding them
+ * are even in the argv.
+ */
+export function buildMediaLabels(spec) {
+  return {
+    [LABEL.managed]: 'true',
+    [LABEL.version]: LABEL_VERSION,
+    [LABEL.role]: ROLE.media,
+    [LABEL.image]: spec.image,
+    [LABEL.port]: String(spec.hostPort),
+    [LABEL.bindAddress]: spec.bindAddress,
+    [LABEL.mediaModelsDir]: spec.modelsDir,
+    [LABEL.mediaModelsReadOnly]: spec.modelsReadOnly ? 'true' : 'false',
+    [LABEL.mediaDataDir]: spec.dataDir,
+    [LABEL.mediaBackend]: spec.backend,
+    [LABEL.mediaDownloads]: spec.allowDownloads ? 'true' : 'false',
+    [LABEL.specHash]: spec.specHash,
+    [LABEL.created]: new Date().toISOString(),
+  }
+}
+
+const KNOWN_ROLES = new Set([ROLE.rpc, ROLE.comfy, ROLE.media])
+
 /** Recover a server spec from a container's labels. */
 export function parseLabels(labels = {}) {
   const num = (key, fallback) => {
@@ -82,7 +112,7 @@ export function parseLabels(labels = {}) {
     managed: labels[LABEL.managed] === 'true',
     // Containers created before the role label existed are llama-servers.
     // Defaulting rather than reporting null keeps them in the servers list.
-    role: declaredRole === ROLE.rpc || declaredRole === ROLE.comfy ? declaredRole : ROLE.server,
+    role: KNOWN_ROLES.has(declaredRole) ? declaredRole : ROLE.server,
     profileId: labels[LABEL.profile] || null,
     modelPath: labels[LABEL.model] || null,
     image: labels[LABEL.image] || null,
@@ -100,6 +130,13 @@ export function parseLabels(labels = {}) {
     rpcPeers: (labels[LABEL.rpcPeers] || '').split(',').filter(Boolean),
     comfyModelsDir: labels[LABEL.comfyModelsDir] || null,
     comfyOutputDir: labels[LABEL.comfyOutputDir] || null,
+    bindAddress: labels[LABEL.bindAddress] || null,
+    mediaModelsDir: labels[LABEL.mediaModelsDir] || null,
+    mediaModelsReadOnly: labels[LABEL.mediaModelsReadOnly] === undefined ? null : labels[LABEL.mediaModelsReadOnly] === 'true',
+    mediaDataDir: labels[LABEL.mediaDataDir] || null,
+    mediaBackend: labels[LABEL.mediaBackend] || null,
+    mediaAllowDownloads: labels[LABEL.mediaDownloads] === undefined ? null : labels[LABEL.mediaDownloads] === 'true',
+    specHash: labels[LABEL.specHash] || null,
     createdAt: labels[LABEL.created] || null,
   }
 }

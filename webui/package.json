@@ -18,7 +18,7 @@
     "dev": "node dev/dev.js",
     "dev:server": "node --watch server/src/index.js",
     "dev:web": "npm run dev --workspace web",
-    "test": "node --test server/test/*.test.js",
+    "test": "node --test server/test/*.test.js web/test/*.test.js",
     "test:parity": "bash dev/parity/parity.sh",
     "lint": "eslint server web dev shared"
   },

@@ -57,6 +57,75 @@ export async function inspectContainer(name) {
   return Array.isArray(parsed) ? (parsed[0] ?? null) : parsed
 }
 
+/**
+ * Whether the podman we actually talk to runs rootless — asked of podman
+ * itself, since CONTAINER_HOST may point at another service than this
+ * process's UID suggests. null when podman does not say.
+ */
+export async function podmanRootless() {
+  const { stdout, code } = await run('podman', ['info', '--format', '{{.Host.Security.Rootless}}'], {
+    timeoutMs: 20_000,
+    allowFailure: true,
+  })
+  if (code !== 0) return null
+  const value = stdout.trim()
+  return value === 'true' ? true : value === 'false' ? false : null
+}
+
+/**
+ * `podman create`, then a look at what it will mount; the caller starts it.
+ * Bind sources are resolved at start, so the check belongs between the two:
+ * a directory swapped after the last check is refused here and the container
+ * is removed without ever running.
+ *
+ * @param {string[]} argv a `run -d …` or `run --rm …` argv
+ * @param {(mounts: object[]) => void} verify throws to refuse
+ * @returns {Promise<string>} the container id
+ */
+export async function createVerified(argv, verify) {
+  const rest = argv.slice(1)
+  if (rest[0] === '-d') rest.shift()
+  const { stdout } = await run('podman', ['create', ...rest], { timeoutMs: 120_000 })
+  invalidatePsCache()
+  const id = stdout.trim().split('\n').pop()
+  try {
+    const info = await inspectContainer(id)
+    verify(info?.Mounts ?? [])
+  } catch (err) {
+    await removeContainer(id, { force: true })
+    throw err
+  }
+  return id
+}
+
+/**
+ * Re-inspect and verify synchronously in the same helper that invokes start.
+ * The verifier also requires every configurable source component to be owned
+ * by this UID/root and not group/world-writable. Consequently no in-scope
+ * cross-user/group actor can change the path in the small spawn window; only
+ * this UID (out of scope) or root (trusted) can do so.
+ */
+export async function startVerifiedContainer(name, verify, { attach = false } = {}) {
+  const info = await inspectContainer(name)
+  verify(info?.Mounts ?? [])
+  const argv = ['start']
+  if (attach) argv.push('--attach')
+  argv.push(name)
+  const result = await run('podman', argv, {
+    timeoutMs: attach ? 90_000 : 60_000,
+    allowFailure: attach,
+  })
+  invalidatePsCache()
+  return result
+}
+
+/** Streaming counterpart for long-running attached one-shot containers. */
+export async function streamVerifiedContainer(name, verify, options) {
+  const info = await inspectContainer(name)
+  verify(info?.Mounts ?? [])
+  return stream('podman', ['start', '--attach', name], options)
+}
+
 export async function runContainer(argv) {
   const { stdout } = await run('podman', argv, { timeoutMs: 120_000 })
   invalidatePsCache()

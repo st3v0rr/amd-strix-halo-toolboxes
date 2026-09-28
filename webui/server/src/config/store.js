@@ -19,13 +19,15 @@ export class JsonStore {
    * @param {number} [opts.mode] file mode; 0o600 for anything holding secrets
    * @param {number} [opts.debounceMs]
    * @param {(msg: string, err?: unknown) => void} [opts.log]
+   * @param {typeof fsp} [opts.io] filesystem adapter, for fault-injection tests
    */
-  constructor({ file, schema, mode = 0o600, debounceMs = 200, log = () => {} }) {
+  constructor({ file, schema, mode = 0o600, debounceMs = 200, log = () => {}, io = fsp }) {
     this.file = file
     this.schema = schema
     this.mode = mode
     this.debounceMs = debounceMs
     this.log = log
+    this.io = io
     this.data = schema.parse({})
 
     /** Serialises writes so two flushes can never interleave. */
@@ -127,19 +129,47 @@ export class JsonStore {
   async #write() {
     const snapshot = JSON.stringify(this.data, null, 2) + '\n'
     const dir = path.dirname(this.file)
-    await fsp.mkdir(dir, { recursive: true, mode: 0o700 })
+    await this.io.mkdir(dir, { recursive: true, mode: 0o700 })
     const tmp = path.join(dir, `.${path.basename(this.file)}.tmp-${process.pid}`)
-
-    const handle = await fsp.open(tmp, 'w', this.mode)
+    let handle
+    let renamed = false
     try {
+      handle = await this.io.open(tmp, 'w', this.mode)
       await handle.writeFile(snapshot, 'utf8')
+      // open(2)'s creation mode is filtered through umask. Set the requested
+      // metadata on the temporary inode before syncing and publishing it.
+      await handle.chmod(this.mode)
       await handle.sync()
-    } finally {
       await handle.close()
+      handle = undefined
+
+      await this.io.rename(tmp, this.file)
+      renamed = true
+
+      // fsyncing the file does not make the rename durable. A successful write
+      // means both the inode and its directory entry survive a power loss.
+      const dirHandle = await this.io.open(dir, 'r')
+      try {
+        await dirHandle.sync()
+      } finally {
+        await dirHandle.close()
+      }
+    } catch (err) {
+      if (handle) {
+        try {
+          await handle.close()
+        } catch {
+          /* preserve the write error */
+        }
+      }
+      if (!renamed) {
+        try {
+          await this.io.rm(tmp, { force: true })
+        } catch {
+          /* an unpublished temporary file is safe to leave for later cleanup */
+        }
+      }
+      throw err
     }
-    await fsp.rename(tmp, this.file)
-    // rename keeps the tmp file's mode, but enforce on every write anyway so a
-    // file that arrived some other way cannot stay world-readable.
-    await fsp.chmod(this.file, this.mode)
   }
 }

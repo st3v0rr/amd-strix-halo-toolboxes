@@ -5,9 +5,78 @@ import path from 'node:path'
 import { apiTokenHint, generateApiToken, hashApiToken } from '../auth/apitoken.js'
 import { requireSession } from '../auth/middleware.js'
 import { settingsPatchSchema } from '../config/schema.js'
-import { badRequest } from '../lib/errors.js'
+import { badRequest, failedDependency } from '../lib/errors.js'
 import { mask, registerSecret, unregisterSecret } from '../lib/redact.js'
 import { validate } from '../lib/validate.js'
+
+function refreshMediaToken(ctx, token) {
+  return ctx.mediaSecrets.refreshHfToken(token)
+}
+
+/**
+ * Restore the durable config first, then the mounted file. If the process dies
+ * between those writes, boot reconciliation uses that config as source of truth.
+ */
+async function rollbackHfToken(ctx, previous, cause) {
+  const failures = []
+  try {
+    await ctx.config.update((c) => {
+      c.hfToken = previous
+      return c
+    })
+  } catch (err) {
+    failures.push(`Konfiguration: ${err.code ?? err.message}`)
+  }
+  try {
+    refreshMediaToken(ctx, previous || null)
+  } catch (err) {
+    failures.push(`Token-Datei: ${err.code ?? err.message}`)
+  }
+  if (failures.length) {
+    throw failedDependency(
+      `Die Token-Transaktion ist fehlgeschlagen und konnte nicht vollständig zurückgesetzt werden (${failures.join('; ')}); beim nächsten Start wird sie aus der Konfiguration repariert.`,
+    )
+  }
+  throw cause
+}
+
+/**
+ * Change the mounted token and durable JSON config as a recoverable transaction.
+ * Neither an observed post-rename file nor an in-memory value is proof of a
+ * committed rename: every reported fsync error is rolled back and returned.
+ */
+async function updateHfToken(ctx, nextToken) {
+  const previous = ctx.config.data.hfToken
+  if (nextToken === previous) {
+    try {
+      refreshMediaToken(ctx, nextToken || null)
+    } catch (err) {
+      await rollbackHfToken(ctx, previous, failedDependency(
+        `Die Token-Datei der Media API ließ sich nicht dauerhaft abgleichen (${err.code ?? err.message}); bitte erneut versuchen.`,
+      ))
+    }
+    return false
+  }
+
+  registerSecret(nextToken)
+  try {
+    refreshMediaToken(ctx, nextToken || null)
+  } catch (err) {
+    await rollbackHfToken(ctx, previous, failedDependency(
+      `Die Token-Datei der Media API ließ sich nicht dauerhaft schreiben (${err.code ?? err.message}); die Änderung wurde zurückgesetzt — bitte erneut versuchen.`,
+    ))
+  }
+  try {
+    await ctx.config.update((c) => {
+      c.hfToken = nextToken
+      return c
+    })
+  } catch (writeError) {
+    await rollbackHfToken(ctx, previous, writeError)
+  }
+  if (previous && previous !== nextToken) unregisterSecret(previous)
+  return true
+}
 
 export function settingsRoutes(ctx) {
   const router = express.Router()
@@ -40,17 +109,11 @@ export function settingsRoutes(ctx) {
         }
       }
 
-      const previousToken = ctx.config.data.hfToken
+      if (hfToken !== undefined) await updateHfToken(ctx, hfToken)
       await ctx.config.update((c) => {
         c.settings = { ...c.settings, ...patch }
-        if (hfToken !== undefined) c.hfToken = hfToken
         return c
       })
-
-      if (hfToken !== undefined && hfToken !== previousToken) {
-        unregisterSecret(previousToken)
-        registerSecret(hfToken)
-      }
       if (patch.maxConcurrentDownloads !== undefined) {
         ctx.jobs.configureLane('model-download', patch.maxConcurrentDownloads)
       }
@@ -71,14 +134,13 @@ export function settingsRoutes(ctx) {
   router.delete('/hf-token', async (req, res, next) => {
     try {
       const previous = ctx.config.data.hfToken
-      if (!previous) return res.json({ ok: true, wasSet: false })
-
-      await ctx.config.update((c) => {
-        c.hfToken = ''
-        return c
-      })
-      await ctx.config.flush()
-      unregisterSecret(previous)
+      if (!previous) {
+        // Repair an interrupted delete whose config committed before the
+        // mounted directory received its empty token file.
+        refreshMediaToken(ctx, null)
+        return res.json({ ok: true, wasSet: false })
+      }
+      await updateHfToken(ctx, '')
       ctx.log.info('Hugging-Face-Token entfernt.')
       res.json({ ok: true, wasSet: true })
     } catch (err) {

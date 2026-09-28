@@ -47,7 +47,23 @@ your back:
 
 ```bash
 podman exec media-api media-api-models check                        # what each profile has/lacks
+podman exec media-api media-api-models check --json                 # the same, machine-readable
 ```
+
+`media-api-models` reads the registry and the model tree, never the API, so it needs no
+`MEDIA_API_KEY` and runs in a one-shot container too. `check --json` prints one document
+(`version: 1`, per profile `available`, `missing`, `tasks_available`, `downloadable`);
+`fetch … --json` prints JSON lines — a `plan` with sizes from the Hub, then `file`/`fetched`
+per entry, `done` or `error`. Every fetch (and the first-use download of `MEDIA_ALLOW_DOWNLOADS`)
+first requires the files plus `MEDIA_MIN_FREE_DISK_BYTES` plus headroom (2 %, at least 1 GiB) to be
+free. The CLI also runs a guard that ends the process (status 3, partials kept) once free space
+drops below the reserve; only with that guard does it accept entries whose size the Hub does not
+report — the service's own download refuses them. A token can come from `HF_TOKEN` or, better, a
+read-only file named by `HF_TOKEN_PATH`. The web interface (`webui/`) manages the
+service this way: it runs the hardened command below, keeps key and session secret as
+read-only files, and fetches in a separate one-shot container while the service keeps its
+read-only mount (new files appear at their paths only when complete, so it needs no restart);
+the token reaches that container only as a per-job read-only file.
 
 Keep the service's model mount read-only. To fetch pinned model revisions, stop it and use a
 separate rootless one-shot container with the model mount writable, then restart the service with

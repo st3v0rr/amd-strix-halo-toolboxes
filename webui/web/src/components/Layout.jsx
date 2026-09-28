@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/servers', label: 'Server' },
   { to: '/models', label: 'Llama.cpp-Modelle' },
   { to: '/comfy-models', label: 'ComfyUI-Modelle' },
+  { to: '/media', label: 'Media API' },
   { to: '/images', label: 'Images' },
   { to: '/network', label: 'Netzwerk' },
   { to: '/profiles', label: 'Profile' },

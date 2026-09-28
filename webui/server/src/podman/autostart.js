@@ -1,6 +1,7 @@
+import { ROLE } from '../../../shared/constants.js'
 import { log } from '../lib/log.js'
 import { registerSecret } from '../lib/redact.js'
-import { createServer, listServers, startServer } from './servers.js'
+import { createMediaServer, createServer, listServers, startServer } from './servers.js'
 
 /** Give podman's own socket activation a moment before we start poking it. */
 const BOOT_DELAY_MS = 15_000
@@ -24,7 +25,9 @@ const STAGGER_MS = 5_000
  */
 export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
   const profiles = ctx.profiles.data.profiles.filter((p) => p.autostart)
-  if (profiles.length === 0) return { started: [], skipped: [], failed: [] }
+  // The media API is one more thing to bring up, configured on its own page.
+  const media = ctx.media?.data?.autostart ? ctx.media.data : null
+  if (profiles.length === 0 && !media) return { started: [], skipped: [], failed: [] }
 
   const started = []
   const skipped = []
@@ -35,7 +38,8 @@ export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
     existing = await listServers()
   } catch (err) {
     log.warn(`Autostart übersprungen, podman nicht erreichbar: ${err.message}`)
-    return { started, skipped, failed: profiles.map((p) => ({ name: p.name, error: err.message })) }
+    const names = [...profiles.map((p) => p.name), ...(media ? [media.name] : [])]
+    return { started, skipped, failed: names.map((name) => ({ name, error: err.message })) }
   }
 
   for (const [index, profile] of profiles.entries()) {
@@ -52,7 +56,7 @@ export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
 
       if (container) {
         // Present but stopped — a plain start preserves its configuration.
-        await startServer(profile.name)
+        await startServer(ctx, profile.name)
         started.push({ name: profile.name, action: 'gestartet' })
       } else {
         await createServer(ctx, {
@@ -80,6 +84,27 @@ export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
       // retried in a loop — a missing model or image will not fix itself.
       failed.push({ name: profile.name, error: err.message })
       log.warn(`Autostart für '${profile.name}' fehlgeschlagen: ${err.message}`)
+    }
+  }
+
+  if (media) {
+    // Last, and with the same gap: its models are the largest on the box.
+    if (profiles.length > 0 && stagger > 0) await sleep(stagger)
+    const container = existing.find((s) => s.name === media.name && s.role === ROLE.media)
+    try {
+      if (container?.running) {
+        skipped.push({ name: media.name, reason: 'läuft bereits' })
+      } else if (container) {
+        await startServer(ctx, media.name)
+        started.push({ name: media.name, action: 'gestartet' })
+      } else {
+        await createMediaServer(ctx)
+        started.push({ name: media.name, action: 'neu angelegt' })
+      }
+      log.info(`Autostart: Media API '${media.name}' ist oben.`)
+    } catch (err) {
+      failed.push({ name: media.name, error: err.message })
+      log.warn(`Autostart der Media API '${media.name}' fehlgeschlagen: ${err.message}`)
     }
   }
 

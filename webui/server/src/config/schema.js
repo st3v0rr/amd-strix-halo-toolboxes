@@ -2,13 +2,29 @@ import { z } from 'zod'
 
 import {
   IMAGE_REPO,
+  MEDIA_PORT,
+  MEDIA_TAGS,
   NAME_RE,
   PORT_MAX,
   PORT_MIN,
   SERVER_DEFAULTS,
   SPEC_TYPES,
 } from '../../../shared/constants.js'
-import { defaultComfyModelsDir, defaultComfyOutputDir, defaultModelsDir } from './paths.js'
+import {
+  MEDIA_BACKENDS,
+  MEDIA_LIMITS,
+  MEDIA_LOG_LEVELS,
+  MEDIA_MEMORY_CHECKS,
+  isIpv4,
+  parseOrigin,
+  parsePublicUrl,
+} from '../../../shared/media.js'
+import {
+  defaultComfyModelsDir,
+  defaultComfyOutputDir,
+  defaultMediaDataDir,
+  defaultModelsDir,
+} from './paths.js'
 
 const port = z.number().int().min(PORT_MIN).max(PORT_MAX)
 
@@ -115,6 +131,63 @@ export const stateSchema = z.object({
   /** Back-off deadline after a registry 429, as an ISO timestamp. */
   registryBackoffUntil: z.string().nullable().default(null),
   jobs: z.array(z.record(z.unknown())).default([]),
+})
+
+/**
+ * The media API service, one per box: what its container is created from.
+ *
+ * A stored spec like a profile, not live state — the container carries what
+ * it was actually started with in its labels, and a label hash tells the two
+ * apart when this changes. Secrets are not in here at all: they are files of
+ * their own (see media/secrets.js).
+ */
+export const mediaConfigSchema = z.object({
+  version: z.literal(1).default(1),
+  name: z.string().regex(NAME_RE).default('media-api'),
+  image: z.string().min(1).max(400).default(`${IMAGE_REPO}:${MEDIA_TAGS[0]}`),
+  port: port.default(MEDIA_PORT),
+  /**
+   * Host address the port is published on. Loopback by default: the service
+   * speaks plain HTTP, so anything wider belongs behind a TLS reverse proxy.
+   */
+  bindAddress: z.string().refine(isIpv4, 'keine IPv4-Adresse').default('127.0.0.1'),
+  /** Where a reverse proxy serves the service, for the playground link. '' = none. */
+  publicUrl: z
+    .string()
+    .max(400)
+    .refine((v) => v === '' || parsePublicUrl(v) !== null, 'keine http(s)-Adresse')
+    .default(''),
+  /** '' means the ComfyUI model tree, whose layout the service reads as-is. */
+  modelsDir: z.string().max(1000).default(''),
+  modelsReadOnly: z.boolean().default(true),
+  dataDir: z.string().min(1).max(1000).default(defaultMediaDataDir),
+  backend: z.enum(MEDIA_BACKENDS).default('real'),
+  /** MEDIA_ALLOW_DOWNLOADS: a job may fetch what it lacks. Needs a writable model mount. */
+  allowDownloads: z.boolean().default(false),
+  memoryCheck: z.enum(MEDIA_MEMORY_CHECKS).default('strict'),
+  memoryReserveGb: z.number().min(0).max(1024).default(8),
+  disableMmap: z.boolean().default(true),
+  logLevel: z.enum(MEDIA_LOG_LEVELS).default('info'),
+  cookieSecure: z.boolean().default(false),
+  allowXApiKey: z.boolean().default(true),
+  corsOrigins: z
+    .array(z.string().refine((v) => parseOrigin(v) !== null, 'keine http(s)-Origin'))
+    .max(16)
+    .default([]),
+  sessionTtlHours: z.number().int().min(1).max(720).default(12),
+  /** null: not passed, so the service's own default applies. */
+  limits: z
+    .object(
+      Object.fromEntries(
+        MEDIA_LIMITS.map((l) => [
+          l.key,
+          (l.int ? z.number().int() : z.number()).min(l.min).max(l.max).nullable().default(null),
+        ]),
+      ),
+    )
+    .default({}),
+  autostart: z.boolean().default(false),
+  updatedAt: z.string().nullable().default(null),
 })
 
 /** Settings that may be changed through the API. */

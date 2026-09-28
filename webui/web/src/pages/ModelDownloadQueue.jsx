@@ -42,8 +42,13 @@ const BADGE = {
  * @param {object} props
  * @param {string} [props.type] job type to list
  * @param {string[]} [props.invalidate] query key to refetch when one finishes
+ * @param {(id: string) => string} [props.resumePath] API path that resumes a job
  */
-export function ModelDownloadQueue({ type = 'model-download', invalidate = ['models'] }) {
+export function ModelDownloadQueue({
+  type = 'model-download',
+  invalidate = ['models'],
+  resumePath = (id) => `/models/downloads/${id}/resume`,
+}) {
   const toast = useToast()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(null)
@@ -84,7 +89,7 @@ export function ModelDownloadQueue({ type = 'model-download', invalidate = ['mod
   })
 
   const resume = useMutation({
-    mutationFn: (id) => post(`/models/downloads/${id}/resume`),
+    mutationFn: (id) => post(resumePath(id)),
     onSuccess: () => toast.success('Download wird fortgesetzt.'),
     onError: (err) => toast.error(err),
     onSettled: () => queryClient.invalidateQueries({ queryKey: QUEUE_KEY }),

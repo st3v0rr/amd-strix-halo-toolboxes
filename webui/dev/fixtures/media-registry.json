@@ -1,0 +1,105 @@
+{
+  "_comment": "A cut-down media API registry for dev/bin/podman: real ids and paths, toy sizes. The mock answers media-api-models check/fetch from it against the mounted model tree.",
+  "models": [
+    {
+      "id": "qwen-image-2512",
+      "label": "Qwen-Image-2512",
+      "provider": "qwen-image",
+      "description": "Text-to-image, 20B MMDiT with a Qwen2.5-VL-7B text encoder.",
+      "license": "Apache-2.0",
+      "tasks": ["text-to-image"],
+      "default_profile": "fp8",
+      "profiles": [
+        {
+          "id": "fp8", "label": "FP8 E4M3FN (recommended)", "estimated_memory_gb": 36,
+          "files": {
+            "text-to-image": [
+              "diffusers/Qwen-Image-2512/model_index.json",
+              "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
+              "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+            ]
+          }
+        },
+        {
+          "id": "lightning-4step", "label": "Lightning 4-step (fast)", "estimated_memory_gb": 36,
+          "lora": "loras/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors",
+          "files": {
+            "text-to-image": [
+              "diffusers/Qwen-Image-2512/model_index.json",
+              "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
+              "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+              "loras/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors"
+            ]
+          }
+        },
+        {
+          "id": "gguf-q4km", "label": "GGUF Q4_K_M (low memory, experimental)", "status": "experimental",
+          "estimated_memory_gb": 28,
+          "files": {
+            "text-to-image": [
+              "diffusers/Qwen-Image-2512/model_index.json",
+              "unet/qwen-image-2512-Q4_K_M.gguf",
+              "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+            ]
+          }
+        },
+        {
+          "id": "nf4-bitsandbytes", "label": "NF4 via bitsandbytes", "status": "unsupported",
+          "reason": "bitsandbytes has no verified gfx1151 build for this image's ROCm torch.",
+          "estimated_memory_gb": 0
+        }
+      ]
+    },
+    {
+      "id": "qwen-image-edit-2511",
+      "label": "Qwen-Image-Edit-2511",
+      "provider": "qwen-image-edit",
+      "description": "Instruction image editing from one to three input images.",
+      "license": "Apache-2.0",
+      "tasks": ["image-edit"],
+      "default_profile": "fp8mixed",
+      "profiles": [
+        {
+          "id": "fp8mixed", "label": "FP8 mixed (recommended)", "estimated_memory_gb": 36,
+          "files": {
+            "image-edit": [
+              "diffusers/Qwen-Image-Edit-2511/model_index.json",
+              "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+              "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+            ]
+          }
+        },
+        {
+          "id": "int8-convrot", "label": "INT8 ConvRot", "status": "unsupported",
+          "reason": "ComfyUI's own int8 ConvRot layout; only ComfyUI can load it.",
+          "estimated_memory_gb": 0
+        }
+      ]
+    },
+    {
+      "id": "minimax-h3",
+      "label": "MiniMax-H3",
+      "provider": "minimax-h3",
+      "description": "Joint video + stereo audio, 33B DiT. 24 fps, 5-15 s.",
+      "license": "MiniMax H3 Community License",
+      "tasks": ["text-to-video", "image-to-video", "start-end-to-video", "reference-to-video"],
+      "default_profile": "int8",
+      "profiles": [
+        {
+          "id": "int8", "label": "INT8 weight-only (recommended)", "estimated_memory_gb": 86,
+          "files": {
+            "text-to-video": ["diffusers/MiniMax-H3/modular_model_index.json", "diffusers/MiniMax-H3/transformer/model.safetensors"],
+            "image-to-video": ["diffusers/MiniMax-H3/modular_model_index.json", "diffusers/MiniMax-H3/transformer/model.safetensors"],
+            "start-end-to-video": ["diffusers/MiniMax-H3/modular_model_index.json", "diffusers/MiniMax-H3/transformer/model.safetensors"],
+            "reference-to-video": ["diffusers/MiniMax-H3/modular_model_index.json", "diffusers/MiniMax-H3/transformer_ref/model.safetensors"]
+          }
+        },
+        {
+          "id": "gguf-q2", "label": "GGUF Q2 (pruned)", "status": "unsupported",
+          "reason": "Only loadable by ComfyUI-GGUF.",
+          "estimated_memory_gb": 0
+        }
+      ]
+    }
+  ]
+}

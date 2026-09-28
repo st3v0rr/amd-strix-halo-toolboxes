@@ -1,6 +1,7 @@
 import {
   COMFY_PORT,
   JOB_FINISHED_STATUS,
+  MEDIA_PORT,
   JOB_STATUS,
   JOB_TYPE,
   PORT_MAX,
@@ -8,6 +9,12 @@ import {
   RPC_PORT,
   SPEC_TYPES,
 } from '../../../shared/constants.js'
+import {
+  MEDIA_BACKENDS,
+  MEDIA_LIMITS,
+  MEDIA_LOG_LEVELS,
+  MEDIA_MEMORY_CHECKS,
+} from '../../../shared/media.js'
 import { ToolError } from './protocol.js'
 
 /**
@@ -81,6 +88,44 @@ const llamaSpec = {
   },
 }
 
+/** The media API settings an agent may change, as configure_media_api takes them. */
+const mediaSettings = {
+  name: str('Container-Name, Standard "media-api".'),
+  image: image('Image-Referenz, das Media-API-Image (Tag :media-api).'),
+  port: port(`Host-Port, Standard ${MEDIA_PORT}.`),
+  bindAddress: str(
+    'IPv4-Adresse, auf der der Port veröffentlicht wird. Standard 127.0.0.1 — der Dienst spricht nur HTTP; von außen gehört ein TLS-Reverse-Proxy davor.',
+  ),
+  publicUrl: str('Adresse eines Reverse-Proxys vor dem Dienst (für den Playground-Link), z. B. "https://media.box.lan". Leer: keiner.'),
+  modelsDir: str('Absoluter Pfad des Modellbaums. Leer: der ComfyUI-Modellbaum, dessen Layout der Dienst direkt liest.'),
+  modelsReadOnly: bool('Modellbaum schreibgeschützt mounten (Standard und empfohlen).'),
+  dataDir: str('Absoluter Pfad für Ergebnisse, Uploads und Job-Zustand.'),
+  backend: str('"real" (GPU) oder "mock" (ohne GPU und Modelle, liefert Testbilder).', { enum: [...MEDIA_BACKENDS] }),
+  allowDownloads: bool('Der Dienst lädt fehlende Modelle beim ersten Auftrag selbst. Braucht modelsReadOnly=false; abgeraten — besser fetch_media_models.'),
+  memoryCheck: str('Speicherprüfung vor dem Laden eines Modells.', { enum: [...MEDIA_MEMORY_CHECKS] }),
+  memoryReserveGb: { type: 'number', minimum: 0, maximum: 1024, description: 'Reserve in GB, die frei bleiben muss.' },
+  disableMmap: bool('Gewichte kopieren statt mappen (Standard, wie ComfyUIs --disable-mmap).'),
+  logLevel: str('Log-Level des Dienstes.', { enum: [...MEDIA_LOG_LEVELS] }),
+  cookieSecure: bool('Sitzungs-Cookie nur über HTTPS — hinter einem TLS-Reverse-Proxy einschalten.'),
+  allowXApiKey: bool('Neben "Authorization: Bearer" auch den Header X-API-Key annehmen.'),
+  corsOrigins: {
+    type: 'array',
+    items: { type: 'string' },
+    maxItems: 16,
+    description: 'Explizite http(s)-Origins für CORS, z. B. ["https://app.lan"]. Nie "*".',
+  },
+  sessionTtlHours: int('Gültigkeit einer Playground-Sitzung in Stunden.', { minimum: 1, maximum: 720 }),
+  limits: obj(
+    Object.fromEntries(
+      MEDIA_LIMITS.map((l) => [
+        l.key,
+        { type: ['number', 'null'], minimum: l.min, maximum: l.max, description: `${l.label}; null = Standard des Dienstes.` },
+      ]),
+    ),
+  ),
+  autostart: bool('Beim Booten der Box automatisch starten.'),
+}
+
 /* --------------------------------- helpers --------------------------------- */
 
 async function settings(api) {
@@ -131,7 +176,7 @@ export const tools = [
     name: 'get_overview',
     title: 'Überblick',
     description:
-      'Der beste Einstieg: Speicher, GPU, Auslastung, alle verwalteten Container (llama-server, RPC-Worker, ComfyUI) und laufende Jobs in einem Aufruf.',
+      'Der beste Einstieg: Speicher, GPU, Auslastung, alle verwalteten Container (llama-server, RPC-Worker, ComfyUI, Media API) und laufende Jobs in einem Aufruf.',
     inputSchema: obj(),
     annotations: READ,
     async run(_args, api) {
@@ -180,7 +225,7 @@ export const tools = [
   {
     name: 'list_servers',
     title: 'Container auflisten',
-    description: 'Alle verwalteten Container mit Rolle (server, rpc, comfy), Status, Port, Modell und Image.',
+    description: 'Alle verwalteten Container mit Rolle (server, rpc, comfy, media), Status, Port, Modell und Image.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/servers'),
@@ -196,7 +241,8 @@ export const tools = [
   {
     name: 'get_server_health',
     title: 'Server-Gesundheit',
-    description: 'Fragt den /health-Endpunkt eines llama-servers ab — zeigt, ob das Modell fertig geladen ist.',
+    description:
+      'Fragt ab, ob ein Container antwortet: /health beim llama-server (zeigt, ob das Modell geladen ist), /healthz bei der Media API, /system_stats bei ComfyUI, TCP beim RPC-Worker.',
     inputSchema: obj({ name }, ['name']),
     annotations: READ,
     run: ({ name }, api) => api('GET', `/servers/${enc(name)}/health`),
@@ -543,11 +589,80 @@ export const tools = [
     run: (_args, api) => api('GET', '/comfy/outputs'),
   },
 
+  /* -------------------------------- Media API -------------------------------- */
+  {
+    name: 'get_media_api',
+    title: 'Media API: Status',
+    description:
+      'Die Media API (Bild- und Videogenerierung: Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) auf einen Blick: Einstellungen, Container, Gesundheit, geladenes Modell, letzte Aufträge und ob der Container noch den aktuellen Einstellungen und Schlüsseln entspricht (drift). Schlüssel erscheinen nur als Fingerabdruck; ändern lassen sie sich nur im Browser.',
+    inputSchema: obj(),
+    annotations: READ,
+    run: (_args, api) => api('GET', '/media'),
+  },
+  {
+    name: 'configure_media_api',
+    title: 'Media API einstellen',
+    description:
+      'Ändert einzelne Einstellungen der Media API; nicht genannte bleiben. Ein laufender Container übernimmt sie erst mit create_media_api und replace=true.',
+    inputSchema: obj(mediaSettings),
+    annotations: WRITE,
+    async run(patch, api) {
+      // Limits are one object in the API; merge so naming one keeps the others.
+      if (patch.limits) {
+        const { config } = await api('GET', '/media')
+        patch = { ...patch, limits: { ...config.limits, ...patch.limits } }
+      }
+      return api('PUT', '/media/config', { body: patch })
+    },
+  },
+  {
+    name: 'create_media_api',
+    title: 'Media API anlegen',
+    description:
+      'Legt den Media-API-Container aus den gespeicherten Einstellungen an und startet ihn — rootless, ohne Capabilities, Modelle schreibgeschützt, Schlüssel als Dateien. Fehlende Schlüssel werden erzeugt, aber nie ausgegeben. replace=true ersetzt einen vorhandenen Container (nötig nach configure_media_api). Danach gelten start_server, stop_server, restart_server, delete_server, get_server_logs und get_server_health mit dem Container-Namen.',
+    inputSchema: obj({ replace }),
+    annotations: WRITE,
+    run: ({ replace = false }, api) => api('POST', '/media/apply', { body: { replace } }),
+  },
+  {
+    name: 'list_media_models',
+    title: 'Media-API-Modelle',
+    description:
+      'Welche Modelle und Profile das Media-API-Image kennt — Aufgaben, geschätzter Speicherbedarf, Status —, welche vollständig auf der Platte liegen (auch je Aufgabe) und welche Dateien fehlen. Nicht unterstützte Profile nennen ihren Grund.',
+    inputSchema: obj({ refresh: bool('Neu prüfen statt den kurzen Cache zu nutzen.') }),
+    annotations: READ,
+    run: ({ refresh }, api) => (refresh ? api('POST', '/media/models/refresh') : api('GET', '/media/models')),
+  },
+  {
+    name: 'fetch_media_models',
+    title: 'Media-API-Modelle laden',
+    description:
+      'Lädt die fehlenden Dateien eines Profils von den gepinnten Hugging-Face-Revisionen, als Hintergrund-Job in einem Wegwerf-Container; der Dienst behält seinen schreibgeschützten Mount und sieht die Dateien ohne Neustart. Ein Download zur Zeit. Fortschritt mit get_job/wait_for_job. Achtung, groß: Qwen-Profile um 40 GB, MiniMax-H3 deutlich mehr.',
+    inputSchema: obj(
+      {
+        model: str('Modell-ID aus list_media_models, z. B. "qwen-image-2512".'),
+        profile: str('Profil-ID. Ohne Angabe: das Standardprofil des Modells.'),
+        task: str('Nur die Dateien für diese Aufgabe, z. B. "text-to-video" (spart bei MiniMax-H3 die Referenz-Partition).'),
+      },
+      ['model'],
+    ),
+    annotations: ONLINE_WRITE,
+    run: (args, api) => api('POST', '/media/fetch', { body: args }),
+  },
+  {
+    name: 'resume_media_fetch',
+    title: 'Media-API-Download fortsetzen',
+    description: 'Setzt einen abgebrochenen, fehlgeschlagenen oder unterbrochenen Media-API-Download fort; Vorhandenes bleibt.',
+    inputSchema: obj({ jobId: str('ID des alten Download-Jobs.') }, ['jobId']),
+    annotations: ONLINE_WRITE,
+    run: ({ jobId }, api) => api('POST', `/media/fetch/${enc(jobId)}/resume`),
+  },
+
   /* --------------------------------- images --------------------------------- */
   {
     name: 'list_images',
     title: 'Images auflisten',
-    description: 'Verfügbare Container-Images (llama-server-Backends wie vulkan-radv, rocm-10.0, und ComfyUI): lokal vorhanden oder nicht, Update verfügbar, erkannte Argumente.',
+    description: 'Verfügbare Container-Images (llama-server-Backends wie vulkan-radv, rocm-10.0, ComfyUI und die Media API): lokal vorhanden oder nicht, Update verfügbar, erkannte Argumente.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/images'),
@@ -775,12 +890,13 @@ export const tools = [
   },
 ]
 
-export const instructions = `Steuert eine AMD-Strix-Halo-Box (Ryzen AI Max, bis 124 GiB gemeinsamer Speicher für CPU und GPU): llama-server-Container für GGUF-Modelle, RPC-Worker für verteilte Inferenz, ComfyUI, die Modellverzeichnisse, Images, Firewall und Einstellungen.
+export const instructions = `Steuert eine AMD-Strix-Halo-Box (Ryzen AI Max, bis 124 GiB gemeinsamer Speicher für CPU und GPU): llama-server-Container für GGUF-Modelle, RPC-Worker für verteilte Inferenz, ComfyUI, die Media API für Bild- und Videogenerierung, die Modellverzeichnisse, Images, Firewall und Einstellungen.
 
 Vorgehen:
 - Mit get_overview beginnen.
 - Modell starten: list_models → estimate_vram für die gewünschte Kontextgröße → create_llama_server (oder launch_profile) → get_server_health, bis das Modell geladen ist; bei Problemen get_server_logs.
 - Modell besorgen: search_huggingface → list_huggingface_files → download_model → wait_for_job.
+- Media API: get_media_api → list_media_models → fetch_media_models → wait_for_job → create_media_api (nach configure_media_api mit replace=true). Den API-Schlüssel der Media API bekommt ein Agent nie zu sehen; generieren lässt sich über ihre eigene API mit dem Schlüssel des Besitzers.
 - Downloads, Image-Pulls und Updates laufen als Jobs im Hintergrund; der Aufruf kehrt sofort mit der Job-ID zurück.
 - Flash Attention und no-mmap setzt die Box selbst; extraArgs normalerweise leer lassen.
 - Fehlermeldungen kommen auf Deutsch und nennen meist den Ausweg (z. B. welcher Server ein Modell benutzt).`

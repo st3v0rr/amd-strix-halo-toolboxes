@@ -187,6 +187,18 @@ test('tool names are unique and fit the MCP naming rules', () => {
   }
 })
 
+test('no MCP tool can read or change the media API secrets', () => {
+  // Rotating or choosing the key is a browser-session action; an agent must not
+  // be able to lock the owner's clients out or learn a key it was not shown.
+  for (const tool of tools) {
+    assert.ok(!String(tool.run).includes('/media/secrets'), `${tool.name} touches the media secrets`)
+  }
+  const names = tools.map((t) => t.name)
+  for (const name of ['get_media_api', 'configure_media_api', 'create_media_api', 'list_media_models', 'fetch_media_models', 'resume_media_fetch']) {
+    assert.ok(names.includes(name), name)
+  }
+})
+
 /** A fake REST API that records calls and answers from a table. */
 function fakeApi(routes) {
   const calls = []
@@ -292,6 +304,20 @@ test('the overview leaves out the sparkline history', async () => {
   const result = await tool('get_overview').run({}, api)
   assert.equal('history' in result.system, false)
   assert.equal(result.activeJobs.length, 1)
+})
+
+test('configure_media_api merges limits, create_media_api defaults to no replace', async () => {
+  const { api, calls } = fakeApi({
+    'GET /media': { config: { limits: { maxSteps: 60, maxQueuedJobs: null } } },
+    'PUT /media/config': (o) => ({ config: o.body }),
+    'POST /media/apply': (o) => o.body,
+  })
+  await tool('configure_media_api').run({ limits: { maxQueuedJobs: 4 } }, api)
+  assert.deepEqual(calls.at(-1).body.limits, { maxSteps: 60, maxQueuedJobs: 4 })
+  await tool('configure_media_api').run({ logLevel: 'debug' }, api)
+  assert.deepEqual(calls.at(-1).body, { logLevel: 'debug' }, 'no extra GET without limits')
+  await tool('create_media_api').run({}, api)
+  assert.deepEqual(calls.at(-1).body, { replace: false })
 })
 
 /* -------------------------------- loopback -------------------------------- */

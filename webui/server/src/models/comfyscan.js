@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 
-import { COMFY_MODEL_DIRS } from '../../../shared/constants.js'
+import { COMFY_MODEL_DIRS, MEDIA_MODEL_DIRS } from '../../../shared/constants.js'
 
 const CACHE_MS = 30_000
 
@@ -44,6 +44,13 @@ export async function scanComfyModels(modelsDir, { force = false } = {}) {
   // showing, because such a file takes space and will never be found.
   const extra = await strayFolders(root)
   for (const name of extra) {
+    // The media API reads this same tree and keeps its diffusers folders and
+    // Hugging Face cache beside ComfyUI's. Those are not strays — they are
+    // nested, so they are measured whole rather than listed file by file.
+    if (MEDIA_MODEL_DIRS.includes(name)) {
+      folders.push({ ...(await measureFolder(root, name)), known: false, owner: 'media' })
+      continue
+    }
     folders.push({ ...(await scanFolder(root, name)), known: false })
   }
 
@@ -91,6 +98,35 @@ async function scanFolder(root, name) {
     files,
     totalBytes: files.reduce((sum, f) => sum + f.size, 0),
   }
+}
+
+/** Size and file count of a whole subtree, without following symlinks. */
+async function measureFolder(root, name) {
+  let totalBytes = 0
+  let fileCount = 0
+  const pending = [{ dir: path.join(root, name), depth: 0 }]
+  while (pending.length) {
+    const { dir, depth } = pending.pop()
+    let entries
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const abs = path.join(dir, entry.name)
+      if (entry.isDirectory() && depth < 12) pending.push({ dir: abs, depth: depth + 1 })
+      else if (entry.isFile()) {
+        try {
+          totalBytes += (await fsp.stat(abs)).size
+          fileCount += 1
+        } catch {
+          /* vanished mid-scan */
+        }
+      }
+    }
+  }
+  return { name, known: true, files: [], fileCount, totalBytes }
 }
 
 /** Directories in the tree that ComfyUI has no configured path for. */

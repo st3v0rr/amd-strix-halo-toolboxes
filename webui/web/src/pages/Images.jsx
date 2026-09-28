@@ -81,6 +81,10 @@ export function Images() {
                     <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
                       ComfyUI
                     </span>
+                  ) : image.kind === 'media' ? (
+                    <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
+                      Media API
+                    </span>
                   ) : null}
                 </h2>
                 {image.updateAvailable ? (

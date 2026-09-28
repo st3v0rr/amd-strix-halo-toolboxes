@@ -162,3 +162,11 @@ else
   printf '\033[31m%d von %d Faellen weichen ab.\033[0m\n' "$FAIL" "$((PASS + FAIL))"
   exit 1
 fi
+
+# The media API has no script to diff against; its reference is the service's
+# own config loader. The argv side (the documented hardened command) is
+# checked by server/test/media-parity.test.js.
+echo
+echo "Parity: Media-API-Umgebung  vs  toolboxes_media_api/src/media_api/config.py"
+echo
+node "$HERE/media.mjs"

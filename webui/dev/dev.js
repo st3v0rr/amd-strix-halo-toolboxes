@@ -151,6 +151,17 @@ if (!fs.existsSync(configFile)) {
   process.stdout.write('\n  Dev-Zugang angelegt: admin / devdev\n\n')
 }
 
+// The media API's data would otherwise land in ~/media-api-data, and its real
+// backend wants a GPU. Everything else about it keeps the defaults.
+const mediaConfigFile = path.join(tmp, 'config', 'media-api.json')
+if (!fs.existsSync(mediaConfigFile)) {
+  fs.writeFileSync(
+    mediaConfigFile,
+    JSON.stringify({ version: 1, dataDir: path.join(tmp, 'media-api-data'), backend: 'mock' }, null, 2),
+    { mode: 0o600 },
+  )
+}
+
 const children = []
 function start(name, cmd, args, extraEnv = {}) {
   const child = spawn(cmd, args, {

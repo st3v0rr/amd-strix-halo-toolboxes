@@ -1,17 +1,19 @@
 import fs from 'node:fs'
 
 import { IMAGE_REPO } from '../../../shared/constants.js'
-import { comfyDockerfileDir, dockerfileDir } from '../config/paths.js'
+import { comfyDockerfileDir, dockerfileDir, mediaDockerfileDir } from '../config/paths.js'
 import { log } from '../lib/log.js'
 
 /**
  * Where the tags come from. Each directory holds `Dockerfile.<tag>` files, and
  * `kind` is what the images page uses to tell a llama-server backend from
- * ComfyUI — they are unrelated software that merely shares a DockerHub repo.
+ * ComfyUI or the media API — unrelated software that merely shares a
+ * DockerHub repo.
  */
 const SOURCES = [
   { dir: dockerfileDir, kind: 'llama' },
   { dir: comfyDockerfileDir, kind: 'comfy' },
+  { dir: mediaDockerfileDir, kind: 'media' },
 ]
 
 /** Hard fallback if the repo layout is ever unreadable (e.g. tarball install). */
@@ -20,6 +22,7 @@ const FALLBACK_TAGS = [
   { tag: 'rocm-10.0', kind: 'llama' },
   { tag: 'rocm-10.0-strix-llama', kind: 'llama' },
   { tag: 'comfyui', kind: 'comfy' },
+  { tag: 'media-api', kind: 'media' },
 ]
 
 const DESCRIPTIONS = {
@@ -28,6 +31,8 @@ const DESCRIPTIONS = {
   'rocm-10.0-strix-llama':
     'Experimentell: strix-llama.cpp auf eigener ROCm-Runtime (retained PM4). Laut Upstream der schnellste Stack für Qwen3.8-Flash-Next. Nur manuell gebaut.',
   comfyui: 'ComfyUI mit ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung.',
+  'media-api':
+    'Media API: Qwen-Image, Qwen-Image-Edit und MiniMax-H3 hinter einer API mit Schlüssel und Playground (diffusers, ROCm-Torch für gfx1151). Nur manuell gebaut.',
 }
 
 /**
