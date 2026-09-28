@@ -8,26 +8,96 @@ import { configDir, stateDir } from '../config/paths.js'
 import { mediaConfigSchema } from '../config/schema.js'
 import { badRequest, conflict, failedDependency } from '../lib/errors.js'
 import { buildMediaRunArgv, mediaContainerEnv } from '../podman/argv.js'
-import { podmanRootless } from '../podman/client.js'
+import { podmanRuntimeInfo } from '../podman/client.js'
 
 /** What PUT /media/config accepts: any setting, none of the bookkeeping. */
 export const mediaConfigPatchSchema = mediaConfigSchema
   .omit({ version: true, updatedAt: true })
   .partial()
 
-/**
- * Refuse unless the podman we talk to — local, or whatever CONTAINER_HOST
- * names — runs rootless. `--userns=keep-id` and the whole hardening story
- * assume it, and a podman that will not say is treated like one that is not.
- */
-export async function assertRootlessPodman() {
-  const rootless = await podmanRootless()
-  if (rootless === true) return
-  throw failedDependency(
-    rootless === false
-      ? 'Podman läuft rootful. Die Media API ist für rootless Podman gebaut (--userns=keep-id) und wird so nicht gestartet — installiere das Webinterface als normaler Benutzer, siehe toolboxes_media_api/README.md.'
-      : 'Podman sagt nicht, ob es rootless läuft (podman info schlug fehl). Ohne diese Gewissheit startet die Media API nicht.',
-  )
+/** Evaluate the fail-closed runtime policy without I/O, so every branch is testable. */
+export function evaluateMediaRuntime(config, {
+  rootless,
+  serviceIsRemote,
+  uid,
+  containerHost = '',
+  containerConnection = '',
+}) {
+  const details = { rootless, serviceIsRemote }
+  if (rootless === true) {
+    return { mode: 'rootless', allowed: true, rootfulEligible: false, reason: null, ...details }
+  }
+  if (rootless !== false) {
+    return {
+      mode: 'unknown',
+      allowed: false,
+      rootfulEligible: false,
+      reason: 'Podman sagt nicht, ob es rootless läuft (podman info schlug fehl). Ohne diese Gewissheit startet die Media API nicht.',
+      ...details,
+    }
+  }
+  if (serviceIsRemote !== false) {
+    return {
+      mode: 'rootful',
+      allowed: false,
+      rootfulEligible: false,
+      reason: serviceIsRemote === true
+        ? 'Podman meldet einen entfernten Dienst. Rootful-Ausführung ist nur mit einem nachweislich lokalen Podman-Dienst erlaubt.'
+        : 'Podman sagt nicht, ob der ausgewählte Dienst lokal ist. Rootful-Ausführung braucht ServiceIsRemote=false; ältere Podman-Versionen ohne diese Angabe bleiben nur für rootful gesperrt.',
+      ...details,
+    }
+  }
+  const rootfulEligible = uid === 0 && !containerHost && !containerConnection
+  if (!config.allowRootfulPodman) {
+    return {
+      mode: 'rootful',
+      allowed: false,
+      rootfulEligible,
+      reason: 'Podman läuft rootful. Das ist standardmäßig gesperrt; aktiviere die ausdrückliche Rootful-Freigabe nur auf einer dafür vorgesehenen Appliance.',
+      ...details,
+    }
+  }
+  if (uid !== 0) {
+    return {
+      mode: 'rootful',
+      allowed: false,
+      rootfulEligible: false,
+      reason: 'Rootful Podman ist freigegeben, aber das Webinterface läuft nicht als root. Root-eigene Mounts lassen sich so nicht sicher verwalten.',
+      ...details,
+    }
+  }
+  if (containerHost || containerConnection) {
+    return {
+      mode: 'rootful',
+      allowed: false,
+      rootfulEligible: false,
+      reason: 'Rootful Podman über CONTAINER_HOST oder CONTAINER_CONNECTION ist gesperrt: lokale, root-eigene Mounts lassen sich bei einem entfernten oder mehrdeutigen Daemon nicht beweisen.',
+      ...details,
+    }
+  }
+  return { mode: 'rootful', allowed: true, rootfulEligible: true, reason: null, ...details }
+}
+
+/** Ask the selected Podman daemon and describe whether Media API execution is allowed. */
+export async function mediaPodmanRuntime(config) {
+  const runtime = await podmanRuntimeInfo()
+  // The integration shim cannot chown its temporary mount tree to root; only
+  // SHX_MOCK may override the UID used by this policy check.
+  const mockUid = process.env.SHX_MOCK === '1' ? Number(process.env.SHX_MOCK_UID) : Number.NaN
+  const uid = Number.isInteger(mockUid) ? mockUid : typeof process.getuid === 'function' ? process.getuid() : null
+  return evaluateMediaRuntime(config, {
+    ...runtime,
+    uid,
+    containerHost: process.env.CONTAINER_HOST ?? '',
+    containerConnection: process.env.CONTAINER_CONNECTION ?? '',
+  })
+}
+
+/** Central guard used immediately before every Media API execution path. */
+export async function assertMediaPodmanRuntime(config) {
+  const runtime = await mediaPodmanRuntime(config)
+  if (!runtime.allowed) throw failedDependency(runtime.reason)
+  return runtime.mode
 }
 
 const inside = (child, parent) =>
@@ -112,8 +182,8 @@ function assertNoForeignLinks(label, abs) {
 
 /**
  * Directories no container of ours may mount, each in its written and its
- * resolved form. Both media mounts run as the user (keep-id), and the data
- * mount is writable: `$HOME` would hand the service the web interface's JWT
+ * resolved form. The data mount is writable, as the mapped user in rootless
+ * mode and as container root in rootful mode: `$HOME` would hand it the WebUI's JWT
  * secret, `~/.ssh` an authorized_keys, /run/user the podman socket itself.
  */
 function protectedDirs() {
@@ -287,7 +357,7 @@ export function checkMediaConfig(ctx, config) {
  * hash start identical containers, so a running container whose label differs
  * from this is running on outdated settings. Paths are canonical, as mounted.
  */
-export function mediaSpec(ctx, config = ctx.media.data) {
+export function mediaSpec(ctx, config = ctx.media.data, runtimeMode = 'rootless') {
   const files = ctx.mediaSecrets.paths()
   const hfToken = config.allowDownloads && ctx.config.data.hfToken ? files.hfToken : null
   const spec = {
@@ -300,6 +370,8 @@ export function mediaSpec(ctx, config = ctx.media.data) {
     dataDir: canonicalOrSelf(config.dataDir),
     backend: config.backend,
     allowDownloads: config.allowDownloads,
+    allowRootfulPodman: config.allowRootfulPodman,
+    runtimeMode,
     secretFiles: {
       apiKey: files.apiKey,
       sessionSecret: files.sessionSecret,
@@ -308,6 +380,9 @@ export function mediaSpec(ctx, config = ctx.media.data) {
     env: mediaContainerEnv(config, { hfToken: Boolean(hfToken) }),
   }
   const argv = buildMediaRunArgv({ ...spec, labels: {} })
-  spec.specHash = createHash('sha256').update(JSON.stringify(argv)).digest('hex').slice(0, 16)
+  spec.specHash = createHash('sha256')
+    .update(JSON.stringify({ argv, allowRootfulPodman: config.allowRootfulPodman, runtimeMode }))
+    .digest('hex')
+    .slice(0, 16)
   return spec
 }

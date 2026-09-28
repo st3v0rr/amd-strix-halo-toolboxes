@@ -262,12 +262,16 @@ if (cmd === 'ps') {
 
 /* ---------------- info ---------------- */
 // SHX_MOCK_ROOTFUL=1 plays a rootful podman, =error one that does not answer.
+// SHX_MOCK_REMOTE=1 simulates a connection selected by containers.conf;
+// =unknown simulates an older daemon without ServiceIsRemote.
 if (cmd === 'info') {
   const mode = process.env.SHX_MOCK_ROOTFUL
   if (mode === 'error') fail('cannot connect to Podman', 125)
   const rootless = mode !== '1'
-  const fmt = argv.includes('--format') ? argv[argv.indexOf('--format') + 1] : ''
-  out(fmt.includes('Rootless') ? String(rootless) : JSON.stringify({ host: { security: { rootless } } }))
+  const remoteMode = process.env.SHX_MOCK_REMOTE
+  const host = { security: { rootless } }
+  if (remoteMode !== 'unknown') host.serviceIsRemote = remoteMode === '1'
+  out(JSON.stringify({ host }))
   process.exit(0)
 }
 

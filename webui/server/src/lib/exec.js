@@ -144,6 +144,7 @@ function baseEnv(extra = {}) {
       'SHX_MOCK_FIREWALL',
       'SHX_MOCK_FIREWALL_STATE',
       'SHX_MOCK_ROOTFUL',
+      'SHX_MOCK_REMOTE',
       'SHX_MOCK_SWAP_ON_CREATE',
     ]) {
       if (process.env[key]) env[key] = process.env[key]

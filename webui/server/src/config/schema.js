@@ -162,6 +162,8 @@ export const mediaConfigSchema = z.object({
   modelsReadOnly: z.boolean().default(true),
   dataDir: z.string().min(1).max(1000).default(defaultMediaDataDir),
   backend: z.enum(MEDIA_BACKENDS).default('real'),
+  /** Rootful Podman is an explicit privileged appliance escape hatch. */
+  allowRootfulPodman: z.boolean().default(false),
   /** MEDIA_ALLOW_DOWNLOADS: a job may fetch what it lacks. Needs a writable model mount. */
   allowDownloads: z.boolean().default(false),
   memoryCheck: z.enum(MEDIA_MEMORY_CHECKS).default('strict'),

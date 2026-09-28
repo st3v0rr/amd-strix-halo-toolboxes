@@ -1,18 +1,8 @@
 import { ROLE } from '../../../shared/constants.js'
 import { mediaConfigWarnings } from '../../../shared/media.js'
-import { imageId, inspectContainer, podmanRootless } from '../podman/client.js'
+import { imageId, inspectContainer } from '../podman/client.js'
 import { listServers, probeHost, serverHealth } from '../podman/servers.js'
-import { mediaSpec } from './config.js'
-
-/** For the page only; apply and fetch ask podman afresh every time. */
-const ROOTLESS_CACHE_MS = 60_000
-let rootlessCache = { at: 0, value: null }
-
-async function cachedRootless() {
-  if (Date.now() - rootlessCache.at < ROOTLESS_CACHE_MS) return rootlessCache.value
-  rootlessCache = { at: Date.now(), value: await podmanRootless() }
-  return rootlessCache.value
-}
+import { mediaPodmanRuntime, mediaSpec } from './config.js'
 
 const SERVICE_TIMEOUT_MS = 4000
 /** The service throttles failed keys per client; a short cache keeps polling from adding up. */
@@ -112,7 +102,8 @@ function publicJob(job) {
  */
 export async function mediaStatus(ctx) {
   const config = ctx.media.data
-  const spec = mediaSpec(ctx, config)
+  const runtime = await mediaPodmanRuntime(config)
+  const spec = mediaSpec(ctx, config, runtime.mode === 'rootful' ? 'rootful' : 'rootless')
   const servers = await listServers()
   const mediaServers = servers.filter((s) => s.role === ROLE.media)
   const summary = mediaServers.find((s) => s.name === config.name) ?? null
@@ -168,7 +159,8 @@ export async function mediaStatus(ctx) {
     health,
     service,
     drift,
-    rootless: await cachedRootless(),
+    rootless: runtime.mode === 'unknown' ? null : runtime.mode === 'rootless',
+    runtime,
     warnings: mediaConfigWarnings(config),
   }
 }

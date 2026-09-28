@@ -11,7 +11,7 @@ import { createVerified, imageId, startVerifiedContainer } from '../podman/clien
 import { listServers } from '../podman/servers.js'
 import {
   assertMediaImageAllowed,
-  assertRootlessPodman,
+  assertMediaPodmanRuntime,
   checkMediaDir,
   mediaModelsDir,
   pinMediaDir,
@@ -116,6 +116,7 @@ export function explainCheckFailure(code, stdout, stderr) {
  */
 export async function mediaInventory(ctx, { force = false } = {}) {
   const config = ctx.media.data
+  const runtimeMode = await assertMediaPodmanRuntime(config)
   assertMediaImageAllowed(ctx, config.image)
   // Canonical and checked like any other mount source, even read-only.
   const modelsDir = checkMediaDir('Das Modellverzeichnis', mediaModelsDir(ctx, config))
@@ -138,16 +139,12 @@ export async function mediaInventory(ctx, { force = false } = {}) {
         `Das Image ${config.image} liegt nicht lokal vor — ohne es lässt sich nicht prüfen, welche Modelle es kennt. Lade es unter „Images“.`,
       )
     }
-    argv = buildMediaCheckArgv({ image: config.image, modelsDir })
+    argv = buildMediaCheckArgv({ image: config.image, modelsDir, runtimeMode })
     source = 'image'
   }
 
   const key = JSON.stringify(argv)
   if (!force && cache.key === key && Date.now() - cache.at < CACHE_MS) return cache.value
-
-  // Both `exec` and the throwaway image execute code selected by these saved
-  // settings. Ask the selected Podman daemon immediately before either path.
-  await assertRootlessPodman()
 
   let result
   if (source === 'container') {

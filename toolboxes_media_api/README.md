@@ -28,10 +28,22 @@ Without a readable `MEDIA_API_KEY_FILE` or valid `MEDIA_API_KEY` (or with the co
 `.env.example` placeholder) the container exits with status 2 — it never runs unprotected.
 
 The ROCm userspace currently needs `seccomp=unconfined` on this platform. That disables syscall
-filtering, so the residual container-escape impact is reduced by requiring rootless Podman,
+filtering, so the residual container-escape impact is reduced by using rootless Podman,
 dropping all capabilities, setting `no-new-privileges`, and mounting model weights read-only. No
 untested custom seccomp profile is provided. Keep the host port loopback-only unless a TLS reverse
 proxy is in front of it.
+
+Rootless is the default and recommended mode. The WebUI has a deliberately fail-closed exception
+for dedicated appliances that only have root: `allowRootfulPodman` must be enabled in the Media API
+settings, the WebUI process must have UID 0, and `podman info` must positively report
+`rootless=false` and `serviceIsRemote=false`. Rootful execution omits `--userns=keep-id` and `--group-add keep-groups`, but keeps
+`--cap-drop=all`, `no-new-privileges`, loopback publication, read-only secrets/models, and uses
+`seccomp=unconfined` only for the real ROCm backend. Unknown runtime state remains blocked.
+`CONTAINER_HOST`, `CONTAINER_CONNECTION`, and a remote service selected through `containers.conf`
+are not accepted for rootful mode: the WebUI cannot
+prove that host mount paths refer to this local root-owned filesystem through a remote or ambiguous
+Podman connection. Podman versions without `Host.ServiceIsRemote` remain usable rootless, but cannot
+satisfy the positive locality check for rootful mode. A container escape in rootful mode means root access to the appliance.
 
 ### Remote access
 
@@ -175,10 +187,10 @@ swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for r
   pattern-checked; every path is confined to its directory.
 - Results are served only by authenticated routes; no static output directory. No CORS unless
   `MEDIA_CORS_ORIGINS` lists explicit origins (credentials never allowed). Strict CSP.
-- Run the container with rootless Podman, `--userns=keep-id`, `--cap-drop=all`, and
+- Prefer rootless Podman with `--userns=keep-id`; always use `--cap-drop=all` and
   `--security-opt=no-new-privileges`; only `/data` is writable and models are mounted read-only.
   ROCm currently requires `seccomp=unconfined`; this is a documented residual risk, not a reason
-  to run the service rootful.
+  to enable the WebUI's explicit rootful appliance exception casually.
 
 ## Configuration
 

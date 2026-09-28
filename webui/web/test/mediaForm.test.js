@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { mediaConfigSchema } from '../../server/src/config/schema.js'
-import { formErrors, formFromConfig, payloadFromForm } from '../src/pages/mediaForm.js'
+import {
+  canApplyMediaRuntime,
+  formErrors,
+  formFromConfig,
+  mediaRuntimeWarning,
+  payloadFromForm,
+} from '../src/pages/mediaForm.js'
 
 const stored = () => mediaConfigSchema.parse({ dataDir: '/srv/media-data' })
 
@@ -79,4 +85,18 @@ test('an empty model directory is allowed: it means the ComfyUI tree', () => {
 test('downloads become valid once the tree is writable', () => {
   const form = { ...formFromConfig(stored()), allowDownloads: true, modelsReadOnly: false }
   assert.deepEqual(formErrors(form), {})
+})
+
+test('rootful opt-in survives the form and enables apply only on an eligible local root runtime', () => {
+  const form = { ...formFromConfig(stored()), allowRootfulPodman: true }
+  assert.equal(payloadFromForm(form).allowRootfulPodman, true)
+  assert.equal(canApplyMediaRuntime({ allowed: false, rootfulEligible: true }, form), true)
+  assert.equal(canApplyMediaRuntime({ allowed: false, rootfulEligible: false }, form), false)
+  assert.equal(canApplyMediaRuntime({ allowed: true, rootfulEligible: false }, { ...form, allowRootfulPodman: false }), true)
+})
+
+test('runtime warnings make rootful danger and fail-closed states explicit', () => {
+  assert.match(mediaRuntimeWarning({ mode: 'rootful', allowed: true }), /Gefahr.*rootful.*Root-Rechte/)
+  assert.match(mediaRuntimeWarning({ mode: 'unknown', allowed: false, reason: 'podman info fehlgeschlagen.' }), /gesperrt/)
+  assert.equal(mediaRuntimeWarning({ mode: 'rootless', allowed: true }), null)
 })

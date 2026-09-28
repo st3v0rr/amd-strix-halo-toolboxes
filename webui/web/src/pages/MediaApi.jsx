@@ -21,7 +21,13 @@ import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatDate } from '../components/format.js'
 import { ModelDownloadQueue } from './ModelDownloadQueue.jsx'
-import { formErrors, formFromConfig, payloadFromForm } from './mediaForm.js'
+import {
+  canApplyMediaRuntime,
+  formErrors,
+  formFromConfig,
+  mediaRuntimeWarning,
+  payloadFromForm,
+} from './mediaForm.js'
 
 /**
  * The media API, managed like the other containers but configured here.
@@ -128,7 +134,7 @@ export function MediaApi() {
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy || !s.rootless || !s.image.installed}
+            disabled={busy || !s.runtime.allowed || !s.image.installed}
             onClick={() => apply.mutate(false)}
           >
             {apply.isPending ? 'Startet …' : 'Anlegen und starten'}
@@ -197,17 +203,10 @@ export function MediaApi() {
 }
 
 function StatusAlerts({ status: s, busy, onApply, onRestart }) {
+  const runtimeWarning = mediaRuntimeWarning(s.runtime)
   return (
     <>
-      {s.rootless !== true ? (
-        <div className="alert alert-danger small">
-          {s.rootless === false
-            ? 'Podman läuft rootful. '
-            : 'Podman sagt nicht, ob es rootless läuft (podman info schlug fehl). '}
-          Die Media API ist für rootless Podman gebaut (<code>--userns=keep-id</code>); Anlegen und
-          Laden bleiben gesperrt — installiere das Webinterface als normaler Benutzer.
-        </div>
-      ) : null}
+      {runtimeWarning ? <div className="alert alert-danger small"><strong>{runtimeWarning}</strong></div> : null}
       {!s.image.installed ? (
         <div className="alert alert-warn small">
           Das Image <code>{s.image.ref}</code> liegt nicht lokal vor. <Link to="/images">Unter Images laden</Link>{' '}
@@ -533,6 +532,7 @@ function ConfigCard({ status: s, onSaved }) {
     ) : null
 
   const allowCustom = settings.data?.settings?.allowCustomImages
+  const canApply = canApplyMediaRuntime(s.runtime, form)
 
   return (
     <section className="card stack">
@@ -667,6 +667,16 @@ function ConfigCard({ status: s, onSaved }) {
             Dienst darf fehlende Modelle selbst laden (<code>MEDIA_ALLOW_DOWNLOADS</code>)
           </Check>
           {err('allowDownloads')}
+          <Check id="m-rootful" checked={form.allowRootfulPodman} onChange={set('allowRootfulPodman')}>
+            Rootful Podman ausdrücklich erlauben (Gefahr: Container-Ausbruch bedeutet Root auf dem Host)
+          </Check>
+          {form.allowRootfulPodman ? (
+            <div className="alert alert-danger small">
+              Nur für eine dedizierte Root-Appliance. Das Webinterface muss als UID 0 laufen, Podman muss
+              eindeutig <code>rootless=false</code> und <code>serviceIsRemote=false</code> melden; entfernte Daemons
+              aus Umgebung oder <code>containers.conf</code> bleiben gesperrt.
+            </div>
+          ) : null}
           <Check id="m-mmap" checked={form.disableMmap} onChange={set('disableMmap')}>
             Gewichte kopieren statt mappen (<code>MEDIA_DISABLE_MMAP</code>)
           </Check>
@@ -726,7 +736,7 @@ function ConfigCard({ status: s, onSaved }) {
           <button
             className="btn btn-primary"
             type="button"
-            disabled={invalid || save.isPending || !s.rootless || !s.image.installed}
+            disabled={invalid || save.isPending || !canApply || !s.image.installed}
             onClick={() => save.mutate({ andApply: true })}
           >
             {save.isPending ? 'Läuft …' : s.container ? 'Speichern und neu anlegen' : 'Speichern und starten'}
@@ -757,7 +767,7 @@ function ModelsCard({ status: s }) {
   const models = useQuery({
     queryKey: ['media-models'],
     queryFn: () => get('/media/models'),
-    enabled: s.image.installed && s.rootless,
+    enabled: s.image.installed && s.runtime.allowed,
     retry: false,
   })
 
@@ -791,7 +801,7 @@ function ModelsCard({ status: s }) {
         <button
           type="button"
           className="btn btn-sm"
-          disabled={refresh.isPending || !s.image.installed || !s.rootless}
+          disabled={refresh.isPending || !s.image.installed || !s.runtime.allowed}
           onClick={() => refresh.mutate()}
         >
           {refresh.isPending ? 'Prüft …' : 'Neu prüfen'}

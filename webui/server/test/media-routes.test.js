@@ -125,6 +125,14 @@ test('the status starts from safe defaults and asks nothing of podman it cannot 
   assert.equal(body.image.installed, true)
   assert.equal(body.secrets.apiKey.configured, false)
   assert.equal(body.rootless, true)
+  assert.deepEqual(body.runtime, {
+    mode: 'rootless',
+    allowed: true,
+    rootfulEligible: false,
+    reason: null,
+    rootless: true,
+    serviceIsRemote: false,
+  })
 })
 
 test('settings are validated as a whole before they are stored', async () => {
@@ -532,6 +540,87 @@ test('start, restart, MCP and autostart of the media container ask podman first'
     delete process.env.SHX_MOCK_ROOTFUL
   }
   assert.equal((await api('GET', '/servers/media-api')).body.server.running, true, 'refused before stopping')
+})
+
+test('explicit local UID-0 rootful mode covers apply, inventory, fetch, lifecycle, MCP and autostart', async () => {
+  process.env.SHX_MOCK_UID = '0'
+  process.env.SHX_MOCK_ROOTFUL = '1'
+  try {
+    let status = (await api('GET', '/media')).body
+    assert.equal(status.runtime.mode, 'rootful')
+    assert.equal(status.runtime.allowed, false, 'default stays fail-closed')
+    assert.equal(status.runtime.rootfulEligible, true)
+
+    const saved = await api('PUT', '/media/config', { body: { allowRootfulPodman: true, autostart: true } })
+    assert.equal(saved.status, 200)
+    status = (await api('GET', '/media')).body
+    assert.equal(status.runtime.allowed, true)
+    assert.equal(status.runtime.serviceIsRemote, false)
+    assert.equal(status.config.allowRootfulPodman, true)
+
+    assert.equal((await api('POST', '/media/apply', { body: { replace: true } })).status, 201)
+    let argv = JSON.parse(fs.readFileSync(path.join(webuiRoot, 'dev', 'tmp', 'last-run-argv.json'), 'utf8'))
+    assert.ok(!argv.includes('--userns=keep-id') && !argv.includes('keep-groups'))
+    assert.ok(argv.includes('--cap-drop=all') && argv.includes('--security-opt=no-new-privileges'))
+    assert.equal(argv[argv.indexOf('-p') + 1], `127.0.0.1:${mediaPort}:8100`)
+
+    assert.equal((await api('POST', '/servers/media-api/stop')).status, 200)
+    delete process.env.SHX_MOCK_ROOTFUL
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 409, 'created/runtime mode mismatch is refused')
+    process.env.SHX_MOCK_ROOTFUL = '1'
+    assert.equal((await api('POST', '/media/models/refresh')).status, 200)
+    let shot = JSON.parse(fs.readFileSync(path.join(root, 'media-oneshot.json'), 'utf8'))
+    assert.ok(!shot.argv.includes('--userns=keep-id'))
+    assert.ok(shot.argv.includes('--network=none') && shot.argv.includes('--cap-drop=all'))
+
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 200)
+    assert.equal((await api('POST', '/servers/media-api/restart')).status, 200)
+    const fetched = await api('POST', '/media/fetch', {
+      body: { model: 'minimax-h3', profile: 'int8', task: 'reference-to-video' },
+    })
+    assert.equal(fetched.status, 202, JSON.stringify(fetched.body))
+    assert.equal((await waitForJob(fetched.body.jobId)).job.status, 'done')
+    shot = JSON.parse(fs.readFileSync(path.join(root, 'media-oneshot.json'), 'utf8'))
+    assert.ok(!shot.argv.includes('--userns=keep-id'))
+    assert.ok(shot.argv.includes('--cap-drop=all') && shot.argv.includes('--security-opt=no-new-privileges'))
+
+    assert.equal((await api('POST', '/servers/media-api/stop')).status, 200)
+    const mcp = await call('POST', '/mcp', {
+      auth: 'token',
+      body: { jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'start_server', arguments: { name: 'media-api' } } },
+    })
+    assert.equal(mcp.body.result.isError, false, JSON.stringify(mcp.body))
+
+    assert.equal((await api('POST', '/servers/media-api/stop')).status, 200)
+    const auto = await reconcile(ctx, { stagger: 0 })
+    assert.deepEqual(auto.started, [{ name: 'media-api', action: 'gestartet' }])
+
+    assert.equal((await api('POST', '/servers/media-api/stop')).status, 200)
+    process.env.SHX_MOCK_REMOTE = '1'
+    status = (await api('GET', '/media')).body
+    assert.equal(status.runtime.serviceIsRemote, true)
+    assert.equal(status.runtime.allowed, false)
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 424, 'containers.conf remote rootful is refused')
+    delete process.env.SHX_MOCK_REMOTE
+    process.env.SHX_MOCK_REMOTE = 'unknown'
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 424, 'unknown ServiceIsRemote is refused')
+    delete process.env.SHX_MOCK_REMOTE
+    process.env.CONTAINER_HOST = 'ssh://root@other/run/podman.sock'
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 424, 'remote rootful is ambiguous')
+    delete process.env.CONTAINER_HOST
+    process.env.SHX_MOCK_UID = '1000'
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 424, 'non-root manager stays blocked')
+    process.env.SHX_MOCK_UID = '0'
+    process.env.SHX_MOCK_ROOTFUL = 'error'
+    assert.equal((await api('POST', '/servers/media-api/start')).status, 424, 'unknown runtime stays blocked')
+  } finally {
+    delete process.env.CONTAINER_HOST
+    delete process.env.SHX_MOCK_REMOTE
+    delete process.env.SHX_MOCK_ROOTFUL
+    delete process.env.SHX_MOCK_UID
+    await api('PUT', '/media/config', { body: { allowRootfulPodman: false } })
+  }
+  assert.equal((await api('POST', '/media/apply', { body: { replace: true } })).status, 201)
 })
 
 function failNextTokenDirectorySync() {

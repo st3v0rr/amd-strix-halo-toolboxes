@@ -23,7 +23,7 @@ import { registerSecret } from '../lib/redact.js'
 import { safeResolve } from '../models/paths.js'
 import {
   assertMediaImageAllowed,
-  assertRootlessPodman,
+  assertMediaPodmanRuntime,
   checkMediaConfig,
   mediaModelsDir,
   mediaSpec,
@@ -616,8 +616,8 @@ export async function createComfyServer(ctx, spec, { replace = false, onLog = ()
  * `--restart unless-stopped` would turn that into a loop.
  */
 export async function createMediaServer(ctx, { replace = false, onLog = () => {} } = {}) {
-  await assertRootlessPodman()
   const config = ctx.media.data
+  const runtimeMode = await assertMediaPodmanRuntime(config)
   assertMediaImageAllowed(ctx, config.image)
   checkMediaConfig(ctx, config)
 
@@ -658,7 +658,7 @@ export async function createMediaServer(ctx, { replace = false, onLog = () => {}
     { ...pinMediaDir('Das Datenverzeichnis', config.dataDir, 0o700), destination: MEDIA_CONTAINER_DATA_DIR },
   ]
   const [modelsDir, dataDir] = pins.map((p) => p.path)
-  const spec = mediaSpec(ctx, config)
+  const spec = mediaSpec(ctx, config, runtimeMode)
   if (spec.modelsDir !== modelsDir || spec.dataDir !== dataDir) {
     throw conflict('Ein Verzeichnis hat sich beim Anlegen verändert. Bitte erneut versuchen.')
   }
@@ -692,12 +692,20 @@ export function probeHost(bindAddress) {
 }
 
 /**
- * A media container runs only under rootless podman — asked of the podman we
- * actually talk to on every start, restart and autostart, not just at apply.
+ * A media container runs only in the explicitly approved Podman mode — asked
+ * on every start, restart and autostart, not just at apply.
  */
 async function guardStart(ctx, server) {
   if (server.role !== ROLE.media) return
-  await assertRootlessPodman()
+  const runtimeMode = await assertMediaPodmanRuntime(ctx.media.data)
+  // Containers predating this label were necessarily rootless. Never start a
+  // container whose namespace/device argv belongs to another runtime mode.
+  const createdMode = server.mediaRuntime ?? 'rootless'
+  if (createdMode !== runtimeMode) {
+    throw conflict(
+      `Der Container wurde für ${createdMode} Podman angelegt, Podman läuft jetzt ${runtimeMode}. Lege ihn neu an.`,
+    )
+  }
   // Check the image recorded on the container, not merely today's saved
   // settings. A custom image may have been created while custom images were
   // enabled and stopped after the policy was tightened.

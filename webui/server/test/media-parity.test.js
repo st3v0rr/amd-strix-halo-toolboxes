@@ -82,6 +82,8 @@ function ours(config = mediaConfigSchema.parse({})) {
     dataDir: `${home}/media-api-data`,
     backend: config.backend,
     allowDownloads: config.allowDownloads,
+    allowRootfulPodman: config.allowRootfulPodman,
+    runtimeMode: 'rootless',
     secretFiles: { apiKey: keyFile, sessionSecret: sessionFile },
     env: mediaContainerEnv(config),
     specHash: 'x',

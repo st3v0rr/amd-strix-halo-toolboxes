@@ -108,6 +108,8 @@ export const LABEL = {
   mediaDataDir: 'shx.media-data-dir',
   mediaBackend: 'shx.media-backend',
   mediaDownloads: 'shx.media-downloads',
+  mediaAllowRootful: 'shx.media-allow-rootful',
+  mediaRuntime: 'shx.media-runtime',
   /** Hash of the run argv, so a later config change shows up as drift. */
   specHash: 'shx.spec-hash',
   created: 'shx.created',

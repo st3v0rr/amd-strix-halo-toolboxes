@@ -25,6 +25,7 @@ export function formFromConfig(config) {
     modelsReadOnly: Boolean(config.modelsReadOnly),
     dataDir: config.dataDir,
     backend: config.backend,
+    allowRootfulPodman: Boolean(config.allowRootfulPodman),
     allowDownloads: Boolean(config.allowDownloads),
     memoryCheck: config.memoryCheck,
     memoryReserveGb: str(config.memoryReserveGb),
@@ -59,6 +60,7 @@ export function payloadFromForm(form) {
     modelsReadOnly: form.modelsReadOnly,
     dataDir: form.dataDir.trim(),
     backend: form.backend,
+    allowRootfulPodman: form.allowRootfulPodman,
     allowDownloads: form.allowDownloads,
     memoryCheck: form.memoryCheck,
     memoryReserveGb: Number(form.memoryReserveGb),
@@ -71,6 +73,21 @@ export function payloadFromForm(form) {
     limits: Object.fromEntries(MEDIA_LIMITS.map((l) => [l.key, number(form.limits[l.key])])),
     autostart: form.autostart,
   }
+}
+
+/** Save-and-apply may enable the explicit rootful opt-in in the same request. */
+export function canApplyMediaRuntime(runtime, form) {
+  return Boolean(runtime?.allowed || (form.allowRootfulPodman && runtime?.rootfulEligible))
+}
+
+export function mediaRuntimeWarning(runtime) {
+  if (runtime?.mode === 'rootful' && runtime.allowed) {
+    return 'Gefahr: Media API läuft rootful. Ein Container-Ausbruch hätte Root-Rechte auf dieser Box. Nur für eine dedizierte Appliance; rootless bleibt empfohlen.'
+  }
+  if (!runtime?.allowed) {
+    return `${runtime?.reason ?? 'Podman-Laufzeit unbekannt.'} Anlegen, Prüfen, Laden, Start, Neustart und Autostart bleiben gesperrt.`
+  }
+  return null
 }
 
 const absolute = (p) => p.startsWith('/') && !/[:,]/.test(p)

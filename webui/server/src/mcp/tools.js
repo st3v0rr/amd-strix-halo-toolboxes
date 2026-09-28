@@ -101,6 +101,9 @@ const mediaSettings = {
   modelsReadOnly: bool('Modellbaum schreibgeschützt mounten (Standard und empfohlen).'),
   dataDir: str('Absoluter Pfad für Ergebnisse, Uploads und Job-Zustand.'),
   backend: str('"real" (GPU) oder "mock" (ohne GPU und Modelle, liefert Testbilder).', { enum: [...MEDIA_BACKENDS] }),
+  allowRootfulPodman: bool(
+    'Gefährliche Appliance-Ausnahme: rootful Podman ausdrücklich erlauben. Bleibt gesperrt, außer das Webinterface läuft als UID 0, podman info meldet eindeutig rootless=false und serviceIsRemote=false und weder Umgebung noch containers.conf wählen einen entfernten Daemon. Rootless bleibt empfohlen.',
+  ),
   allowDownloads: bool('Der Dienst lädt fehlende Modelle beim ersten Auftrag selbst. Braucht modelsReadOnly=false; abgeraten — besser fetch_media_models.'),
   memoryCheck: str('Speicherprüfung vor dem Laden eines Modells.', { enum: [...MEDIA_MEMORY_CHECKS] }),
   memoryReserveGb: { type: 'number', minimum: 0, maximum: 1024, description: 'Reserve in GB, die frei bleiben muss.' },
@@ -594,7 +597,7 @@ export const tools = [
     name: 'get_media_api',
     title: 'Media API: Status',
     description:
-      'Die Media API (Bild- und Videogenerierung: Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) auf einen Blick: Einstellungen, Container, Gesundheit, geladenes Modell, letzte Aufträge und ob der Container noch den aktuellen Einstellungen und Schlüsseln entspricht (drift). Schlüssel erscheinen nur als Fingerabdruck; ändern lassen sie sich nur im Browser.',
+      'Die Media API (Bild- und Videogenerierung: Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) auf einen Blick: Einstellungen, Podman-Laufzeitmodus samt Freigabe, Container, Gesundheit, geladenes Modell, letzte Aufträge und Drift. Schlüssel erscheinen nur als Fingerabdruck; ändern lassen sie sich nur im Browser.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/media'),
@@ -619,7 +622,7 @@ export const tools = [
     name: 'create_media_api',
     title: 'Media API anlegen',
     description:
-      'Legt den Media-API-Container aus den gespeicherten Einstellungen an und startet ihn — rootless, ohne Capabilities, Modelle schreibgeschützt, Schlüssel als Dateien. Fehlende Schlüssel werden erzeugt, aber nie ausgegeben. replace=true ersetzt einen vorhandenen Container (nötig nach configure_media_api). Danach gelten start_server, stop_server, restart_server, delete_server, get_server_logs und get_server_health mit dem Container-Namen.',
+      'Legt den Media-API-Container aus den gespeicherten Einstellungen an und startet ihn — standardmäßig rootless, ohne Capabilities, Modelle schreibgeschützt, Schlüssel als Dateien. Rootful läuft nur nach allowRootfulPodman=true, als UID 0, mit eindeutig lokalem rootful Podman; das ist eine gefährliche Appliance-Ausnahme. Fehlende Schlüssel werden erzeugt, aber nie ausgegeben. replace=true ersetzt einen vorhandenen Container (nötig nach configure_media_api). Danach gelten start_server, stop_server, restart_server, delete_server, get_server_logs und get_server_health mit dem Container-Namen.',
     inputSchema: obj({ replace }),
     annotations: WRITE,
     run: ({ replace = false }, api) => api('POST', '/media/apply', { body: { replace } }),

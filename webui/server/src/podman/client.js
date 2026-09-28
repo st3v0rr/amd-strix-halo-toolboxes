@@ -58,18 +58,25 @@ export async function inspectContainer(name) {
 }
 
 /**
- * Whether the podman we actually talk to runs rootless — asked of podman
- * itself, since CONTAINER_HOST may point at another service than this
- * process's UID suggests. null when podman does not say.
+ * Security and locality reported by the Podman service we actually selected.
+ * JSON preserves a usable Rootless result on older Podman releases which do
+ * not expose ServiceIsRemote; rootful policy treats either unknown as unsafe.
  */
-export async function podmanRootless() {
-  const { stdout, code } = await run('podman', ['info', '--format', '{{.Host.Security.Rootless}}'], {
+export async function podmanRuntimeInfo() {
+  const unknown = { rootless: null, serviceIsRemote: null }
+  const { stdout, code } = await run('podman', ['info', '--format', 'json'], {
     timeoutMs: 20_000,
     allowFailure: true,
   })
-  if (code !== 0) return null
-  const value = stdout.trim()
-  return value === 'true' ? true : value === 'false' ? false : null
+  if (code !== 0) return unknown
+  const info = parseJson(stdout, null)
+  if (!info || typeof info !== 'object' || Array.isArray(info)) return unknown
+  const rootless = info.host?.security?.rootless
+  const serviceIsRemote = info.host?.serviceIsRemote
+  return {
+    rootless: typeof rootless === 'boolean' ? rootless : null,
+    serviceIsRemote: typeof serviceIsRemote === 'boolean' ? serviceIsRemote : null,
+  }
 }
 
 /**

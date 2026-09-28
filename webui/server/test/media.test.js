@@ -25,6 +25,7 @@ import {
   checkMediaConfig,
   checkMediaDir,
   ensureMediaDir,
+  evaluateMediaRuntime,
   mediaSpec,
   pinMediaDir,
   trustedLink,
@@ -144,6 +145,26 @@ test('the media argv carries the hardening of the documented command', () => {
   assert.ok(!argv.some((a) => /^MEDIA_API_KEY=|^MEDIA_SESSION_SECRET=|HF_TOKEN=/.test(a)), 'no secret values')
 })
 
+test('rootful argv omits namespace/group mapping and retains every other hardening control', () => {
+  const argv = buildMediaRunArgv({ ...SPEC, runtimeMode: 'rootful', env: mediaContainerEnv(defaults()) })
+  assert.ok(!argv.includes('--userns=keep-id'))
+  assert.ok(!argv.includes('keep-groups'))
+  for (const value of [
+    '--cap-drop=all',
+    '--security-opt=no-new-privileges',
+    '--security-opt=seccomp=unconfined',
+    '/dev/dri',
+    '/dev/kfd',
+    '/home/u/comfy-models:/models:ro,z',
+  ]) assert.ok(argv.includes(value), value)
+  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100')
+
+  const mock = buildMediaRunArgv({ ...SPEC, backend: 'mock', runtimeMode: 'rootful' })
+  assert.ok(!mock.includes('/dev/kfd'))
+  assert.ok(!mock.includes('--security-opt=seccomp=unconfined'))
+  assert.ok(mock.includes('--cap-drop=all') && mock.includes('--security-opt=no-new-privileges'))
+})
+
 test('the mock backend gets neither the GPU nor an unconfined seccomp', () => {
   const argv = buildMediaRunArgv({ ...SPEC, backend: 'mock' })
   assert.ok(!argv.includes('/dev/kfd'))
@@ -188,6 +209,20 @@ test('the check runs without network, secrets or a writable tree', () => {
   assert.deepEqual(buildMediaExecCheckArgv('media-api'), ['exec', 'media-api', 'media-api-models', 'check', '--json'])
 })
 
+test('rootful one-shot containers omit keep-id but retain their hardening and mount policy', () => {
+  const check = buildMediaCheckArgv({ image: 'img', modelsDir: '/m', runtimeMode: 'rootful' })
+  assert.ok(!check.includes('--userns=keep-id'))
+  for (const value of ['--network=none', '--cap-drop=all', '--security-opt=no-new-privileges', '/m:/models:ro,z']) {
+    assert.ok(check.includes(value), value)
+  }
+  const fetch = buildMediaFetchArgv({
+    image: 'img', modelsDir: '/m', model: 'x', profile: 'p', name: 'fetch', runtimeMode: 'rootful',
+  })
+  assert.ok(!fetch.includes('--userns=keep-id'))
+  assert.ok(fetch.includes('--cap-drop=all') && fetch.includes('--security-opt=no-new-privileges'))
+  assert.ok(fetch.includes('/m:/models:z'))
+})
+
 test('the fetch mounts a token file, never passes a token value or name, and names its container per job', () => {
   const name = mediaFetchContainer('0f1e2d3c-4b5a-6978-8a9b-abcdef012345')
   assert.equal(name, 'shx-media-fetch-0f1e2d3c4b5a')
@@ -220,6 +255,8 @@ test('the media role and its mounts survive a round trip through the labels', ()
     dataDir: SPEC.dataDir,
     backend: 'real',
     allowDownloads: false,
+    allowRootfulPodman: true,
+    runtimeMode: 'rootful',
     specHash: 'abc123',
   })
   assert.equal(labels[LABEL.role], ROLE.media)
@@ -229,12 +266,47 @@ test('the media role and its mounts survive a round trip through the labels', ()
   assert.equal(parsed.hostPort, 8100)
   assert.equal(parsed.mediaModelsReadOnly, true)
   assert.equal(parsed.mediaAllowDownloads, false)
+  assert.equal(parsed.mediaAllowRootful, true)
+  assert.equal(parsed.mediaRuntime, 'rootful')
   assert.equal(parsed.mediaDataDir, SPEC.dataDir)
   assert.equal(parsed.bindAddress, '127.0.0.1')
   assert.equal(parsed.specHash, 'abc123')
 })
 
 /* --------------------------------- config --------------------------------- */
+
+test('the Podman runtime policy is explicit and fails closed', () => {
+  const off = { allowRootfulPodman: false }
+  const on = { allowRootfulPodman: true }
+  assert.deepEqual(evaluateMediaRuntime(off, { rootless: true, serviceIsRemote: false, uid: 1000 }), {
+    mode: 'rootless', allowed: true, rootfulEligible: false, reason: null,
+    rootless: true, serviceIsRemote: false,
+  })
+  assert.equal(evaluateMediaRuntime(off, { rootless: false, serviceIsRemote: false, uid: 0 }).allowed, false)
+  assert.equal(evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: false, uid: 0 }).allowed, true)
+  assert.match(evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: false, uid: 1000 }).reason, /nicht als root/)
+  assert.match(evaluateMediaRuntime(on, {
+    rootless: false, serviceIsRemote: false, uid: 0, containerHost: 'ssh://box/run/podman.sock',
+  }).reason, /CONTAINER_HOST/)
+  assert.match(evaluateMediaRuntime(on, {
+    rootless: false, serviceIsRemote: false, uid: 0, containerConnection: 'prod',
+  }).reason, /CONTAINER_CONNECTION/)
+
+  const configuredRemote = evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: true, uid: 0 })
+  assert.equal(configuredRemote.allowed, false)
+  assert.equal(configuredRemote.rootfulEligible, false)
+  assert.match(configuredRemote.reason, /entfernten Dienst/)
+
+  const oldRootful = evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: null, uid: 0 })
+  assert.equal(oldRootful.allowed, false)
+  assert.match(oldRootful.reason, /ServiceIsRemote=false/)
+  assert.equal(evaluateMediaRuntime(on, { rootless: null, serviceIsRemote: false, uid: 0 }).mode, 'unknown')
+  assert.equal(evaluateMediaRuntime(on, { rootless: null, serviceIsRemote: false, uid: 0 }).allowed, false)
+
+  const oldRootless = evaluateMediaRuntime(off, { rootless: true, serviceIsRemote: null, uid: 1000 })
+  assert.equal(oldRootless.allowed, true, 'older Podman remains usable when it positively reports rootless')
+  assert.equal(oldRootless.serviceIsRemote, null)
+})
 
 test('directories that would expose the box are refused', () => {
   const home = os.homedir()
@@ -275,6 +347,8 @@ test('the spec hash tracks every setting that changes the container', () => {
   assert.equal(mediaSpec(ctx).specHash, base, 'stable')
   assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, logLevel: 'debug' }).specHash, base)
   assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, port: 8101 }).specHash, base)
+  assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, allowRootfulPodman: true }).specHash, base)
+  assert.notEqual(mediaSpec(ctx, ctx.media.data, 'rootful').specHash, base)
   assert.equal(mediaSpec(ctx, { ...ctx.media.data, autostart: true }).specHash, base, 'autostart is not part of the container')
   // A token only matters to a service that may download.
   ctx.config.data.hfToken = 'hf_secret_token_value'

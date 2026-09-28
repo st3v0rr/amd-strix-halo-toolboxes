@@ -214,21 +214,27 @@ jedem llama-server, und der Container steht auch unter **Server**.
 - **Einstellungen**, eine Konfiguration pro Box
   (`~/.config/strix-halo-webui/media-api.json`): Name, Image, Host-Port und
   Bind-Adresse, Modell- und Datenverzeichnis, Backend (`real` mit GPU oder `mock`
-  ohne), Download-Regel, Speicherprüfung, Cookie-, CORS- und Sitzungsoptionen,
+  ohne), die ausdrückliche Rootful-Appliance-Freigabe (standardmäßig aus), Download-Regel,
+  Speicherprüfung, Cookie-, CORS- und Sitzungsoptionen,
   die Grenzen des Dienstes (leer = dessen Standard) und Autostart. Gespeichert
   wird erst einmal nur; **Neu anlegen** bringt eine Änderung in den laufenden
   Container. Bis dahin sagt die Seite, dass er mit alten Einstellungen läuft —
   der Container trägt einen Hash seines vollständigen Aufrufs als Label.
 - **Der Aufruf** ist der gehärtete aus der README der Media API, Flag für Flag:
-  rootless mit `--userns=keep-id`, `--cap-drop=all`,
+  standardmäßig rootless mit `--userns=keep-id`, `--cap-drop=all`,
   `--security-opt=no-new-privileges`, Modelle schreibgeschützt, der Port nur auf
   `127.0.0.1`. Das Mock-Backend bekommt weder GPU noch `seccomp=unconfined`. Ob
-  Podman rootless läuft, fragt das Webinterface Podman selbst (`podman info`,
-  also auch hinter `CONTAINER_HOST`); rootful oder ohne Antwort werden Anlegen und
-  Laden verweigert. Das reale Backend braucht für ROCm weiterhin
+  Podman rootless läuft, fragt das Webinterface Podman selbst (`podman info`). Rootful
+  ist nur mit `allowRootfulPodman`, WebUI-UID 0 und der eindeutigen Antwort
+  `rootless=false`, `serviceIsRemote=false` erlaubt; dann entfallen `keep-id` und `keep-groups`, alle anderen
+  Härtungen bleiben. Unbekannt bleibt gesperrt. Rootful über `CONTAINER_HOST`,
+  `CONTAINER_CONNECTION` oder eine in `containers.conf` ausgewählte Remote-Verbindung bleibt ebenfalls gesperrt, weil lokale root-eigene Mounts
+  bei einem entfernten oder mehrdeutigen Daemon nicht beweisbar sind. Das reale Backend braucht für ROCm weiterhin
   `seccomp=unconfined` — ein Restrisiko, das die README der Media API beschreibt,
   kein gelöstes Problem. Auch hier gilt die Image-Beschränkung auf dieses
-  Repository, solange „Beliebige Images“ in den Einstellungen aus ist.
+  Repository, solange „Beliebige Images“ in den Einstellungen aus ist. Ältere
+  Podman-Versionen ohne `Host.ServiceIsRemote` bleiben rootless nutzbar, können
+  aber die positive Lokalitätsprüfung für rootful nicht erfüllen.
 - **Schlüssel.** API-Schlüssel und Sitzungsgeheimnis erzeugt das Webinterface
   selbst, als 0600-Dateien in `~/.config/strix-halo-webui/media-api/` (0700). Sie
   werden einzeln schreibgeschützt eingehängt und über `MEDIA_API_KEY_FILE` bzw.
@@ -298,8 +304,8 @@ kanonische Pfad, und zwar in drei Schritten: `podman create`, dann Abgleich jede
 Bind-Quelle mit dem geprüften Verzeichnis (Pfad, Gerät und Inode), erst dann
 `podman start` — beim Dienst wie bei Modellübersicht und Download. Ein unterwegs
 ausgetauschtes Verzeichnis bricht ab, der Container wird entfernt, ohne gelaufen
-zu sein. Start, Neustart und Autostart eines Media-Containers fragen Podman jedes
-Mal, ob es rootless läuft. Solange „Beliebige Images“ aus ist, bekommt nur das
+zu sein. Start, Neustart und Autostart eines Media-Containers laufen jedes Mal
+durch dieselbe fail-closed Laufzeitprüfung. Solange „Beliebige Images“ aus ist, bekommt nur das
 Media-API-Image dieses Repositorys Modellbaum, Netz oder Token — beim Speichern,
 Anlegen, Prüfen und Laden.
 

@@ -91,6 +91,8 @@ export function buildMediaLabels(spec) {
     [LABEL.mediaDataDir]: spec.dataDir,
     [LABEL.mediaBackend]: spec.backend,
     [LABEL.mediaDownloads]: spec.allowDownloads ? 'true' : 'false',
+    [LABEL.mediaAllowRootful]: spec.allowRootfulPodman ? 'true' : 'false',
+    [LABEL.mediaRuntime]: spec.runtimeMode,
     [LABEL.specHash]: spec.specHash,
     [LABEL.created]: new Date().toISOString(),
   }
@@ -136,6 +138,8 @@ export function parseLabels(labels = {}) {
     mediaDataDir: labels[LABEL.mediaDataDir] || null,
     mediaBackend: labels[LABEL.mediaBackend] || null,
     mediaAllowDownloads: labels[LABEL.mediaDownloads] === undefined ? null : labels[LABEL.mediaDownloads] === 'true',
+    mediaAllowRootful: labels[LABEL.mediaAllowRootful] === undefined ? null : labels[LABEL.mediaAllowRootful] === 'true',
+    mediaRuntime: labels[LABEL.mediaRuntime] || null,
     specHash: labels[LABEL.specHash] || null,
     createdAt: labels[LABEL.created] || null,
   }

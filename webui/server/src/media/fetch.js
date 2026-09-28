@@ -7,7 +7,7 @@ import { MEDIA_FETCH_LABEL, buildMediaFetchArgv, mediaFetchContainer } from '../
 import { createVerified, imageId, removeContainer, streamVerifiedContainer } from '../podman/client.js'
 import {
   assertMediaImageAllowed,
-  assertRootlessPodman,
+  assertMediaPodmanRuntime,
   ensureMediaDir,
   pinMediaDir,
   verifyMediaMounts,
@@ -66,7 +66,7 @@ export async function startMediaFetch(ctx, request) {
 }
 
 async function prepareFetch(ctx, { model, profile, task }) {
-  await assertRootlessPodman()
+  await assertMediaPodmanRuntime(ctx.media.data)
   assertMediaImageAllowed(ctx, ctx.media.data.image)
   const inventory = await mediaInventory(ctx, { force: true })
   const entry = inventory.models.find((m) => m.id === model)
@@ -183,6 +183,7 @@ function runMediaFetch(ctx, { job, setProgress, appendLog, setMessage, onCancel,
     }
 
     const begin = async () => {
+      const runtimeMode = await assertMediaPodmanRuntime(ctx.media.data)
       await removeOrphans()
       ctx.mediaSecrets.removeFetchTokens()
       if (signal.aborted) {
@@ -203,6 +204,7 @@ function runMediaFetch(ctx, { job, setProgress, appendLog, setMessage, onCancel,
         name,
         tokenFile,
         disableXet: Boolean(ctx.settings.disableXet),
+        runtimeMode,
       })
       appendLog(
         `media-api-models fetch ${params.model} --profile ${params.profile}${params.task ? ` --task ${params.task}` : ''} → ${modelsDir}`,
