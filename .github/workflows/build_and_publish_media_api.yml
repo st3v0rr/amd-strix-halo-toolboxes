@@ -20,7 +20,7 @@ env:
   DOCKERHUB_REPO: docker.io/st3v0rr/amd-strix-halo-toolboxes
 
 jobs:
-  test:
+  prepare:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,7 +44,7 @@ jobs:
           pytest
 
   build-and-push:
-    needs: test
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       # A full ROCm torch needs every byte the runner can spare.
