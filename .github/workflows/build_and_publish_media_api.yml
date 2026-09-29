@@ -86,8 +86,10 @@ jobs:
 
           # No GPU on the runner: the smoke test runs the real image in mock
           # mode — health, key and session auth, one image, edit and video job.
+          # docker is the runtime this job built with; the runner's podman
+          # cannot see that image store and would try to pull the local tag.
           echo "→ Running smoke test..."
-          ./smoke-test.sh "${LI}"
+          SMOKE_RUNTIME=docker ./smoke-test.sh "${LI}"
 
           echo "→ Tag & push immutable → ${IMM}"
           docker tag "${LI}" "${IMM}"

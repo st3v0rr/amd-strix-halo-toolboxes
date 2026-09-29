@@ -10,8 +10,21 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${1:-media-api-local}"
-RUNTIME="podman"
-command -v podman >/dev/null 2>&1 || RUNTIME="docker"
+# The runtime that can actually see the image. GitHub runners carry podman AND
+# docker, and podman does not see what `docker build` produced — it would then
+# try to pull the local tag from Docker Hub. An explicit SMOKE_RUNTIME decides;
+# otherwise the runtime whose image store holds the tag wins.
+RUNTIME="${SMOKE_RUNTIME:-}"
+if [ -z "$RUNTIME" ]; then
+  for candidate in podman docker; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" image inspect "$IMAGE" >/dev/null 2>&1; then
+      RUNTIME="$candidate"
+      break
+    fi
+  done
+  RUNTIME="${RUNTIME:-podman}"
+  command -v "$RUNTIME" >/dev/null 2>&1 || RUNTIME="docker"
+fi
 NAME="media-api-smoke-$$"
 PORT="${SMOKE_PORT:-18100}"
 KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
