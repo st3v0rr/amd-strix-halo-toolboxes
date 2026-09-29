@@ -25,7 +25,7 @@ const STAGGER_MS = 5_000
  */
 export async function reconcile(ctx, { stagger = STAGGER_MS } = {}) {
   const profiles = ctx.profiles.data.profiles.filter((p) => p.autostart)
-  // The media API is one more thing to bring up, configured on its own page.
+  // The media API is one more thing to bring up, from its stored settings.
   const media = ctx.media?.data?.autostart ? ctx.media.data : null
   if (profiles.length === 0 && !media) return { started: [], skipped: [], failed: [] }
 

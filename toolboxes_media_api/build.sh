@@ -34,11 +34,11 @@ echo "==> Baue $TAG aus $HERE"
 cat <<EOT
 
 Fertig: $TAG
-Hardened localhost start (run rootless, never with sudo):
+Hardened localhost start (as root, on rootful Podman like the ComfyUI and llama.cpp containers):
   install -d -m 700 "\$HOME/.config/media-api"
   umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "\$HOME/.config/media-api/api-key"
   podman run -d --name media-api \\
-    --userns=keep-id --device /dev/dri --device /dev/kfd --group-add keep-groups \\
+    --device /dev/dri --device /dev/kfd --group-add video --group-add render \\
     --cap-drop=all --security-opt=no-new-privileges --security-opt=seccomp=unconfined \\
     -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \\
     -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \\

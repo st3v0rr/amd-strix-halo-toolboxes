@@ -5,11 +5,14 @@ import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { LABEL, MEDIA_MODEL_DIRS, ROLE } from '../../shared/constants.js'
 import {
+  MEDIA_MODEL_IDS,
   checkMediaApiKey,
   checkMediaSessionSecret,
+  curatedMediaModels,
   isIpv4,
   mediaConfigWarnings,
   mediaPlaygroundLink,
@@ -25,9 +28,9 @@ import {
   checkMediaConfig,
   checkMediaDir,
   ensureMediaDir,
-  evaluateMediaRuntime,
   mediaSpec,
   pinMediaDir,
+  resolveMediaConfig,
   trustedLink,
   verifyMediaMounts,
 } from '../src/media/config.js'
@@ -37,6 +40,7 @@ import { createMediaSecrets } from '../src/media/secrets.js'
 import { invalidateComfyModelCache, scanComfyModels } from '../src/models/comfyscan.js'
 import {
   MEDIA_FETCH_LABEL,
+  buildComfyRunArgv,
   buildMediaCheckArgv,
   buildMediaExecCheckArgv,
   buildMediaFetchArgv,
@@ -47,6 +51,7 @@ import {
 import { buildMediaLabels, parseLabels } from '../src/podman/labels.js'
 import { describeRole } from '../src/routes/network.js'
 
+const here = path.dirname(fileURLToPath(import.meta.url))
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const defaults = () => mediaConfigSchema.parse({})
 
@@ -129,11 +134,11 @@ const SPEC = {
 
 test('the media argv carries the hardening of the documented command', () => {
   const argv = buildMediaRunArgv({ ...SPEC, env: mediaContainerEnv(defaults()) })
-  for (const flag of ['--userns=keep-id', '--cap-drop=all', '--security-opt=no-new-privileges', '--security-opt=seccomp=unconfined']) {
+  for (const flag of ['--cap-drop=all', '--security-opt=no-new-privileges', '--security-opt=seccomp=unconfined']) {
     assert.ok(argv.includes(flag), flag)
   }
-  assert.deepEqual(argv.slice(argv.indexOf('--device'), argv.indexOf('--device') + 6), [
-    '--device', '/dev/dri', '--device', '/dev/kfd', '--group-add', 'keep-groups',
+  assert.deepEqual(argv.slice(argv.indexOf('--device'), argv.indexOf('--device') + 8), [
+    '--device', '/dev/dri', '--device', '/dev/kfd', '--group-add', 'video', '--group-add', 'render',
   ])
   assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100')
   assert.ok(argv.includes('/home/u/comfy-models:/models:ro,z'))
@@ -145,22 +150,29 @@ test('the media argv carries the hardening of the documented command', () => {
   assert.ok(!argv.some((a) => /^MEDIA_API_KEY=|^MEDIA_SESSION_SECRET=|HF_TOKEN=/.test(a)), 'no secret values')
 })
 
-test('rootful argv omits namespace/group mapping and retains every other hardening control', () => {
-  const argv = buildMediaRunArgv({ ...SPEC, runtimeMode: 'rootful', env: mediaContainerEnv(defaults()) })
+test('the argv is rootful like ComfyUI and llama-server: no rootless-only flags, every hardening control kept', () => {
+  const argv = buildMediaRunArgv({ ...SPEC, env: mediaContainerEnv(defaults()) })
   assert.ok(!argv.includes('--userns=keep-id'))
   assert.ok(!argv.includes('keep-groups'))
+  assert.ok(!argv.some((a) => a.startsWith('--userns')), 'no user namespace of its own, like the other containers')
   for (const value of [
     '--cap-drop=all',
     '--security-opt=no-new-privileges',
     '--security-opt=seccomp=unconfined',
-    '/dev/dri',
-    '/dev/kfd',
+    '/cfg/media-api/api-key:/run/secrets/media-api-key:ro,z',
+    '/cfg/media-api/session-secret:/run/secrets/media-api-session:ro,z',
     '/home/u/comfy-models:/models:ro,z',
   ]) assert.ok(argv.includes(value), value)
-  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100')
+  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100', 'loopback unless told otherwise')
 
-  const mock = buildMediaRunArgv({ ...SPEC, backend: 'mock', runtimeMode: 'rootful' })
+  // The GPU part is exactly ComfyUI's: same devices, same groups.
+  const comfy = buildComfyRunArgv({ containerName: 'c', image: 'i', hostPort: 8000, modelsDir: '/m', outputDir: '/o' })
+  const gpu = (list) => list.slice(list.indexOf('--device'), list.indexOf('--device') + 8)
+  assert.deepEqual(gpu(argv), gpu(comfy))
+
+  const mock = buildMediaRunArgv({ ...SPEC, backend: 'mock' })
   assert.ok(!mock.includes('/dev/kfd'))
+  assert.ok(!mock.includes('--group-add'), 'no GPU, no GPU groups')
   assert.ok(!mock.includes('--security-opt=seccomp=unconfined'))
   assert.ok(mock.includes('--cap-drop=all') && mock.includes('--security-opt=no-new-privileges'))
 })
@@ -209,18 +221,17 @@ test('the check runs without network, secrets or a writable tree', () => {
   assert.deepEqual(buildMediaExecCheckArgv('media-api'), ['exec', 'media-api', 'media-api-models', 'check', '--json'])
 })
 
-test('rootful one-shot containers omit keep-id but retain their hardening and mount policy', () => {
-  const check = buildMediaCheckArgv({ image: 'img', modelsDir: '/m', runtimeMode: 'rootful' })
+test('one-shot containers keep their hardening and mount policy, and no rootless-only flag', () => {
+  const check = buildMediaCheckArgv({ image: 'img', modelsDir: '/m' })
   assert.ok(!check.includes('--userns=keep-id'))
   for (const value of ['--network=none', '--cap-drop=all', '--security-opt=no-new-privileges', '/m:/models:ro,z']) {
     assert.ok(check.includes(value), value)
   }
-  const fetch = buildMediaFetchArgv({
-    image: 'img', modelsDir: '/m', model: 'x', profile: 'p', name: 'fetch', runtimeMode: 'rootful',
-  })
+  const fetch = buildMediaFetchArgv({ image: 'img', modelsDir: '/m', model: 'x', profile: 'p', name: 'fetch' })
   assert.ok(!fetch.includes('--userns=keep-id'))
   assert.ok(fetch.includes('--cap-drop=all') && fetch.includes('--security-opt=no-new-privileges'))
-  assert.ok(fetch.includes('/m:/models:z'))
+  assert.ok(fetch.includes('/m:/models:z'), 'the only writable model mount')
+  assert.ok(!fetch.includes('/dev/kfd') && !check.includes('/dev/kfd'), 'no GPU for either')
 })
 
 test('the fetch mounts a token file, never passes a token value or name, and names its container per job', () => {
@@ -255,57 +266,33 @@ test('the media role and its mounts survive a round trip through the labels', ()
     dataDir: SPEC.dataDir,
     backend: 'real',
     allowDownloads: false,
-    allowRootfulPodman: true,
-    runtimeMode: 'rootful',
     specHash: 'abc123',
   })
   assert.equal(labels[LABEL.role], ROLE.media)
   assert.equal(Object.values(labels).some((v) => /secret|key/i.test(v)), false)
+  assert.equal(Object.keys(labels).some((k) => /rootful|runtime/.test(k)), false, 'no runtime-mode labels')
   const parsed = parseLabels(labels)
   assert.equal(parsed.role, ROLE.media)
   assert.equal(parsed.hostPort, 8100)
   assert.equal(parsed.mediaModelsReadOnly, true)
   assert.equal(parsed.mediaAllowDownloads, false)
-  assert.equal(parsed.mediaAllowRootful, true)
-  assert.equal(parsed.mediaRuntime, 'rootful')
   assert.equal(parsed.mediaDataDir, SPEC.dataDir)
   assert.equal(parsed.bindAddress, '127.0.0.1')
   assert.equal(parsed.specHash, 'abc123')
+  assert.equal('mediaRuntime' in parsed || 'mediaAllowRootful' in parsed, false)
+  // A container created before this change still carries the old labels; they
+  // are simply not read any more.
+  const old = parseLabels({ ...labels, 'shx.media-runtime': 'rootless', 'shx.media-allow-rootful': 'false' })
+  assert.deepEqual(old, parsed)
 })
 
 /* --------------------------------- config --------------------------------- */
 
-test('the Podman runtime policy is explicit and fails closed', () => {
-  const off = { allowRootfulPodman: false }
-  const on = { allowRootfulPodman: true }
-  assert.deepEqual(evaluateMediaRuntime(off, { rootless: true, serviceIsRemote: false, uid: 1000 }), {
-    mode: 'rootless', allowed: true, rootfulEligible: false, reason: null,
-    rootless: true, serviceIsRemote: false,
-  })
-  assert.equal(evaluateMediaRuntime(off, { rootless: false, serviceIsRemote: false, uid: 0 }).allowed, false)
-  assert.equal(evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: false, uid: 0 }).allowed, true)
-  assert.match(evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: false, uid: 1000 }).reason, /nicht als root/)
-  assert.match(evaluateMediaRuntime(on, {
-    rootless: false, serviceIsRemote: false, uid: 0, containerHost: 'ssh://box/run/podman.sock',
-  }).reason, /CONTAINER_HOST/)
-  assert.match(evaluateMediaRuntime(on, {
-    rootless: false, serviceIsRemote: false, uid: 0, containerConnection: 'prod',
-  }).reason, /CONTAINER_CONNECTION/)
-
-  const configuredRemote = evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: true, uid: 0 })
-  assert.equal(configuredRemote.allowed, false)
-  assert.equal(configuredRemote.rootfulEligible, false)
-  assert.match(configuredRemote.reason, /entfernten Dienst/)
-
-  const oldRootful = evaluateMediaRuntime(on, { rootless: false, serviceIsRemote: null, uid: 0 })
-  assert.equal(oldRootful.allowed, false)
-  assert.match(oldRootful.reason, /ServiceIsRemote=false/)
-  assert.equal(evaluateMediaRuntime(on, { rootless: null, serviceIsRemote: false, uid: 0 }).mode, 'unknown')
-  assert.equal(evaluateMediaRuntime(on, { rootless: null, serviceIsRemote: false, uid: 0 }).allowed, false)
-
-  const oldRootless = evaluateMediaRuntime(off, { rootless: true, serviceIsRemote: null, uid: 1000 })
-  assert.equal(oldRootless.allowed, true, 'older Podman remains usable when it positively reports rootless')
-  assert.equal(oldRootless.serviceIsRemote, null)
+test('settings saved with the old rootful switch load without it', () => {
+  const config = mediaConfigSchema.parse({ allowRootfulPodman: true, port: 8101 })
+  assert.equal('allowRootfulPodman' in config, false)
+  assert.equal(config.port, 8101)
+  assert.equal('allowRootfulPodman' in mediaConfigSchema.shape, false)
 })
 
 test('directories that would expose the box are refused', () => {
@@ -347,13 +334,70 @@ test('the spec hash tracks every setting that changes the container', () => {
   assert.equal(mediaSpec(ctx).specHash, base, 'stable')
   assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, logLevel: 'debug' }).specHash, base)
   assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, port: 8101 }).specHash, base)
-  assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, allowRootfulPodman: true }).specHash, base)
-  assert.notEqual(mediaSpec(ctx, ctx.media.data, 'rootful').specHash, base)
+  assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, bindAddress: '0.0.0.0' }).specHash, base)
   assert.equal(mediaSpec(ctx, { ...ctx.media.data, autostart: true }).specHash, base, 'autostart is not part of the container')
   // A token only matters to a service that may download.
   ctx.config.data.hfToken = 'hf_secret_token_value'
   assert.equal(mediaSpec(ctx).specHash, base)
   assert.notEqual(mediaSpec(ctx, { ...ctx.media.data, allowDownloads: true, modelsReadOnly: false }).secretFiles.hfToken, null)
+})
+
+test('the start choices are checked together with the stored settings, and checking stores nothing', () => {
+  const ctx = fakeCtx()
+  const before = JSON.parse(JSON.stringify(ctx.media.data))
+  const config = resolveMediaConfig(ctx, { port: 8101, bindAddress: '0.0.0.0', autostart: true })
+  assert.equal(config.port, 8101)
+  assert.equal(config.bindAddress, '0.0.0.0')
+  assert.equal(config.autostart, true)
+  assert.equal(config.image, before.image, 'what was not named keeps its stored value')
+  assert.equal(config.dataDir, fs.realpathSync(path.dirname(before.dataDir)) + path.sep + path.basename(before.dataDir))
+  assert.ok(config.updatedAt)
+  assert.deepEqual(ctx.media.data, before, 'resolving stores nothing')
+  assert.throws(() => resolveMediaConfig(ctx, { bindAddress: 'box.lan' }), /bindAddress/)
+  assert.throws(() => resolveMediaConfig(ctx, { port: 80 }), /port/)
+  assert.throws(() => resolveMediaConfig(ctx, { image: 'docker.io/evil/x:latest' }), /Media-API-Image/)
+})
+
+test("the service's own home may hold its directories, root's included — its credential stores never", () => {
+  const home = process.env.HOME
+  const rootHome = fs.realpathSync('/root')
+  try {
+    // The rootful appliance: the web interface runs as root, $HOME is /root,
+    // and the defaults put the ComfyUI tree and the data there.
+    process.env.HOME = '/root'
+    assert.equal(checkMediaDir('Das Datenverzeichnis', '/root/media-api-data'), path.join(rootHome, 'media-api-data'))
+    assert.equal(checkMediaDir('Das Datenverzeichnis', '/root/media-api-data/jobs/2026'), path.join(rootHome, 'media-api-data/jobs/2026'))
+    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/comfy-models'), path.join(rootHome, 'comfy-models'))
+    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/comfy-models/diffusers/qwen'), path.join(rootHome, 'comfy-models/diffusers/qwen'))
+    for (const bad of [
+      '/root',
+      '/',
+      '/root/unrelated',
+      '/root/.aws/credentials',
+      '/root/.kube/config',
+      '/root/.ssh/keys',
+      '/root/.gnupg',
+      '/root/.config/strix-halo-webui',
+      '/root/.local/share/containers/storage',
+    ]) {
+      assert.throws(() => checkMediaDir('Das Datenverzeichnis', bad), { status: 400 }, bad)
+    }
+    // Anyone else's service: root's home stays off limits altogether.
+    process.env.HOME = tmp('shx-home-')
+    assert.throws(() => checkMediaDir('Das Datenverzeichnis', '/root/media-api-data'), /liegt in \/root/)
+  } finally {
+    if (home === undefined) delete process.env.HOME
+    else process.env.HOME = home
+  }
+})
+
+test('the curated models are exactly the models of the image registry, and nothing else is listed', () => {
+  const registry = fs.readFileSync(path.resolve(here, '../../../toolboxes_media_api/src/media_api/data/models.yaml'), 'utf8')
+  const ids = [...registry.matchAll(/^ {2}- id: ([\w.-]+)\s*$/gm)].map((m) => m[1])
+  assert.deepEqual(ids, [...MEDIA_MODEL_IDS])
+  const listed = curatedMediaModels([{ id: 'minimax-h3' }, { id: 'stray-model' }, null, { id: 'qwen-image-2512' }])
+  assert.deepEqual(listed.map((m) => m.id), ['minimax-h3', 'qwen-image-2512'], 'filtered, order kept')
+  assert.deepEqual(curatedMediaModels(undefined), [])
 })
 
 /* --------------------------------- secrets -------------------------------- */
@@ -468,9 +512,13 @@ test('an image from before --json says so instead of failing obscurely', () => {
 /* ------------------------- network, catalog, comfy ------------------------- */
 
 test('a media port bound to loopback says a firewall rule would not help', () => {
-  assert.equal(describeRole({ role: ROLE.media, name: 'm', bindAddress: '127.0.0.1' }).kind, 'media')
-  assert.match(describeRole({ role: ROLE.media, name: 'm', bindAddress: '127.0.0.1' }).detail, /bewirkt nichts/)
-  assert.match(describeRole({ role: ROLE.media, name: 'm', bindAddress: '0.0.0.0' }).detail, /Klartext/)
+  const loopback = describeRole({ role: ROLE.media, name: 'm', bindAddress: '127.0.0.1' })
+  assert.equal(loopback.kind, 'media')
+  assert.equal(loopback.loopbackOnly, true)
+  assert.match(loopback.detail, /bewirkt nichts/)
+  const exposed = describeRole({ role: ROLE.media, name: 'm', bindAddress: '0.0.0.0' })
+  assert.equal(exposed.loopbackOnly, false)
+  assert.match(exposed.detail, /Klartext/)
 })
 
 test('the media image is in the catalog as its own kind', () => {

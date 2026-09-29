@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatDate, shortImage } from '../components/format.js'
 import { StartComfyDialog } from './StartComfyDialog.jsx'
+import { StartMediaApiDialog } from './StartMediaApiDialog.jsx'
 import { StartRpcWorkerDialog } from './StartRpcWorkerDialog.jsx'
 import { StartServerDialog } from './StartServerDialog.jsx'
 
@@ -17,6 +18,7 @@ export function Servers() {
   const [starting, setStarting] = useState(false)
   const [startingRpc, setStartingRpc] = useState(false)
   const [startingComfy, setStartingComfy] = useState(false)
+  const [startingMedia, setStartingMedia] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
 
   const servers = useQuery({
@@ -56,11 +58,10 @@ export function Servers() {
         <button className="btn" type="button" onClick={() => setStartingRpc(true)}>
           RPC-Worker starten
         </button>
-        {/* One service per box, configured on its own page rather than in a dialog. */}
-        <Link className="btn" to="/media">
-          Media API
-        </Link>
-        {/* The two things you actually start here, side by side. */}
+        {/* The things you actually start here, side by side. */}
+        <button className="btn btn-primary" type="button" onClick={() => setStartingMedia(true)}>
+          Media API starten
+        </button>
         <button className="btn btn-primary" type="button" onClick={() => setStartingComfy(true)}>
           ComfyUI starten
         </button>
@@ -116,9 +117,7 @@ export function Servers() {
                     ) : server.role === 'comfy' ? (
                       <span className="faint">Bild- und Videogenerierung</span>
                     ) : server.role === 'media' ? (
-                      <Link to="/media" className="faint">
-                        Bild- und Videogenerierung per API
-                      </Link>
+                      <span className="faint">Bild- und Videogenerierung per API</span>
                     ) : (
                       <span
                         className="truncate"
@@ -135,7 +134,13 @@ export function Servers() {
                     ) : null}
                   </td>
                   <td className="small">{shortImage(server.image)}</td>
-                  <td className="small mono">{server.hostPort ?? '–'}</td>
+                  <td className="small mono">
+                    {/* The media API publishes on one address — loopback unless exposed. */}
+                    {server.role === 'media' && server.bindAddress && server.bindAddress !== '0.0.0.0'
+                      ? `${server.bindAddress}:`
+                      : ''}
+                    {server.hostPort ?? '–'}
+                  </td>
                   <td className="small faint nowrap">{formatDate(server.createdAt)}</td>
                   <td>
                     <div className="row wrap" style={{ justifyContent: 'flex-end' }}>
@@ -178,6 +183,7 @@ export function Servers() {
       {startingRpc ? <StartRpcWorkerDialog onClose={() => setStartingRpc(false)} /> : null}
 
       {startingComfy ? <StartComfyDialog onClose={() => setStartingComfy(false)} /> : null}
+      {startingMedia ? <StartMediaApiDialog onClose={() => setStartingMedia(false)} /> : null}
 
       {pendingDelete ? (
         <ConfirmDialog

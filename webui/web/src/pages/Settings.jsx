@@ -220,8 +220,10 @@ export function Settings() {
           </label>
           {form.allowCustomImages ? (
             <div className="alert alert-warn small">
-              Container erhalten <code>/dev/kfd</code> und <code>seccomp=unconfined</code>. Nutze
-              das nur für Images, denen du vertraust.
+              Container erhalten <code>/dev/kfd</code> und <code>seccomp=unconfined</code>. Bei einem
+              eigenen Media-API-Image vertraust du außerdem dessen Registry-Profilen vollständig:
+              Modellprüfung und Downloads führen den Code und die Downloadquellen dieses Images aus.
+              Nutze das nur für Images, denen du vertraust.
             </div>
           ) : null}
         </section>

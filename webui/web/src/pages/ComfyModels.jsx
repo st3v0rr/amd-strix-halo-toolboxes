@@ -141,7 +141,7 @@ export function ComfyModels() {
 /** One folder plus, when expanded, its files. */
 function FolderRows({ folder, expanded, onToggle, onDelete }) {
   // The media API's own folders are nested trees it manages; they are measured,
-  // not listed, and their files are fetched on its page.
+  // not listed, and their files are fetched under "MediaAPI-Modelle".
   const media = folder.owner === 'media'
   const empty = folder.files.length === 0
   return (
@@ -160,7 +160,11 @@ function FolderRows({ folder, expanded, onToggle, onDelete }) {
           </button>{' '}
           <strong className="mono">{folder.name}</strong>
           {media ? (
-            <Link to="/media" className="badge badge-info" title="Gehört der Media API, die diesen Modellbaum mitliest">
+            <Link
+              to="/media-models"
+              className="badge badge-info"
+              title="Gehört der Media API, die diesen Modellbaum mitliest — ihre Modelle stehen unter „MediaAPI-Modelle“"
+            >
               Media API
             </Link>
           ) : folder.known ? null : (

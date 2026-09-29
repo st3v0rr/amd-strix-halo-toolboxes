@@ -376,10 +376,14 @@ export function mediaPublish(bindAddress, hostPort) {
  *
  * A fourth sibling of buildRunArgv, for the reasons the other two give. Its
  * reference is not a script but the hardened command documented in
- * toolboxes_media_api/README.md and build.sh — by default rootless with the
- * user's own UID, no capabilities, no privilege escalation, secrets as
- * read-only files, the model tree read-only — and
- * server/test/media-parity.test.js holds that default to every documented flag.
+ * toolboxes_media_api/README.md and build.sh, and
+ * server/test/media-parity.test.js holds this argv to every documented flag.
+ *
+ * It runs on the host's Podman exactly as ComfyUI and llama-server do — the
+ * same devices and the same `video`/`render` groups — and keeps what those two
+ * do not have: no capabilities, no privilege escalation, secrets as read-only
+ * files, the model tree read-only and the port on loopback unless the settings
+ * publish it wider.
  *
  * The mock backend needs no GPU, so it gets no devices and keeps podman's
  * seccomp filter: `seccomp=unconfined` is what ROCm requires, not something
@@ -396,7 +400,6 @@ export function mediaPublish(bindAddress, hostPort) {
  * @param {boolean} [spec.modelsReadOnly]
  * @param {string} spec.dataDir absolute host path for outputs, uploads, job state
  * @param {'real'|'mock'} [spec.backend]
- * @param {'rootless'|'rootful'} [spec.runtimeMode]
  * @param {{apiKey: string, sessionSecret: string, hfToken?: string|null}} spec.secretFiles host paths
  * @param {[string, string][]} [spec.env] from mediaContainerEnv()
  * @param {Record<string,string>} [spec.labels]
@@ -412,23 +415,15 @@ export function buildMediaRunArgv(spec) {
     modelsReadOnly = true,
     dataDir,
     backend = 'real',
-    runtimeMode = 'rootless',
     secretFiles,
     env = [],
     labels = {},
   } = spec
   const gpu = backend !== 'mock'
-  // Only the exact, policy-checked rootful mode may remove namespace mapping.
-  const rootless = runtimeMode !== 'rootful'
 
   const argv = ['run', '-d', '--restart', 'unless-stopped']
-  if (rootless) argv.push('--userns=keep-id')
-  // keep-groups rather than `--group-add video/render`: with keep-id the
-  // container runs as the user, and only their own supplementary groups carry
-  // the host's video and render GIDs that /dev/kfd checks.
   if (gpu) {
-    argv.push('--device', '/dev/dri', '--device', '/dev/kfd')
-    if (rootless) argv.push('--group-add', 'keep-groups')
+    argv.push('--device', '/dev/dri', '--device', '/dev/kfd', '--group-add', 'video', '--group-add', 'render')
   }
   argv.push('--cap-drop=all', '--security-opt=no-new-privileges')
   if (gpu) argv.push('--security-opt=seccomp=unconfined')
@@ -468,13 +463,7 @@ export function mediaFetchContainer(jobId) {
 }
 
 /** Options every one-shot media container shares: the service's hardening, minus the GPU. */
-function oneShotHardening(runtimeMode = 'rootless') {
-  return [
-    ...(runtimeMode !== 'rootful' ? ['--userns=keep-id'] : []),
-    '--cap-drop=all',
-    '--security-opt=no-new-privileges',
-  ]
-}
+const ONE_SHOT_HARDENING = ['--cap-drop=all', '--security-opt=no-new-privileges']
 
 /**
  * `media-api-models check --json` in a throwaway container.
@@ -484,12 +473,12 @@ function oneShotHardening(runtimeMode = 'rootless') {
  *
  * @param {{image: string, modelsDir: string}} spec
  */
-export function buildMediaCheckArgv({ image, modelsDir, runtimeMode = 'rootless' }) {
+export function buildMediaCheckArgv({ image, modelsDir }) {
   return [
     'run',
     '--rm',
     '--network=none',
-    ...oneShotHardening(runtimeMode),
+    ...ONE_SHOT_HARDENING,
     '-v',
     `${modelsDir}:${MEDIA_CONTAINER_MODELS_DIR}:ro,z`,
     '-e',
@@ -538,7 +527,6 @@ export function buildMediaFetchArgv(spec) {
     name,
     tokenFile = null,
     disableXet = false,
-    runtimeMode = 'rootless',
   } = spec
   const argv = [
     'run',
@@ -547,7 +535,7 @@ export function buildMediaFetchArgv(spec) {
     name,
     '--label',
     `${MEDIA_FETCH_LABEL}=true`,
-    ...oneShotHardening(runtimeMode),
+    ...ONE_SHOT_HARDENING,
     '-v',
     `${modelsDir}:${MEDIA_CONTAINER_MODELS_DIR}:z`,
   ]

@@ -23,7 +23,6 @@ import { registerSecret } from '../lib/redact.js'
 import { safeResolve } from '../models/paths.js'
 import {
   assertMediaImageAllowed,
-  assertMediaPodmanRuntime,
   checkMediaConfig,
   mediaModelsDir,
   mediaSpec,
@@ -65,6 +64,8 @@ import { closeLogSession } from './logstream.js'
 
 /** States in which a container actually holds its published ports. */
 const HOLDS_PORTS = new Set(['running', 'paused'])
+/** Process-local reservation closes the two-simultaneous-start race. */
+const mediaStarts = new WeakSet()
 
 /**
  * The container currently occupying `port`, or null.
@@ -605,31 +606,47 @@ export async function createComfyServer(ctx, spec, { replace = false, onLog = ()
 }
 
 /**
- * Create and start the media API from its stored settings (ctx.media).
+ * Create and start the media API.
  *
- * Unlike the other three this takes no spec from the request: the service is
- * one per box and configured on its own page, so "create" means "materialise
- * what is saved there". Before podman sees anything, every way the container
- * could fail closed on start is ruled out — secrets that exist and that the
- * service would accept, directories that exist, an image that is present —
- * because the service exits 2 on a bad configuration and
- * `--restart unless-stopped` would turn that into a loop.
+ * Unlike the other three this takes no spec of its own: the service is one per
+ * box, and its container is made from its settings — the stored ones (apply,
+ * autostart), or the stored ones with the Servers page's few choices applied,
+ * which the caller stores once this succeeded. Before podman sees anything,
+ * every way the container could fail closed on start is ruled out — secrets
+ * that exist and that the service would accept, directories that exist, an
+ * image that is present — because the service exits 2 on a bad configuration
+ * and `--restart unless-stopped` would turn that into a loop.
+ *
+ * @param {object} ctx
+ * @param {{config?: object, replace?: boolean, persist?: (() => Promise<unknown>)|null, onLog?: (line: string) => void}} [opts]
  */
-export async function createMediaServer(ctx, { replace = false, onLog = () => {} } = {}) {
-  const config = ctx.media.data
-  const runtimeMode = await assertMediaPodmanRuntime(config)
-  assertMediaImageAllowed(ctx, config.image)
-  checkMediaConfig(ctx, config)
+export async function createMediaServer(
+  ctx,
+  { config = ctx.media.data, replace = false, persist = null, onLog = () => {} } = {},
+) {
+  if (mediaStarts.has(ctx)) throw conflict('Die Media API wird bereits angelegt. Bitte warte, bis der Start beendet ist.')
+  mediaStarts.add(ctx)
+  let candidate = null
+  let secrets = null
+  try {
+    assertMediaImageAllowed(ctx, config.image)
+    checkMediaConfig(ctx, config)
 
-  const exists = await containerExists(config.name)
-  if (exists && !replace) {
-    throw conflict(`Ein Container namens '${config.name}' existiert bereits.`, { existing: config.name })
-  }
-  await validateCommon(
-    ctx,
-    { name: config.name, port: config.port, image: config.image },
-    { ignoreName: exists ? config.name : undefined },
-  )
+    const managedMedia = (await listServers()).find((server) => server.role === ROLE.media)
+    if (managedMedia) {
+      throw conflict(
+        `Auf dieser Box existiert bereits die Media API '${managedMedia.name}'. Entferne sie ausdrücklich, bevor du eine neue anlegst.`,
+        { existing: managedMedia.name, removalRequired: true },
+      )
+    }
+    if (replace) {
+      throw conflict('Die Media API wird nicht im laufenden Betrieb ersetzt. Entferne den vorhandenen Container zuerst.')
+    }
+    const exists = await containerExists(config.name)
+    if (exists) {
+      throw conflict(`Ein Container namens '${config.name}' existiert bereits.`, { existing: config.name })
+    }
+    await validateCommon(ctx, { name: config.name, port: config.port, image: config.image })
 
   // `podman run` would pull a missing image itself — tens of gigabytes inside
   // a request with a two-minute timeout. The images page does that properly.
@@ -637,17 +654,11 @@ export async function createMediaServer(ctx, { replace = false, onLog = () => {}
     throw failedDependency(`Das Image ${config.image} liegt nicht lokal vor. Lade es zuerst unter „Images“.`)
   }
 
+  secrets = ctx.mediaSecrets.checkpoint()
   ctx.mediaSecrets.ensure()
   // Only a service allowed to download gets the Hugging Face token, and then as
   // a read-only file, like the key.
   ctx.mediaSecrets.syncHfToken(config.allowDownloads ? ctx.config.data.hfToken || null : null)
-
-  if (exists) {
-    onLog(`Ersetze vorhandenen Container '${config.name}' …`)
-    closeLogSession(config.name)
-    await stopContainer(config.name)
-    await removeContainer(config.name, { force: true })
-  }
 
   // The mount sources once more, as close to podman as it gets: created if
   // missing, links and protected trees refused, and exactly the paths the
@@ -658,7 +669,7 @@ export async function createMediaServer(ctx, { replace = false, onLog = () => {}
     { ...pinMediaDir('Das Datenverzeichnis', config.dataDir, 0o700), destination: MEDIA_CONTAINER_DATA_DIR },
   ]
   const [modelsDir, dataDir] = pins.map((p) => p.path)
-  const spec = mediaSpec(ctx, config, runtimeMode)
+  const spec = mediaSpec(ctx, config)
   if (spec.modelsDir !== modelsDir || spec.dataDir !== dataDir) {
     throw conflict('Ein Verzeichnis hat sich beim Anlegen verändert. Bitte erneut versuchen.')
   }
@@ -667,18 +678,31 @@ export async function createMediaServer(ctx, { replace = false, onLog = () => {}
   const argv = buildMediaRunArgv({ ...spec, labels })
   onLog(`Starte Media API ${config.name} (${config.image}) auf ${config.bindAddress}:${config.port} …`)
   const verify = (mounts) => verifyMediaMounts(mounts, pins)
-  const id = await createVerified(argv, verify)
-  await startVerifiedContainer(id, verify)
-  log.info(`Media API '${config.name}' gestartet (${id.slice(0, 12)})`)
+  candidate = await createVerified(argv, verify)
+  await startVerifiedContainer(candidate, verify)
+  const running = await inspectContainer(candidate)
+  if (!running?.State?.Running) {
+    throw failedDependency('Die Media API wurde angelegt, läuft nach dem Start aber nicht.')
+  }
+  if (persist) await persist()
+  secrets.commit()
+  log.info(`Media API '${config.name}' gestartet (${candidate.slice(0, 12)})`)
 
   return {
     name: config.name,
-    id,
+    id: candidate,
     role: ROLE.media,
     port: config.port,
     bindAddress: config.bindAddress,
     modelsDir,
     dataDir,
+  }
+  } catch (err) {
+    if (candidate) await removeContainer(candidate, { force: true })
+    secrets?.rollback()
+    throw err
+  } finally {
+    mediaStarts.delete(ctx)
   }
 }
 
@@ -692,20 +716,12 @@ export function probeHost(bindAddress) {
 }
 
 /**
- * A media container runs only in the explicitly approved Podman mode — asked
- * on every start, restart and autostart, not just at apply.
+ * What a media container must pass on every start, restart and autostart, not
+ * just when it is created: an image still allowed, and bind sources that are
+ * still exactly the directories that were checked.
  */
 async function guardStart(ctx, server) {
   if (server.role !== ROLE.media) return
-  const runtimeMode = await assertMediaPodmanRuntime(ctx.media.data)
-  // Containers predating this label were necessarily rootless. Never start a
-  // container whose namespace/device argv belongs to another runtime mode.
-  const createdMode = server.mediaRuntime ?? 'rootless'
-  if (createdMode !== runtimeMode) {
-    throw conflict(
-      `Der Container wurde für ${createdMode} Podman angelegt, Podman läuft jetzt ${runtimeMode}. Lege ihn neu an.`,
-    )
-  }
   // Check the image recorded on the container, not merely today's saved
   // settings. A custom image may have been created while custom images were
   // enabled and stopped after the policy was tightened.
@@ -790,7 +806,7 @@ export async function serverHealth(name) {
 
   // The media API has an unauthenticated liveness route that says nothing but
   // "ok" — exactly the question asked here. Everything richer needs the key and
-  // lives on the media page.
+  // comes from GET /media.
   if (server.role === ROLE.media) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 3000)

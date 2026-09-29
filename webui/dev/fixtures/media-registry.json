@@ -1,5 +1,5 @@
 {
-  "_comment": "A cut-down media API registry for dev/bin/podman: real ids and paths, toy sizes. The mock answers media-api-models check/fetch from it against the mounted model tree.",
+  "_comment": "A cut-down media API registry for dev/bin/podman: real ids and paths, toy sizes. The mock answers media-api-models check/fetch from it against the mounted model tree. The last entry, stray-model, is not curated: it stands for what a custom image might report, which the web interface filters out.",
   "models": [
     {
       "id": "qwen-image-2512",
@@ -98,6 +98,21 @@
           "id": "gguf-q2", "label": "GGUF Q2 (pruned)", "status": "unsupported",
           "reason": "Only loadable by ComfyUI-GGUF.",
           "estimated_memory_gb": 0
+        }
+      ]
+    },
+    {
+      "id": "stray-model",
+      "label": "Stray (not curated)",
+      "provider": "none",
+      "description": "What an image might report beyond the curated models: the web interface must neither list nor fetch it.",
+      "license": "",
+      "tasks": ["text-to-image"],
+      "default_profile": "only",
+      "profiles": [
+        {
+          "id": "only", "label": "Only", "estimated_memory_gb": 1,
+          "files": { "text-to-image": ["diffusion_models/stray.safetensors"] }
         }
       ]
     }

@@ -260,21 +260,6 @@ if (cmd === 'ps') {
   process.exit(0)
 }
 
-/* ---------------- info ---------------- */
-// SHX_MOCK_ROOTFUL=1 plays a rootful podman, =error one that does not answer.
-// SHX_MOCK_REMOTE=1 simulates a connection selected by containers.conf;
-// =unknown simulates an older daemon without ServiceIsRemote.
-if (cmd === 'info') {
-  const mode = process.env.SHX_MOCK_ROOTFUL
-  if (mode === 'error') fail('cannot connect to Podman', 125)
-  const rootless = mode !== '1'
-  const remoteMode = process.env.SHX_MOCK_REMOTE
-  const host = { security: { rootless } }
-  if (remoteMode !== 'unknown') host.serviceIsRemote = remoteMode === '1'
-  out(JSON.stringify({ host }))
-  process.exit(0)
-}
-
 /* ---------------- exec ---------------- */
 if (cmd === 'exec') {
   const target = argv[1]
@@ -291,6 +276,7 @@ if (cmd === 'exec') {
 /* ---------------- create ---------------- */
 // What the web interface does for media containers: create, inspect, start.
 if (cmd === 'create') {
+  if (process.env.SHX_MOCK_FAIL_CREATE === '1') fail('injected create failure', 125)
   const swap = process.env.SHX_MOCK_SWAP_ON_CREATE
   if (swap && fs.existsSync(swap)) {
     // A test's stand-in for a race: the checked directory replaced before start.
@@ -464,6 +450,9 @@ if (cmd === 'start' || cmd === 'stop' || cmd === 'rm' || cmd === 'restart') {
     targets.push(argv[i])
   }
   for (const target of targets) {
+    if (cmd === 'start' && ['1', target].includes(process.env.SHX_MOCK_FAIL_START)) {
+      fail('injected start failure', 125)
+    }
     const idx = state.containers.findIndex((c) => c.Names[0] === target || c.Id === target)
     if (idx < 0) fail(`no container with name or ID "${target}" found`, 125)
     if (cmd === 'rm') state.containers.splice(idx, 1)

@@ -306,18 +306,36 @@ test('the overview leaves out the sparkline history', async () => {
   assert.equal(result.activeJobs.length, 1)
 })
 
-test('configure_media_api merges limits, create_media_api defaults to no replace', async () => {
+test('configure_media_api merges limits, create_media_api starts like the Servers page and never replaces', async () => {
   const { api, calls } = fakeApi({
     'GET /media': { config: { limits: { maxSteps: 60, maxQueuedJobs: null } } },
     'PUT /media/config': (o) => ({ config: o.body }),
-    'POST /media/apply': (o) => o.body,
+    'POST /servers': (o) => o.body,
   })
   await tool('configure_media_api').run({ limits: { maxQueuedJobs: 4 } }, api)
   assert.deepEqual(calls.at(-1).body.limits, { maxSteps: 60, maxQueuedJobs: 4 })
   await tool('configure_media_api').run({ logLevel: 'debug' }, api)
   assert.deepEqual(calls.at(-1).body, { logLevel: 'debug' }, 'no extra GET without limits')
   await tool('create_media_api').run({}, api)
-  assert.deepEqual(calls.at(-1).body, { replace: false })
+  assert.deepEqual(calls.at(-1), { method: 'POST', path: '/servers', body: { role: 'media', replace: false } })
+  await tool('create_media_api').run({ port: 8101, bindAddress: '0.0.0.0', autostart: true, replace: true }, api)
+  assert.deepEqual(calls.at(-1).body, { role: 'media', replace: false, port: 8101, bindAddress: '0.0.0.0', autostart: true })
+  const schema = tool('create_media_api').inputSchema
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['autostart', 'bindAddress', 'name', 'port'])
+  assert.equal(schema.additionalProperties, false, 'no way to slip replace in')
+})
+
+test('no MCP tool offers or describes a Podman runtime switch for the media API', () => {
+  const text = JSON.stringify(tools.map((t) => [t.name, t.description, t.inputSchema]))
+  assert.doesNotMatch(text, /allowRootfulPodman|rootful|rootless|keep-id/i)
+  assert.equal('allowRootfulPodman' in tool('configure_media_api').inputSchema.properties, false)
+})
+
+test('the firewall tools name the standard service ports, the media API port among them', () => {
+  for (const name of ['get_network', 'open_firewall_port', 'add_firewall_rule']) {
+    assert.match(tool(name).description, /8100/, name)
+  }
+  assert.match(tool('get_network').description, /50052.*8000.*8100/)
 })
 
 /* -------------------------------- loopback -------------------------------- */

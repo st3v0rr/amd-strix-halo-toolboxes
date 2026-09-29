@@ -2,7 +2,7 @@ import { ROLE } from '../../../shared/constants.js'
 import { mediaConfigWarnings } from '../../../shared/media.js'
 import { imageId, inspectContainer } from '../podman/client.js'
 import { listServers, probeHost, serverHealth } from '../podman/servers.js'
-import { mediaPodmanRuntime, mediaSpec } from './config.js'
+import { mediaSpec } from './config.js'
 
 const SERVICE_TIMEOUT_MS = 4000
 /** The service throttles failed keys per client; a short cache keeps polling from adding up. */
@@ -96,14 +96,14 @@ function publicJob(job) {
 }
 
 /**
- * Everything the media page and the MCP tool show in one answer: settings,
- * secrets (fingerprints only), the container, whether it is healthy, whether
- * it still runs on the current settings and secrets, and the service's view.
+ * Everything the start dialog, the container's detail page and the MCP tool
+ * show in one answer: settings, secrets (fingerprints only), the container,
+ * whether it is healthy, whether it still runs on the current settings and
+ * secrets, and the service's view.
  */
 export async function mediaStatus(ctx) {
   const config = ctx.media.data
-  const runtime = await mediaPodmanRuntime(config)
-  const spec = mediaSpec(ctx, config, runtime.mode === 'rootful' ? 'rootful' : 'rootless')
+  const spec = mediaSpec(ctx, config)
   const servers = await listServers()
   const mediaServers = servers.filter((s) => s.role === ROLE.media)
   const summary = mediaServers.find((s) => s.name === config.name) ?? null
@@ -159,8 +159,6 @@ export async function mediaStatus(ctx) {
     health,
     service,
     drift,
-    rootless: runtime.mode === 'unknown' ? null : runtime.mode === 'rootless',
-    runtime,
     warnings: mediaConfigWarnings(config),
   }
 }

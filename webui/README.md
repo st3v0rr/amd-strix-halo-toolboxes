@@ -206,35 +206,51 @@ aber nicht zur Wahl — dafür bleibt `--extra-args` offen.
 
 Die [Media API](../toolboxes_media_api/README.md) — Qwen-Image-2512,
 Qwen-Image-Edit-2511 und MiniMax-H3 hinter einer API mit Schlüssel und einem
-Playground — wird hier verwaltet wie die anderen Container, nicht nur verlinkt.
-Die Seite **Media API** hat alles, was nur dieser Dienst hat; Starten, Stoppen,
-Neustart, Entfernen, Logs und Gesundheit laufen über dieselben Wege wie bei
-jedem llama-server, und der Container steht auch unter **Server**.
+Playground — läuft hier wie ComfyUI und llama.cpp: als Container auf dem Podman
+der Box, angelegt auf der Seite **Server** und gestartet, gestoppt und entfernt
+wie jeder andere.
 
-- **Einstellungen**, eine Konfiguration pro Box
-  (`~/.config/strix-halo-webui/media-api.json`): Name, Image, Host-Port und
-  Bind-Adresse, Modell- und Datenverzeichnis, Backend (`real` mit GPU oder `mock`
-  ohne), die ausdrückliche Rootful-Appliance-Freigabe (standardmäßig aus), Download-Regel,
-  Speicherprüfung, Cookie-, CORS- und Sitzungsoptionen,
-  die Grenzen des Dienstes (leer = dessen Standard) und Autostart. Gespeichert
-  wird erst einmal nur; **Neu anlegen** bringt eine Änderung in den laufenden
-  Container. Bis dahin sagt die Seite, dass er mit alten Einstellungen läuft —
-  der Container trägt einen Hash seines vollständigen Aufrufs als Label.
-- **Der Aufruf** ist der gehärtete aus der README der Media API, Flag für Flag:
-  standardmäßig rootless mit `--userns=keep-id`, `--cap-drop=all`,
-  `--security-opt=no-new-privileges`, Modelle schreibgeschützt, der Port nur auf
-  `127.0.0.1`. Das Mock-Backend bekommt weder GPU noch `seccomp=unconfined`. Ob
-  Podman rootless läuft, fragt das Webinterface Podman selbst (`podman info`). Rootful
-  ist nur mit `allowRootfulPodman`, WebUI-UID 0 und der eindeutigen Antwort
-  `rootless=false`, `serviceIsRemote=false` erlaubt; dann entfallen `keep-id` und `keep-groups`, alle anderen
-  Härtungen bleiben. Unbekannt bleibt gesperrt. Rootful über `CONTAINER_HOST`,
-  `CONTAINER_CONNECTION` oder eine in `containers.conf` ausgewählte Remote-Verbindung bleibt ebenfalls gesperrt, weil lokale root-eigene Mounts
-  bei einem entfernten oder mehrdeutigen Daemon nicht beweisbar sind. Das reale Backend braucht für ROCm weiterhin
-  `seccomp=unconfined` — ein Restrisiko, das die README der Media API beschreibt,
-  kein gelöstes Problem. Auch hier gilt die Image-Beschränkung auf dieses
-  Repository, solange „Beliebige Images“ in den Einstellungen aus ist. Ältere
-  Podman-Versionen ohne `Host.ServiceIsRemote` bleiben rootless nutzbar, können
-  aber die positive Lokalitätsprüfung für rootful nicht erfüllen.
+**Media API starten** öffnet einen Dialog, so klein wie der von ComfyUI:
+
+- **Containername** und **Host-Port** (im Container immer 8100),
+- **Im Netzwerk erreichbar** — aus heißt: nur `127.0.0.1`, von anderswo per
+  SSH-Tunnel oder TLS-Reverse-Proxy; an heißt `0.0.0.0`, und weil der Dienst nur
+  HTTP spricht, gehört der Port dann unter **Netzwerk** am besten nur für eine
+  Quelle freigegeben,
+- **Beim Booten automatisch starten**.
+
+Den API-Schlüssel fragt der Dialog nicht: Beim ersten erfolgreichen Start wird
+ein zufälliger erzeugt; ein eigener lässt sich danach auf der Detailseite
+(Karte **Zugang**) setzen — nie über die Startanfrage.
+
+Alles andere hat Standardwerte, die zur Box passen, und taucht im Dialog nicht
+auf: das Image (`:media-api`), der ComfyUI-Modellbaum schreibgeschützt als
+Modellverzeichnis, `~/media-api-data` für Ergebnisse, Uploads und Aufträge, das
+reale GPU-Backend mit Speicherprüfung, die Grenzen des Dienstes. Wer davon etwas
+ändern muss, tut es über die API (`PUT /api/media/config`) oder das MCP-Werkzeug
+`configure_media_api`. Gespeichert werden die Angaben des Dialogs erst, wenn der
+Container läuft — ein abgelehnter Start lässt die Einstellungen, wie sie waren.
+Existiert schon ein Media-API-Container, startet der Dialog keinen zweiten und
+ersetzt ihn auch nicht: Er verweist auf dessen Detailseite, wo man ihn
+ausdrücklich entfernt und danach neu startet.
+
+Danach steht der Container in der Serverliste. Seine Detailseite hat, was jeder
+Container hat — Starten, Stoppen, Neustart, Entfernen, Log, Erreichbarkeit —,
+dazu **Playground öffnen** und die Karte **Zugang**: Fingerabdruck des
+Schlüssels, **Schlüssel neu erzeugen**, **Eigenen Schlüssel setzen**, und der
+Hinweis, wenn der Container noch mit alten Einstellungen (**Neu anlegen**) oder
+dem alten Schlüssel (**Neu starten**) läuft — er trägt einen Hash seines
+vollständigen Aufrufs als Label.
+
+- **Der Aufruf** ist der aus der README der Media API, Flag für Flag: Podman,
+  Geräte und die Gruppen `video` und `render` wie bei ComfyUI und llama.cpp,
+  keine eigene Betriebsart und kein Schalter dafür. Zusätzlich
+  `--cap-drop=all`, `--security-opt=no-new-privileges`, Modelle und Schlüssel
+  schreibgeschützt, der Port auf `127.0.0.1`, solange er nicht ausdrücklich ins
+  Netz soll. Das Mock-Backend bekommt weder GPU noch `seccomp=unconfined`; das
+  reale braucht es für ROCm weiterhin — ein Restrisiko, das die README der Media
+  API beschreibt. Auch hier gilt die Image-Beschränkung auf dieses Repository,
+  solange „Beliebige Images“ in den Einstellungen aus ist.
 - **Schlüssel.** API-Schlüssel und Sitzungsgeheimnis erzeugt das Webinterface
   selbst, als 0600-Dateien in `~/.config/strix-halo-webui/media-api/` (0700). Sie
   werden einzeln schreibgeschützt eingehängt und über `MEDIA_API_KEY_FILE` bzw.
@@ -245,26 +261,41 @@ jedem llama-server, und der Container steht auch unter **Server**.
   auch dem Besitzer: Den Schlüssel liest man auf der Box mit `cat`, oder man setzt
   einen eigenen, den die Clients schon kennen. Neu erzeugen und Setzen gehen nur
   in einer Browser-Sitzung, nie mit dem MCP-Token. Der Dienst liest Schlüssel
-  beim Start; die Seite meldet, wenn er noch den alten hat, und fragt ihn dann
-  auch nicht mit dem neuen an — das würde nur seine Sperre für Fehlversuche
+  beim Start; die Detailseite meldet, wenn er noch den alten hat, und fragt ihn
+  dann auch nicht mit dem neuen an — das würde nur seine Sperre für Fehlversuche
   füttern, die sich die Playground-Nutzer auf dieser Box mit dem Webinterface
   teilen.
-- **Modelle.** Welche Modelle und Profile es gibt, weiß das Image selbst: Die
-  Übersicht ruft `media-api-models check --json` auf — im laufenden Container per
-  `podman exec`, sonst in einem Wegwerf-Container ohne Netz, ohne GPU und ohne
-  Schlüssel. Sie zeigt je Profil Speicherbedarf, Aufgaben, was fehlt (auch je
-  Aufgabe) und bei nicht unterstützten Formaten den Grund. **Laden** startet
-  `media-api-models fetch --json` in einem Wegwerf-Container, dem einzigen mit
-  beschreibbarem Modellbaum; der Dienst behält seinen schreibgeschützten Mount
-  und sieht neue Dateien ohne Neustart. Fortschritt, Abbrechen und Fortsetzen
-  laufen über dieselbe Download-Liste wie bei den GGUFs; es läuft immer nur einer,
-  auf einer eigenen Warteschlange, und jeder in einem Container mit eigenem Namen.
-  Der HF-Token geht als 0600-Datei nur dieses Jobs hinein, schreibgeschützt
-  gemountet und über `HF_TOKEN_PATH` gelesen — nie als Wert in einer Umgebung,
-  also auch nicht in `podman inspect` —, und wird mit dem Ende des Jobs gelöscht,
-  auch bei Abbruch. Die Übersicht und „Laden“ beziehen sich immer auf die
-  *gespeicherten* Einstellungen; läuft der Container noch mit einem anderen Image
-  oder Modellbaum, sagt die Seite das dazu.
+- **Playground.** Der Link entsteht aus den Labels des Containers, nie aus einer
+  Anfrage, und trägt keinen Schlüssel — der Playground hat sein eigenes
+  Anmeldeformular. Bei der Standardbindung an `127.0.0.1` ist er nur auf der Box
+  selbst erreichbar; von anderswo nennt die Detailseite den SSH-Tunnel. Für einen
+  TLS-Reverse-Proxy davor gibt es die Einstellungen `publicUrl` und
+  `cookieSecure` (über die API).
+
+### MediaAPI-Modelle
+
+Eigene Seite wie bei llama.cpp und ComfyUI, aber ohne freie Suche: Sie zeigt nur
+die kuratierten Modelle — Qwen-Image-2512, Qwen-Image-Edit-2511 und MiniMax-H3 —
+mit ihren Profilen; was ein Image darüber hinaus meldet, fällt weg. Welche
+Profile es gibt, weiß das Image selbst: Die Übersicht ruft
+`media-api-models check --json` auf — im laufenden Container per `podman exec`,
+sonst in einem Wegwerf-Container ohne Netz, ohne GPU und ohne Schlüssel. Sie
+zeigt je Profil Speicherbedarf, Aufgaben, was fehlt (auch je Aufgabe) und bei
+nicht unterstützten Formaten den Grund.
+
+**Laden** fragt nach und startet dann `media-api-models fetch --json` in einem
+Wegwerf-Container, dem einzigen mit beschreibbarem Modellbaum; der Dienst behält
+seinen schreibgeschützten Mount und sieht neue Dateien ohne Neustart. Von selbst
+lädt nichts etwas herunter. Fortschritt, Abbrechen und Fortsetzen laufen über
+dieselbe Download-Liste wie bei den GGUFs; es läuft immer nur einer, auf einer
+eigenen Warteschlange, und jeder in einem Container mit eigenem Namen. Der
+HF-Token geht als 0600-Datei nur dieses Jobs hinein, schreibgeschützt gemountet
+und über `HF_TOKEN_PATH` gelesen — nie als Wert in einer Umgebung, also auch
+nicht in `podman inspect` —, und wird mit dem Ende des Jobs gelöscht, auch bei
+Abbruch. Übersicht und Laden beziehen sich immer auf die *gespeicherten*
+Einstellungen; läuft der Container noch mit einem anderen Image oder Modellbaum,
+sagt die Seite das dazu.
+
 - **Platz.** Vor dem Download prüft `media-api-models fetch` die Größen beim Hub:
   frei sein müssen die Dateien, die Reserve des Dienstes
   (`MEDIA_MIN_FREE_DISK_BYTES`, 1 GiB) und Luft für Teildateien, Staging und
@@ -276,38 +307,37 @@ jedem llama-server, und der Container steht auch unter **Server**.
   Layout direkt und benutzt vorhandene FP8-Dateien mit. Ihre eigenen Ordner dort
   (`diffusers/`, `huggingface/`) stehen auf der ComfyUI-Seite als „Media API“
   statt als „unbekannt“.
-- **Playground.** Der Link entsteht aus den eigenen Einstellungen, nie aus einer
-  Anfrage, und trägt keinen Schlüssel — der Playground hat sein eigenes
-  Anmeldeformular. Bei der Standardbindung an `127.0.0.1` ist er nur auf der Box
-  selbst erreichbar; von anderswo nennt die Seite den SSH-Tunnel. Für Zugriff im
-  Netz gehört ein TLS-Reverse-Proxy davor, dessen Adresse als „öffentliche URL“
-  eingetragen wird, dazu „Cookie nur über HTTPS“.
 - **Downloads durch den Dienst selbst** (`MEDIA_ALLOW_DOWNLOADS`) lassen sich
-  einschalten, verlangen dann aber einen beschreibbaren Modell-Mount und werden
-  mit einer Warnung quittiert; der HF-Token kommt dann ebenfalls als
+  nur über die API einschalten, verlangen dann einen beschreibbaren Modell-Mount
+  und werden mit einer Warnung quittiert; der HF-Token kommt dann ebenfalls als
   schreibgeschützte Datei (`HF_TOKEN_PATH`). Wird der Token in den Einstellungen
   geändert oder entfernt, schreibt das Webinterface dieselbe Datei sofort neu bzw.
   leert sie — ein laufender Dienst hat den alten Token also nicht mehr; „Neu
   anlegen“ entfernt danach auch den Mount.
 
+### Verzeichnisse der Media API
+
 Verzeichnisse, die den Container an Zugangsdaten ließen — das Home-Verzeichnis
-selbst, `~/.ssh`, `~/.config`, die Konfiguration dieses Webinterfaces,
-Podmans Speicher und Socket (`/run/user`), Systemverzeichnisse —, werden als
-Modell- oder Datenverzeichnis abgelehnt, und zwar am aufgelösten Pfad: Ein
-symbolischer Link irgendwo im Pfad wird nicht verfolgt, sondern abgelehnt. Die
-einzige Ausnahme sind Links, die root in einem nur für root beschreibbaren
-Verzeichnis angelegt hat — das Systemlayout, etwa `/home` → `/var/home` auf Fedora
-Atomic und Bazzite. Kein Verzeichnis auf dem Pfad darf für andere als
-den Benutzer und root beschreibbar sein (ausgenommen Sticky-Verzeichnisse wie
-`/tmp`), sonst könnte ein fremder Prozess ihn austauschen. Gemountet wird der
-kanonische Pfad, und zwar in drei Schritten: `podman create`, dann Abgleich jeder
-Bind-Quelle mit dem geprüften Verzeichnis (Pfad, Gerät und Inode), erst dann
-`podman start` — beim Dienst wie bei Modellübersicht und Download. Ein unterwegs
-ausgetauschtes Verzeichnis bricht ab, der Container wird entfernt, ohne gelaufen
-zu sein. Start, Neustart und Autostart eines Media-Containers laufen jedes Mal
-durch dieselbe fail-closed Laufzeitprüfung. Solange „Beliebige Images“ aus ist, bekommt nur das
-Media-API-Image dieses Repositorys Modellbaum, Netz oder Token — beim Speichern,
-Anlegen, Prüfen und Laden.
+selbst, `~/.ssh`, `~/.gnupg`, `~/.config`, die Konfiguration dieses Webinterfaces,
+Podmans Speicher und Socket, Systemverzeichnisse —, werden als Modell- oder
+Datenverzeichnis abgelehnt, und zwar am aufgelösten Pfad: Ein symbolischer Link
+irgendwo im Pfad wird nicht verfolgt, sondern abgelehnt. Die einzige Ausnahme sind
+Links, die root in einem nur für root beschreibbaren Verzeichnis angelegt hat —
+das Systemlayout, etwa `/home` → `/var/home` auf Fedora Atomic und Bazzite.
+`/root` ist tabu, außer es ist das eigene Home des Dienstes: Bei der
+root-Installation liegen die Standardverzeichnisse dort (`/root/comfy-models`,
+`/root/media-api-data`), und es gelten dieselben Regeln wie für jedes Home. Kein
+Verzeichnis auf dem Pfad darf für andere als den Benutzer des Dienstes und root
+beschreibbar sein (auch kein Sticky-Verzeichnis wie `/tmp`), sonst könnte ein
+fremder Prozess es austauschen. Gemountet wird der kanonische Pfad, und zwar in
+drei Schritten: `podman create`, dann Abgleich jeder Bind-Quelle mit dem
+geprüften Verzeichnis (Pfad, Gerät und Inode), erst dann `podman start` — beim
+Dienst wie bei Modellübersicht und Download. Ein unterwegs ausgetauschtes
+Verzeichnis bricht ab, der Container wird entfernt, ohne gelaufen zu sein. Start,
+Neustart und Autostart eines Media-Containers prüfen Image und Mounts jedes Mal
+neu. Solange „Beliebige Images“ aus ist, bekommt nur das Media-API-Image dieses
+Repositorys Modellbaum, Netz oder Token — beim Speichern, Anlegen, Prüfen und
+Laden.
 
 ## Netzwerk und Firewall
 
@@ -329,20 +359,29 @@ nicht angefasst: Eine Regel, deren Wirkung die Anwendung nicht vollständig
 beschreiben kann, entfernt sie auch nicht.
 
 Welche Ports das sind, wird nicht gepflegt, sondern hergeleitet: der eigene Port
-aus den Einstellungen, dazu je ein Port pro llama-server und pro RPC-Worker. Ein
-Server, der vor fünf Minuten gestartet wurde, steht dort ohne weiteres Zutun,
-und ein Port, der für einen längst gelöschten Server offen ist, fällt auf.
+aus den Einstellungen, dazu je ein Port pro verwaltetem Container und die
+Standardports der Dienste — 50052 (RPC-Worker), 8000 (ComfyUI) und 8100 (Media
+API) —, auch wenn gerade keiner läuft, weil man ihre Freigaben meist vor dem
+ersten Start einrichtet. Ein Server, der vor fünf Minuten gestartet wurde, steht
+dort ohne weiteres Zutun, und ein Port, der für einen längst gelöschten Server
+offen ist, fällt auf. Öffnen, Sperren und „Nur für Quelle“ gehen für jeden
+dieser Ports, für keinen anderen.
 
 Fedora bringt firewalld mit, und dessen Standardzonen lassen keinen der hier
-relevanten Ports durch. Je nachdem, was auf der Maschine läuft, sind es bis zu
-drei:
+relevanten Ports durch:
 
 | Port | Wofür | Geschützt durch |
 |---|---|---|
 | 8420 | das Webinterface selbst | Passwort + JWT-Cookie |
 | 11434 | llama-server (Default je Server) | `--api-key` |
-| 8100 | Media API — standardmäßig nur an `127.0.0.1` gebunden | API-Schlüssel, Playground mit Sitzung + CSRF |
+| 8000 | ComfyUI (Default je Container) | **nichts** |
+| 8100 | Media API — nur an `127.0.0.1` gebunden, außer mit „Im Netzwerk erreichbar“ gestartet | API-Schlüssel, Playground mit Sitzung + CSRF; nur HTTP |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
+
+Die Media API spricht nur HTTP: Schlüssel und Anmeldungen gehen im Klartext über
+das Netz. Port 8100 deshalb am besten nur für die Adressen ihrer Clients
+freigeben. Läuft ihr Container nur an `127.0.0.1`, sagt die Portzeile, dass eine
+Freigabe nichts bewirkt, bis er mit „Im Netzwerk erreichbar“ neu angelegt ist.
 
 Zwei Dinge macht die Oberfläche bewusst nicht:
 

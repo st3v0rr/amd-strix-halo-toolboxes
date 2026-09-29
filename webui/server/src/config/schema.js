@@ -7,6 +7,7 @@ import {
   NAME_RE,
   PORT_MAX,
   PORT_MIN,
+  ROLE,
   SERVER_DEFAULTS,
   SPEC_TYPES,
 } from '../../../shared/constants.js'
@@ -162,8 +163,6 @@ export const mediaConfigSchema = z.object({
   modelsReadOnly: z.boolean().default(true),
   dataDir: z.string().min(1).max(1000).default(defaultMediaDataDir),
   backend: z.enum(MEDIA_BACKENDS).default('real'),
-  /** Rootful Podman is an explicit privileged appliance escape hatch. */
-  allowRootfulPodman: z.boolean().default(false),
   /** MEDIA_ALLOW_DOWNLOADS: a job may fetch what it lacks. Needs a writable model mount. */
   allowDownloads: z.boolean().default(false),
   memoryCheck: z.enum(MEDIA_MEMORY_CHECKS).default('strict'),
@@ -191,6 +190,16 @@ export const mediaConfigSchema = z.object({
   autostart: z.boolean().default(false),
   updatedAt: z.string().nullable().default(null),
 })
+
+/**
+ * The choices "Media API starten" on the Servers page offers, as POST /servers
+ * takes them. Merged into the stored settings above: whatever is not named
+ * keeps its stored value, so the dialog stays as small as ComfyUI's.
+ */
+export const mediaStartSchema = mediaConfigSchema
+  .pick({ name: true, port: true, bindAddress: true, autostart: true })
+  .partial()
+  .extend({ role: z.literal(ROLE.media) })
 
 /** Settings that may be changed through the API. */
 export const settingsPatchSchema = settingsSchema.partial().extend({

@@ -31,6 +31,7 @@ export default [
         AbortController: 'readonly',
         AbortSignal: 'readonly',
         TextDecoder: 'readonly',
+        structuredClone: 'readonly',
         window: 'readonly',
         document: 'readonly',
         navigator: 'readonly',

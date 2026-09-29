@@ -8,6 +8,7 @@ import {
   PORT_MIN,
   RPC_PORT,
   SPEC_TYPES,
+  STANDARD_SERVICE_PORTS,
 } from '../../../shared/constants.js'
 import {
   MEDIA_BACKENDS,
@@ -101,9 +102,6 @@ const mediaSettings = {
   modelsReadOnly: bool('Modellbaum schreibgeschützt mounten (Standard und empfohlen).'),
   dataDir: str('Absoluter Pfad für Ergebnisse, Uploads und Job-Zustand.'),
   backend: str('"real" (GPU) oder "mock" (ohne GPU und Modelle, liefert Testbilder).', { enum: [...MEDIA_BACKENDS] }),
-  allowRootfulPodman: bool(
-    'Gefährliche Appliance-Ausnahme: rootful Podman ausdrücklich erlauben. Bleibt gesperrt, außer das Webinterface läuft als UID 0, podman info meldet eindeutig rootless=false und serviceIsRemote=false und weder Umgebung noch containers.conf wählen einen entfernten Daemon. Rootless bleibt empfohlen.',
-  ),
   allowDownloads: bool('Der Dienst lädt fehlende Modelle beim ersten Auftrag selbst. Braucht modelsReadOnly=false; abgeraten — besser fetch_media_models.'),
   memoryCheck: str('Speicherprüfung vor dem Laden eines Modells.', { enum: [...MEDIA_MEMORY_CHECKS] }),
   memoryReserveGb: { type: 'number', minimum: 0, maximum: 1024, description: 'Reserve in GB, die frei bleiben muss.' },
@@ -128,6 +126,9 @@ const mediaSettings = {
   ),
   autostart: bool('Beim Booten der Box automatisch starten.'),
 }
+
+/** The standard service ports the network page always manages, as prose. */
+const standardPorts = STANDARD_SERVICE_PORTS.map((p) => `${p.port} (${p.purpose.replace(' (Standardport)', '')})`).join(', ')
 
 /* --------------------------------- helpers --------------------------------- */
 
@@ -597,7 +598,7 @@ export const tools = [
     name: 'get_media_api',
     title: 'Media API: Status',
     description:
-      'Die Media API (Bild- und Videogenerierung: Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) auf einen Blick: Einstellungen, Podman-Laufzeitmodus samt Freigabe, Container, Gesundheit, geladenes Modell, letzte Aufträge und Drift. Schlüssel erscheinen nur als Fingerabdruck; ändern lassen sie sich nur im Browser.',
+      'Die Media API (Bild- und Videogenerierung: Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) auf einen Blick: Einstellungen, Container, Gesundheit, geladenes Modell, letzte Aufträge und Drift. Schlüssel erscheinen nur als Fingerabdruck; ändern lassen sie sich nur im Browser.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/media'),
@@ -606,7 +607,7 @@ export const tools = [
     name: 'configure_media_api',
     title: 'Media API einstellen',
     description:
-      'Ändert einzelne Einstellungen der Media API; nicht genannte bleiben. Ein laufender Container übernimmt sie erst mit create_media_api und replace=true.',
+      'Ändert einzelne, auch fortgeschrittene Einstellungen der Media API; nicht genannte bleiben. Ein laufender Container übernimmt sie erst, nachdem er ausdrücklich mit delete_server entfernt und mit create_media_api neu angelegt wurde.',
     inputSchema: obj(mediaSettings),
     annotations: WRITE,
     async run(patch, api) {
@@ -620,18 +621,25 @@ export const tools = [
   },
   {
     name: 'create_media_api',
-    title: 'Media API anlegen',
+    title: 'Media API starten',
     description:
-      'Legt den Media-API-Container aus den gespeicherten Einstellungen an und startet ihn — standardmäßig rootless, ohne Capabilities, Modelle schreibgeschützt, Schlüssel als Dateien. Rootful läuft nur nach allowRootfulPodman=true, als UID 0, mit eindeutig lokalem rootful Podman; das ist eine gefährliche Appliance-Ausnahme. Fehlende Schlüssel werden erzeugt, aber nie ausgegeben. replace=true ersetzt einen vorhandenen Container (nötig nach configure_media_api). Danach gelten start_server, stop_server, restart_server, delete_server, get_server_logs und get_server_health mit dem Container-Namen.',
-    inputSchema: obj({ replace }),
+      'Legt genau einen Media-API-Container an und startet ihn — dasselbe wie „Media API starten“ auf der Server-Seite: ohne Capabilities, Modelle schreibgeschützt, Schlüssel als Dateien. Nicht angegebene Werte kommen aus den gespeicherten Einstellungen; die angegebenen werden erst gespeichert, wenn der Container nachweislich läuft. Fehlende Schlüssel werden erzeugt, aber nie ausgegeben. Ein vorhandener Media-Container wird niemals direkt ersetzt: zuerst ausdrücklich delete_server aufrufen. Danach gelten start_server, stop_server, restart_server, delete_server, get_server_logs und get_server_health mit dem Container-Namen.',
+    inputSchema: obj({
+      name: str('Container-Name. Ohne Angabe: der gespeicherte, Standard "media-api".'),
+      port: port(`Host-Port. Ohne Angabe: der gespeicherte, Standard ${MEDIA_PORT}.`),
+      bindAddress: str(
+        'IPv4-Adresse, auf der der Port veröffentlicht wird: "127.0.0.1" nur diese Box (Standard), "0.0.0.0" im Netzwerk erreichbar. Der Dienst spricht nur HTTP — den Port dann per add_firewall_rule auf eine Quelle beschränken.',
+      ),
+      autostart: bool('Beim Booten der Box automatisch starten.'),
+    }),
     annotations: WRITE,
-    run: ({ replace = false }, api) => api('POST', '/media/apply', { body: { replace } }),
+    run: (args, api) => api('POST', '/servers', { body: { ...args, role: 'media', replace: false } }),
   },
   {
     name: 'list_media_models',
     title: 'Media-API-Modelle',
     description:
-      'Welche Modelle und Profile das Media-API-Image kennt — Aufgaben, geschätzter Speicherbedarf, Status —, welche vollständig auf der Platte liegen (auch je Aufgabe) und welche Dateien fehlen. Nicht unterstützte Profile nennen ihren Grund.',
+      'Die kuratierten Modelle der Media API (Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) mit ihren Profilen — Aufgaben, geschätzter Speicherbedarf, Status —, welche vollständig auf der Platte liegen (auch je Aufgabe) und welche Dateien fehlen. Nicht unterstützte Profile nennen ihren Grund.',
     inputSchema: obj({ refresh: bool('Neu prüfen statt den kurzen Cache zu nutzen.') }),
     annotations: READ,
     run: ({ refresh }, api) => (refresh ? api('POST', '/media/models/refresh') : api('GET', '/media/models')),
@@ -771,8 +779,7 @@ export const tools = [
   {
     name: 'get_network',
     title: 'Netzwerk und Firewall',
-    description:
-      'Netzwerkschnittstellen, firewalld-Status und welche Ports die verwalteten Dienste brauchen — offen, nur für bestimmte Netze freigegeben oder zu.',
+    description: `Netzwerkschnittstellen, firewalld-Status und welche Ports die verwalteten Dienste brauchen — offen, nur für bestimmte Netze freigegeben oder zu. Neben dem Webinterface und jedem verwalteten Container stehen die Standardports ${standardPorts} immer auf der Liste.`,
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/network'),
@@ -780,7 +787,7 @@ export const tools = [
   {
     name: 'open_firewall_port',
     title: 'Port öffnen',
-    description: 'Öffnet einen Port in firewalld für alle. Für RPC-Worker und ComfyUI (ohne Authentifizierung) lieber add_firewall_rule mit einem Quellnetz.',
+    description: `Öffnet einen Port in firewalld für alle — nur Ports verwalteter Dienste (get_network), darunter ${standardPorts}. Für RPC-Worker und ComfyUI (ohne Authentifizierung) und die Media API (nur HTTP) lieber add_firewall_rule mit einem Quellnetz.`,
     inputSchema: obj(
       { port: port('Port.'), protocol: str('Standard tcp.', { enum: ['tcp', 'udp'] }) },
       ['port'],
@@ -803,7 +810,7 @@ export const tools = [
   {
     name: 'add_firewall_rule',
     title: 'Port für ein Netz freigeben',
-    description: 'Gibt einen Port nur für ein Quellnetz frei (firewalld rich rule), z. B. den RPC-Port für das Cluster-Netz.',
+    description: `Gibt einen Port eines verwalteten Dienstes nur für ein Quellnetz frei (firewalld rich rule), z. B. den RPC-Port für das Cluster-Netz oder ${MEDIA_PORT} für die Clients der Media API.`,
     inputSchema: obj(
       {
         port: port('Port.'),
@@ -848,7 +855,7 @@ export const tools = [
       defaultGpuLayers: int('Standard-GPU-Layer.', { minimum: 0, maximum: 9999 }),
       defaultThreads: int('Standard-Threads.', { minimum: 1, maximum: 512 }),
       maxConcurrentDownloads: int('Parallele Downloads.', { minimum: 1, maximum: 3 }),
-      allowCustomImages: bool('Beliebige Image-Referenzen erlauben (Sicherheitsrisiko: Container bekommen /dev/kfd).'),
+      allowCustomImages: bool('Beliebige Image-Referenzen erlauben. Vollständiges Vertrauen: Media-Images bestimmen mit ihrem Code und ihren Registry-Profilen auch Prüfungen und Downloadquellen; Container bekommen zudem /dev/kfd.'),
       imageCheckIntervalHours: int('Abstand der automatischen Image-Prüfung.', { minimum: 1, maximum: 168 }),
       useHfTransfer: bool('hf_transfer für Downloads verwenden.'),
       disableXet: bool('Xet abschalten, einfaches HTTPS erzwingen (hilft, wenn Downloads bei 0 % hängen).'),
@@ -899,7 +906,7 @@ Vorgehen:
 - Mit get_overview beginnen.
 - Modell starten: list_models → estimate_vram für die gewünschte Kontextgröße → create_llama_server (oder launch_profile) → get_server_health, bis das Modell geladen ist; bei Problemen get_server_logs.
 - Modell besorgen: search_huggingface → list_huggingface_files → download_model → wait_for_job.
-- Media API: get_media_api → list_media_models → fetch_media_models → wait_for_job → create_media_api (nach configure_media_api mit replace=true). Den API-Schlüssel der Media API bekommt ein Agent nie zu sehen; generieren lässt sich über ihre eigene API mit dem Schlüssel des Besitzers.
+- Media API: get_media_api → list_media_models → fetch_media_models → wait_for_job → create_media_api. Nach configure_media_api einen vorhandenen Container ausdrücklich mit delete_server entfernen und dann neu anlegen; direktes Ersetzen ist absichtlich gesperrt. Modelle werden nur auf ausdrücklichen Aufruf geladen, und nur die kuratierten. Den API-Schlüssel der Media API bekommt ein Agent nie zu sehen; generieren lässt sich über ihre eigene API mit dem Schlüssel des Besitzers.
 - Downloads, Image-Pulls und Updates laufen als Jobs im Hintergrund; der Aufruf kehrt sofort mit der Job-ID zurück.
 - Flash Attention und no-mmap setzt die Box selbst; extraArgs normalerweise leer lassen.
 - Fehlermeldungen kommen auf Deutsch und nennen meist den Ausweg (z. B. welcher Server ein Modell benutzt).`

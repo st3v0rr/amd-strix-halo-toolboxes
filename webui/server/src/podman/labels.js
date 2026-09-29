@@ -74,7 +74,7 @@ export function buildComfyLabels(spec) {
  * What it was started with, so the detail pages can say where its models and
  * outputs live and how it is reachable, plus a hash of the whole run argv:
  * comparing that with the hash of what the current settings would produce is
- * how the media page tells "running as configured" from "settings changed
+ * how its detail page tells "running as configured" from "settings changed
  * since". Secrets are not in here — only the paths of the files holding them
  * are even in the argv.
  */
@@ -91,8 +91,6 @@ export function buildMediaLabels(spec) {
     [LABEL.mediaDataDir]: spec.dataDir,
     [LABEL.mediaBackend]: spec.backend,
     [LABEL.mediaDownloads]: spec.allowDownloads ? 'true' : 'false',
-    [LABEL.mediaAllowRootful]: spec.allowRootfulPodman ? 'true' : 'false',
-    [LABEL.mediaRuntime]: spec.runtimeMode,
     [LABEL.specHash]: spec.specHash,
     [LABEL.created]: new Date().toISOString(),
   }
@@ -138,8 +136,6 @@ export function parseLabels(labels = {}) {
     mediaDataDir: labels[LABEL.mediaDataDir] || null,
     mediaBackend: labels[LABEL.mediaBackend] || null,
     mediaAllowDownloads: labels[LABEL.mediaDownloads] === undefined ? null : labels[LABEL.mediaDownloads] === 'true',
-    mediaAllowRootful: labels[LABEL.mediaAllowRootful] === undefined ? null : labels[LABEL.mediaAllowRootful] === 'true',
-    mediaRuntime: labels[LABEL.mediaRuntime] || null,
     specHash: labels[LABEL.specHash] || null,
     createdAt: labels[LABEL.created] || null,
   }

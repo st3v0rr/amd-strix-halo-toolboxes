@@ -108,8 +108,6 @@ export const LABEL = {
   mediaDataDir: 'shx.media-data-dir',
   mediaBackend: 'shx.media-backend',
   mediaDownloads: 'shx.media-downloads',
-  mediaAllowRootful: 'shx.media-allow-rootful',
-  mediaRuntime: 'shx.media-runtime',
   /** Hash of the run argv, so a later config change shows up as drift. */
   specHash: 'shx.spec-hash',
   created: 'shx.created',
@@ -140,6 +138,18 @@ export const LABEL_VERSION = '1'
  * here is reachable by the TUI and vice versa.
  */
 export const RPC_PORT = 50052
+
+/**
+ * Service ports the network page lists even with no container running, each
+ * managed like a container's port: open, closed, or let through for one source.
+ * Their rules are usually prepared before the first start, and without an entry
+ * an existing rule would look like a stray.
+ */
+export const STANDARD_SERVICE_PORTS = /** @type {const} */ ([
+  { port: RPC_PORT, kind: 'rpc', purpose: 'RPC-Worker (Standardport)' },
+  { port: COMFY_PORT, kind: 'comfy', purpose: 'ComfyUI (Standardport)' },
+  { port: MEDIA_PORT, kind: 'media', purpose: 'Media API (Standardport)' },
+])
 
 /**
  * Speculative decoding strategies, as `--spec-type` values.

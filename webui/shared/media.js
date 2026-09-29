@@ -19,6 +19,19 @@ export const MEDIA_PLACEHOLDER_KEYS = Object.freeze([
   'password',
 ])
 
+/**
+ * The models this project curates for the media API, as the image's registry
+ * names them (toolboxes_media_api/src/media_api/data/models.yaml). The models
+ * page and the fetch route offer these and nothing else, whatever an image
+ * reports — with custom images allowed, that could be anything.
+ */
+export const MEDIA_MODEL_IDS = Object.freeze(['qwen-image-2512', 'qwen-image-edit-2511', 'minimax-h3'])
+
+/** Only the curated entries of an inventory's model list, in its order. */
+export function curatedMediaModels(models) {
+  return (models ?? []).filter((m) => MEDIA_MODEL_IDS.includes(m?.id))
+}
+
 export const MEDIA_MIN_KEY_LENGTH = 16
 export const MEDIA_MIN_SESSION_SECRET_LENGTH = 32
 /** Longer than anyone types, short enough that a pasted file cannot sneak in. */

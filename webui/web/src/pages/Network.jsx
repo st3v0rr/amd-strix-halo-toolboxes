@@ -11,6 +11,12 @@ import { formatBytes } from '../components/format.js'
 /** Services on these ports have no authentication at all. */
 const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
 
+/**
+ * Ports better let through for one source than for everyone: the two above,
+ * and the media API, whose key and logins cross the network as plain HTTP.
+ */
+const PREFER_SOURCE = new Set([...UNAUTHENTICATED, 'media'])
+
 const KIND_LABEL = {
   thunderbolt: 'USB4/TB',
   ethernet: 'LAN',
@@ -161,7 +167,7 @@ export function Network() {
               {pending.action === 'open' ? (
                 <>
                   <p className="small muted">{pending.detail}</p>
-                  {UNAUTHENTICATED.has(pending.kind) ? (
+                  {PREFER_SOURCE.has(pending.kind) ? (
                     <p className="small">
                       Für diesen Port ist eine Freigabe <strong>nur für eine Quelle</strong> die
                       bessere Wahl — dafür gibt es den Knopf „Nur für Quelle“.
@@ -415,6 +421,12 @@ function Firewall({ firewall, ports, others, otherRules, busy, onOpen, onClose, 
                     ) : null}
                     {port.running === false ? (
                       <div className="small faint">Container läuft nicht</div>
+                    ) : null}
+                    {port.loopbackOnly ? (
+                      <div className="small faint">
+                        Nur an 127.0.0.1 gebunden — eine Freigabe wirkt erst, wenn der Container mit
+                        „Im Netzwerk erreichbar“ neu angelegt ist.
+                      </div>
                     ) : null}
                   </td>
                   <td>

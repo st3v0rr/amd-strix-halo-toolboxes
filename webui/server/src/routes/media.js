@@ -2,10 +2,13 @@ import express from 'express'
 import { z } from 'zod'
 
 import { requireSession } from '../auth/middleware.js'
-import { mediaConfigSchema } from '../config/schema.js'
-import { badRequest } from '../lib/errors.js'
 import { validate } from '../lib/validate.js'
-import { assertMediaImageAllowed, checkMediaConfig, mediaConfigPatchSchema } from '../media/config.js'
+import {
+  assertMediaImageAllowed,
+  mediaConfigPatchSchema,
+  resolveMediaConfig,
+  saveMediaConfig,
+} from '../media/config.js'
 import { resumeMediaFetch, startMediaFetch } from '../media/fetch.js'
 import { invalidateMediaInventory, mediaInventory } from '../media/models.js'
 import { mediaStatus } from '../media/service.js'
@@ -18,13 +21,14 @@ const fetchBody = z.object({ model: ID, profile: ID.optional(), task: ID.optiona
 const keyBody = z.object({ value: z.string().min(1).max(512) })
 
 /**
- * The media API: one service per box, configured here and run as a managed
- * container.
+ * The media API: one service per box, run as a managed container.
  *
- * Starting, stopping, restarting, removing, logs and health go through
- * /api/servers/:name like every other container — the media role is just one
- * more kind there. What lives here is what only this service has: its
- * settings, its secrets, the model inventory of its image and the fetches.
+ * It is started from the Servers page (POST /api/servers with role `media`),
+ * and stopping, restarting, removing, logs and health go through
+ * /api/servers/:name like every other container. What lives here is what only
+ * this service has: its status, its full settings (for the API — the page
+ * offers only the few the start dialog asks), its secrets, the model
+ * inventory of its image and the fetches.
  */
 export function mediaRoutes(ctx) {
   const router = express.Router()
@@ -38,24 +42,13 @@ export function mediaRoutes(ctx) {
   })
 
   /**
-   * Save settings. Nothing is applied to a running container: that is what
-   * /apply is for, and the status reports the difference until then.
+   * Save settings. Nothing is applied to a running container: it takes the
+   * settings only once it has been removed explicitly and started again; the
+   * status reports the difference until then.
    */
   router.put('/config', validate({ body: mediaConfigPatchSchema }), async (req, res, next) => {
     try {
-      const merged = mediaConfigSchema.safeParse({ ...ctx.media.data, ...req.body })
-      if (!merged.success) {
-        const issue = merged.error.issues[0]
-        throw badRequest(`Ungültige Eingabe bei ${issue.path.join('.')}: ${issue.message}`)
-      }
-      const updated = { ...merged.data, updatedAt: new Date().toISOString() }
-      assertMediaImageAllowed(ctx, updated.image)
-      const { modelsDir, dataDir } = checkMediaConfig(ctx, updated)
-      // Stored normalized, so the drift check compares like with like.
-      updated.dataDir = dataDir
-      if (updated.modelsDir) updated.modelsDir = modelsDir
-      await ctx.media.update(() => updated)
-      await ctx.media.flush()
+      await saveMediaConfig(ctx, resolveMediaConfig(ctx, req.body))
       invalidateMediaInventory()
       res.json({ config: ctx.media.data })
     } catch (err) {
@@ -63,7 +56,7 @@ export function mediaRoutes(ctx) {
     }
   })
 
-  /** Create the container from the saved settings, or replace it with `replace`. */
+  /** Create the container from the saved settings. An existing one is never replaced — it must be removed first. */
   router.post('/apply', validate({ body: applyBody }), async (req, res, next) => {
     try {
       const logs = []

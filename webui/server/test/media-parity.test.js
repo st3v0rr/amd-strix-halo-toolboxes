@@ -2,11 +2,12 @@
  * Parity with the documented hardened command.
  *
  * toolboxes_media_api/README.md ("Run it") is the reference for how the media
- * API is meant to run: rootless with the user's UID, no capabilities, no
- * privilege escalation, the key as a read-only file, the model tree read-only.
- * This reads that very block and holds buildMediaRunArgv to every flag in it —
- * and to nothing beyond a short list of known additions, so a flag that weakens
- * the container cannot slip in on either side unnoticed.
+ * API is meant to run: on the host's rootful Podman with the same devices and
+ * groups as ComfyUI, but with no capabilities, no privilege escalation, the key
+ * as a read-only file and the model tree read-only. This reads that very block
+ * and holds buildMediaRunArgv to every flag in it — and to nothing beyond a
+ * short list of known additions, so a flag that weakens the container cannot
+ * slip in on either side unnoticed.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -82,8 +83,6 @@ function ours(config = mediaConfigSchema.parse({})) {
     dataDir: `${home}/media-api-data`,
     backend: config.backend,
     allowDownloads: config.allowDownloads,
-    allowRootfulPodman: config.allowRootfulPodman,
-    runtimeMode: 'rootless',
     secretFiles: { apiKey: keyFile, sessionSecret: sessionFile },
     env: mediaContainerEnv(config),
     specHash: 'x',
@@ -123,7 +122,15 @@ test('the mock backend drops exactly the GPU part, nothing of the hardening', ()
   const config = mediaConfigSchema.parse({ backend: 'mock' })
   const have = new Set(ours(config).pairs.map(key))
   for (const pair of documentedPairs().pairs) {
-    const gpu = ['/dev/dri', '/dev/kfd', 'keep-groups', 'seccomp=unconfined'].includes(pair[1])
+    const gpu = ['/dev/dri', '/dev/kfd', 'video', 'render', 'seccomp=unconfined'].includes(pair[1])
     assert.equal(have.has(key(pair)), !gpu, key(pair))
+  }
+})
+
+test('the documented command is rootful like the other containers: no rootless-only flag on either side', () => {
+  for (const pairs of [documentedPairs().pairs, ours().pairs]) {
+    const flags = pairs.map(key)
+    assert.ok(!flags.some((f) => /^--userns\b/.test(f)), flags.join(' '))
+    assert.ok(!flags.includes('--group-add keep-groups'), flags.join(' '))
   }
 })

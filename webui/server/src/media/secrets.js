@@ -295,5 +295,34 @@ export function createMediaSecrets(dir, io = fs) {
         return null
       }
     },
+
+    /**
+     * Opaque rollback point for container creation. A failed start must not
+     * create or rotate either mounted credential. Secret values stay inside
+     * this closure and are never returned to a route, log or subprocess.
+     */
+    checkpoint() {
+      const previous = Object.fromEntries(['apiKey', 'sessionSecret'].map((kind) => [kind, read(kind)]))
+      let finished = false
+      return {
+        commit() {
+          finished = true
+        },
+        rollback() {
+          if (finished) return
+          for (const kind of ['apiKey', 'sessionSecret']) {
+            const current = read(kind)
+            if (previous[kind] === null) {
+              fs.rmSync(file(kind), { force: true })
+              if (current) unregisterSecret(current)
+            } else if (current !== previous[kind]) {
+              write(kind, previous[kind])
+              if (current) unregisterSecret(current)
+            }
+          }
+          finished = true
+        },
+      }
+    },
   }
 }

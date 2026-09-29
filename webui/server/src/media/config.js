@@ -8,97 +8,11 @@ import { configDir, stateDir } from '../config/paths.js'
 import { mediaConfigSchema } from '../config/schema.js'
 import { badRequest, conflict, failedDependency } from '../lib/errors.js'
 import { buildMediaRunArgv, mediaContainerEnv } from '../podman/argv.js'
-import { podmanRuntimeInfo } from '../podman/client.js'
 
 /** What PUT /media/config accepts: any setting, none of the bookkeeping. */
 export const mediaConfigPatchSchema = mediaConfigSchema
   .omit({ version: true, updatedAt: true })
   .partial()
-
-/** Evaluate the fail-closed runtime policy without I/O, so every branch is testable. */
-export function evaluateMediaRuntime(config, {
-  rootless,
-  serviceIsRemote,
-  uid,
-  containerHost = '',
-  containerConnection = '',
-}) {
-  const details = { rootless, serviceIsRemote }
-  if (rootless === true) {
-    return { mode: 'rootless', allowed: true, rootfulEligible: false, reason: null, ...details }
-  }
-  if (rootless !== false) {
-    return {
-      mode: 'unknown',
-      allowed: false,
-      rootfulEligible: false,
-      reason: 'Podman sagt nicht, ob es rootless läuft (podman info schlug fehl). Ohne diese Gewissheit startet die Media API nicht.',
-      ...details,
-    }
-  }
-  if (serviceIsRemote !== false) {
-    return {
-      mode: 'rootful',
-      allowed: false,
-      rootfulEligible: false,
-      reason: serviceIsRemote === true
-        ? 'Podman meldet einen entfernten Dienst. Rootful-Ausführung ist nur mit einem nachweislich lokalen Podman-Dienst erlaubt.'
-        : 'Podman sagt nicht, ob der ausgewählte Dienst lokal ist. Rootful-Ausführung braucht ServiceIsRemote=false; ältere Podman-Versionen ohne diese Angabe bleiben nur für rootful gesperrt.',
-      ...details,
-    }
-  }
-  const rootfulEligible = uid === 0 && !containerHost && !containerConnection
-  if (!config.allowRootfulPodman) {
-    return {
-      mode: 'rootful',
-      allowed: false,
-      rootfulEligible,
-      reason: 'Podman läuft rootful. Das ist standardmäßig gesperrt; aktiviere die ausdrückliche Rootful-Freigabe nur auf einer dafür vorgesehenen Appliance.',
-      ...details,
-    }
-  }
-  if (uid !== 0) {
-    return {
-      mode: 'rootful',
-      allowed: false,
-      rootfulEligible: false,
-      reason: 'Rootful Podman ist freigegeben, aber das Webinterface läuft nicht als root. Root-eigene Mounts lassen sich so nicht sicher verwalten.',
-      ...details,
-    }
-  }
-  if (containerHost || containerConnection) {
-    return {
-      mode: 'rootful',
-      allowed: false,
-      rootfulEligible: false,
-      reason: 'Rootful Podman über CONTAINER_HOST oder CONTAINER_CONNECTION ist gesperrt: lokale, root-eigene Mounts lassen sich bei einem entfernten oder mehrdeutigen Daemon nicht beweisen.',
-      ...details,
-    }
-  }
-  return { mode: 'rootful', allowed: true, rootfulEligible: true, reason: null, ...details }
-}
-
-/** Ask the selected Podman daemon and describe whether Media API execution is allowed. */
-export async function mediaPodmanRuntime(config) {
-  const runtime = await podmanRuntimeInfo()
-  // The integration shim cannot chown its temporary mount tree to root; only
-  // SHX_MOCK may override the UID used by this policy check.
-  const mockUid = process.env.SHX_MOCK === '1' ? Number(process.env.SHX_MOCK_UID) : Number.NaN
-  const uid = Number.isInteger(mockUid) ? mockUid : typeof process.getuid === 'function' ? process.getuid() : null
-  return evaluateMediaRuntime(config, {
-    ...runtime,
-    uid,
-    containerHost: process.env.CONTAINER_HOST ?? '',
-    containerConnection: process.env.CONTAINER_CONNECTION ?? '',
-  })
-}
-
-/** Central guard used immediately before every Media API execution path. */
-export async function assertMediaPodmanRuntime(config) {
-  const runtime = await mediaPodmanRuntime(config)
-  if (!runtime.allowed) throw failedDependency(runtime.reason)
-  return runtime.mode
-}
 
 const inside = (child, parent) =>
   child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep)
@@ -182,14 +96,20 @@ function assertNoForeignLinks(label, abs) {
 
 /**
  * Directories no container of ours may mount, each in its written and its
- * resolved form. The data mount is writable, as the mapped user in rootless
- * mode and as container root in rootful mode: `$HOME` would hand it the WebUI's JWT
- * secret, `~/.ssh` an authorized_keys, /run/user the podman socket itself.
+ * resolved form. The data mount is writable — by container root, which on this
+ * rootful appliance is root on the host: `$HOME` would hand it the WebUI's JWT
+ * secret, `~/.ssh` an authorized_keys, /run/podman the podman socket itself.
+ *
+ * /root is always off limits, except for the two exact default trees of the
+ * root-only appliance — and only there, where the service's own home is /root.
+ * Any other service keeps root's home off limits altogether, and even on the
+ * appliance no other subtree of /root becomes mountable.
  */
 function protectedDirs() {
   const home = os.homedir()
   const both = (list) => [...new Set(list.flatMap((d) => [path.resolve(d), canonicalOrSelf(d)]))]
   return {
+    home,
     containing: both([home, configDir, stateDir]),
     within: both([
       configDir,
@@ -215,6 +135,17 @@ function protectedDirs() {
       '/var/lib/containers',
     ]),
   }
+}
+
+const ROOT_MEDIA_TREES = ['/root/comfy-models', '/root/media-api-data']
+
+/**
+ * Only the appliance defaults (and their descendants) may live under /root,
+ * and only for a service whose home is /root itself.
+ */
+function allowedRootMediaTree(candidate, home) {
+  if (canonicalOrSelf(home) !== canonicalOrSelf('/root')) return false
+  return ROOT_MEDIA_TREES.map(canonicalOrSelf).some((root) => inside(candidate, root))
 }
 
 /**
@@ -243,13 +174,16 @@ export function checkMediaDir(label, dir) {
   } catch {
     throw badRequest(`${label} ${abs} führt über einen Link ins Leere.`)
   }
-  const { containing, within } = protectedDirs()
+  const { home, containing, within } = protectedDirs()
   for (const candidate of new Set([abs, real])) {
     const exposed = containing.find((d) => inside(d, candidate))
     if (exposed) {
       throw badRequest(`${label} ${abs} enthält ${exposed} — der Container bekäme Zugriff darauf. Wähle einen eigenen Unterordner.`)
     }
-    const nested = within.find((d) => inside(candidate, d))
+    const nested = within.find((d) => {
+      if (canonicalOrSelf(d) === canonicalOrSelf('/root') && allowedRootMediaTree(candidate, home)) return false
+      return inside(candidate, d)
+    })
     if (nested) throw badRequest(`${label} ${abs} liegt in ${nested}; das darf kein Container mounten.`)
   }
   return real
@@ -350,6 +284,51 @@ export function checkMediaConfig(ctx, config) {
 }
 
 /**
+ * The stored settings with `patch` applied, checked as a whole and with its
+ * paths in the canonical form they are mounted in — but not stored yet.
+ * Shared by PUT /media/config and the Servers page's start, which stores only
+ * once the container runs.
+ *
+ * @param {object} ctx
+ * @param {object} patch any subset of the settings
+ * @returns {object} a complete mediaConfigSchema object
+ */
+export function resolveMediaConfig(ctx, patch) {
+  const merged = mediaConfigSchema.safeParse({ ...ctx.media.data, ...patch })
+  if (!merged.success) {
+    const issue = merged.error.issues[0]
+    throw badRequest(`Ungültige Eingabe bei ${issue.path.join('.')}: ${issue.message}`)
+  }
+  const config = { ...merged.data, updatedAt: new Date().toISOString() }
+  assertMediaImageAllowed(ctx, config.image)
+  const { modelsDir, dataDir } = checkMediaConfig(ctx, config)
+  // Stored normalized, so the drift check compares like with like.
+  config.dataDir = dataDir
+  if (config.modelsDir) config.modelsDir = modelsDir
+  return config
+}
+
+/** Store settings from resolveMediaConfig, durably, before anyone is told. */
+export async function saveMediaConfig(ctx, config) {
+  const previous = structuredClone(ctx.media.data)
+  try {
+    await ctx.media.update(() => config)
+    await ctx.media.flush()
+    return ctx.media.data
+  } catch (err) {
+    try {
+      await ctx.media.update(() => previous)
+      await ctx.media.flush()
+    } catch (rollbackErr) {
+      throw failedDependency(
+        `Die Media-API-Einstellungen konnten nicht gespeichert und der alte Stand nicht wiederhergestellt werden: ${rollbackErr.message}`,
+      )
+    }
+    throw err
+  }
+}
+
+/**
  * The container spec the current settings produce, with the hash that goes
  * into its labels.
  *
@@ -357,7 +336,7 @@ export function checkMediaConfig(ctx, config) {
  * hash start identical containers, so a running container whose label differs
  * from this is running on outdated settings. Paths are canonical, as mounted.
  */
-export function mediaSpec(ctx, config = ctx.media.data, runtimeMode = 'rootless') {
+export function mediaSpec(ctx, config = ctx.media.data) {
   const files = ctx.mediaSecrets.paths()
   const hfToken = config.allowDownloads && ctx.config.data.hfToken ? files.hfToken : null
   const spec = {
@@ -370,8 +349,6 @@ export function mediaSpec(ctx, config = ctx.media.data, runtimeMode = 'rootless'
     dataDir: canonicalOrSelf(config.dataDir),
     backend: config.backend,
     allowDownloads: config.allowDownloads,
-    allowRootfulPodman: config.allowRootfulPodman,
-    runtimeMode,
     secretFiles: {
       apiKey: files.apiKey,
       sessionSecret: files.sessionSecret,
@@ -380,9 +357,6 @@ export function mediaSpec(ctx, config = ctx.media.data, runtimeMode = 'rootless'
     env: mediaContainerEnv(config, { hfToken: Boolean(hfToken) }),
   }
   const argv = buildMediaRunArgv({ ...spec, labels: {} })
-  spec.specHash = createHash('sha256')
-    .update(JSON.stringify({ argv, allowRootfulPodman: config.allowRootfulPodman, runtimeMode }))
-    .digest('hex')
-    .slice(0, 16)
+  spec.specHash = createHash('sha256').update(JSON.stringify(argv)).digest('hex').slice(0, 16)
   return spec
 }

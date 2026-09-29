@@ -5,13 +5,7 @@ import { log } from '../lib/log.js'
 import { invalidateComfyModelCache } from '../models/comfyscan.js'
 import { MEDIA_FETCH_LABEL, buildMediaFetchArgv, mediaFetchContainer } from '../podman/argv.js'
 import { createVerified, imageId, removeContainer, streamVerifiedContainer } from '../podman/client.js'
-import {
-  assertMediaImageAllowed,
-  assertMediaPodmanRuntime,
-  ensureMediaDir,
-  pinMediaDir,
-  verifyMediaMounts,
-} from './config.js'
+import { assertMediaImageAllowed, ensureMediaDir, pinMediaDir, verifyMediaMounts } from './config.js'
 import { invalidateMediaInventory, mediaInventory } from './models.js'
 import { MediaFetchProgress, rateMeter } from './progress.js'
 
@@ -66,13 +60,13 @@ export async function startMediaFetch(ctx, request) {
 }
 
 async function prepareFetch(ctx, { model, profile, task }) {
-  await assertMediaPodmanRuntime(ctx.media.data)
   assertMediaImageAllowed(ctx, ctx.media.data.image)
+  // Only the curated models are in the inventory, so only they can be fetched.
   const inventory = await mediaInventory(ctx, { force: true })
   const entry = inventory.models.find((m) => m.id === model)
   if (!entry) {
     throw notFound(
-      `Das Image kennt kein Modell '${model}'. Vorhanden: ${inventory.models.map((m) => m.id).join(', ')}.`,
+      `Kein Modell '${model}' zum Laden. Vorhanden: ${inventory.models.map((m) => m.id).join(', ') || 'keins'}.`,
     )
   }
   const chosen = entry.profiles.find((p) => p.id === (profile || entry.default_profile))
@@ -183,7 +177,6 @@ function runMediaFetch(ctx, { job, setProgress, appendLog, setMessage, onCancel,
     }
 
     const begin = async () => {
-      const runtimeMode = await assertMediaPodmanRuntime(ctx.media.data)
       await removeOrphans()
       ctx.mediaSecrets.removeFetchTokens()
       if (signal.aborted) {
@@ -204,7 +197,6 @@ function runMediaFetch(ctx, { job, setProgress, appendLog, setMessage, onCancel,
         name,
         tokenFile,
         disableXet: Boolean(ctx.settings.disableXet),
-        runtimeMode,
       })
       appendLog(
         `media-api-models fetch ${params.model} --profile ${params.profile}${params.task ? ` --task ${params.task}` : ''} → ${modelsDir}`,

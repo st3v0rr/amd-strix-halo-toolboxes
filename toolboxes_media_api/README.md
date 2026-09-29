@@ -14,7 +14,7 @@ umask 077
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$HOME/.config/media-api/api-key"
 ./build.sh                                   # → media-api-local (TheRock ROCm torch, gfx1151)
 podman run -d --name media-api \
-  --userns=keep-id --device /dev/dri --device /dev/kfd --group-add keep-groups \
+  --device /dev/dri --device /dev/kfd --group-add video --group-add render \
   --cap-drop=all --security-opt=no-new-privileges --security-opt=seccomp=unconfined \
   -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \
   -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \
@@ -23,35 +23,29 @@ podman run -d --name media-api \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:media-api
 ```
 
-Run Podman as your ordinary login user (never with `sudo`) and open `http://127.0.0.1:8100/ui/`.
-Without a readable `MEDIA_API_KEY_FILE` or valid `MEDIA_API_KEY` (or with the commented
-`.env.example` placeholder) the container exits with status 2 — it never runs unprotected.
+This is how the appliance runs it: as root, on the host's rootful Podman — the same Podman,
+devices and `video`/`render` groups as its ComfyUI and llama.cpp containers, with no Podman mode
+of its own to choose. Then open `http://127.0.0.1:8100/ui/`. Without a readable
+`MEDIA_API_KEY_FILE` or valid `MEDIA_API_KEY` (or with the commented `.env.example` placeholder)
+the container exits with status 2 — it never runs unprotected.
 
 The ROCm userspace currently needs `seccomp=unconfined` on this platform. That disables syscall
-filtering, so the residual container-escape impact is reduced by using rootless Podman,
-dropping all capabilities, setting `no-new-privileges`, and mounting model weights read-only. No
-untested custom seccomp profile is provided. Keep the host port loopback-only unless a TLS reverse
-proxy is in front of it.
-
-Rootless is the default and recommended mode. The WebUI has a deliberately fail-closed exception
-for dedicated appliances that only have root: `allowRootfulPodman` must be enabled in the Media API
-settings, the WebUI process must have UID 0, and `podman info` must positively report
-`rootless=false` and `serviceIsRemote=false`. Rootful execution omits `--userns=keep-id` and `--group-add keep-groups`, but keeps
-`--cap-drop=all`, `no-new-privileges`, loopback publication, read-only secrets/models, and uses
-`seccomp=unconfined` only for the real ROCm backend. Unknown runtime state remains blocked.
-`CONTAINER_HOST`, `CONTAINER_CONNECTION`, and a remote service selected through `containers.conf`
-are not accepted for rootful mode: the WebUI cannot
-prove that host mount paths refer to this local root-owned filesystem through a remote or ambiguous
-Podman connection. Podman versions without `Host.ServiceIsRemote` remain usable rootless, but cannot
-satisfy the positive locality check for rootful mode. A container escape in rootful mode means root access to the appliance.
+filtering, and under rootful Podman a container escape means root on the appliance — the exposure
+its ComfyUI and llama.cpp containers have as well. This container narrows it where those do not:
+all capabilities dropped, `no-new-privileges`, secrets and model weights mounted read-only, and
+`seccomp=unconfined` only for the real ROCm backend (the mock backend keeps Podman's filter). No
+untested custom seccomp profile is provided. Keep the host port loopback-only unless you mean to
+expose it (below).
 
 ### Remote access
 
-Do **not** publish port 8100 on a LAN or the internet: API keys and login credentials would cross
-plain HTTP. For remote use, keep `-p 127.0.0.1:8100:8100`, terminate HTTPS in a reverse proxy on
-the same host, and set `MEDIA_COOKIE_SECURE=1`. Configure only explicit HTTPS CORS origins if
-cross-origin API access is needed. Prefer `MEDIA_API_KEY_FILE` and `MEDIA_SESSION_SECRET_FILE`
-mounted from mode-0600 files (or Podman secrets) instead of environment values.
+Publishing port 8100 beyond loopback sends API keys and login credentials over plain HTTP. On a
+trusted LAN the web interface can do exactly that (**Im Netzwerk erreichbar** when starting it), and
+its Network page lets 8100 through for one source network only. For anything wider, keep
+`-p 127.0.0.1:8100:8100`, terminate HTTPS in a reverse proxy on the same host, and set
+`MEDIA_COOKIE_SECURE=1`. Configure only explicit HTTPS CORS origins if cross-origin API access is
+needed. Prefer `MEDIA_API_KEY_FILE` and `MEDIA_SESSION_SECRET_FILE` mounted from mode-0600 files
+(or Podman secrets) instead of environment values.
 
 Model files use the ComfyUI tree layout, so an existing `~/comfy-models` can be mounted as-is
 (read-only works) and its FP8 files are reused. Missing files are reported, never fetched behind
@@ -72,15 +66,19 @@ free. The CLI also runs a guard that ends the process (status 3, partials kept) 
 drops below the reserve; only with that guard does it accept entries whose size the Hub does not
 report — the service's own download refuses them. A token can come from `HF_TOKEN` or, better, a
 read-only file named by `HF_TOKEN_PATH`. The web interface (`webui/`) manages the
-service this way: it runs the hardened command below, keeps key and session secret as
-read-only files, and fetches in a separate one-shot container while the service keeps its
-read-only mount (new files appear at their paths only when complete, so it needs no restart);
-the token reaches that container only as a per-job read-only file.
+service this way. **Media API starten** on its Servers page asks for a container name, a host
+port, whether to publish beyond loopback and — optionally — a key of one's own, then runs the
+command above; key and session secret are 0600 files mounted read-only and never shown. The page
+**MediaAPI-Modelle** lists the curated models (Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3)
+with their profiles and fetches what a profile lacks only when asked, in a separate one-shot
+container while the service keeps its read-only mount (new files appear at their paths only when
+complete, so it needs no restart); the token reaches that container only as a per-job read-only
+file.
 
-Keep the service's model mount read-only. To fetch pinned model revisions, stop it and use a
-separate rootless one-shot container with the model mount writable, then restart the service with
-`:ro,z`; do not make the network service's model mount writable. `MEDIA_ALLOW_DOWNLOADS=1` is
-therefore not recommended for the hardened runtime.
+Keep the service's model mount read-only. To fetch pinned model revisions by hand, use a
+separate one-shot container with the model mount writable while the service keeps `:ro,z`; do
+not make the network service's model mount writable. `MEDIA_ALLOW_DOWNLOADS=1` is therefore not
+recommended for the hardened runtime.
 
 `MEDIA_ALLOW_DOWNLOADS=1` lets a job fetch what it lacks on first use instead. Otherwise the
 process sets `HF_HUB_OFFLINE=1` and all loads use `local_files_only`.
@@ -187,10 +185,11 @@ swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for r
   pattern-checked; every path is confined to its directory.
 - Results are served only by authenticated routes; no static output directory. No CORS unless
   `MEDIA_CORS_ORIGINS` lists explicit origins (credentials never allowed). Strict CSP.
-- Prefer rootless Podman with `--userns=keep-id`; always use `--cap-drop=all` and
-  `--security-opt=no-new-privileges`; only `/data` is writable and models are mounted read-only.
-  ROCm currently requires `seccomp=unconfined`; this is a documented residual risk, not a reason
-  to enable the WebUI's explicit rootful appliance exception casually.
+- The appliance runs the container on rootful Podman, like its ComfyUI and llama.cpp containers;
+  it always gets `--cap-drop=all` and `--security-opt=no-new-privileges`, only `/data` is writable
+  and models are mounted read-only. ROCm currently requires `seccomp=unconfined` — a documented
+  residual risk that, rootful, would make an escape root on the host; hence port 8100 stays on
+  loopback or goes to known sources only.
 
 ## Configuration
 

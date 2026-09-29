@@ -1,7 +1,8 @@
 import express from 'express'
 import { z } from 'zod'
 
-import { COMFY_PORT, PORT_MAX, PORT_MIN, ROLE, RPC_PORT } from '../../../shared/constants.js'
+import { PORT_MAX, PORT_MIN, ROLE, STANDARD_SERVICE_PORTS } from '../../../shared/constants.js'
+import { isLoopbackAddress } from '../../../shared/media.js'
 import { conflict } from '../lib/errors.js'
 import { q, validate } from '../lib/validate.js'
 import { listServers } from '../podman/servers.js'
@@ -38,10 +39,11 @@ const unmanaged = (port, protocol) =>
  * Which ports this machine needs open, derived rather than configured.
  *
  * The app already knows all of them: its own port from the settings, one per
- * llama-server, one per RPC worker. Deriving the list means a server started
- * five minutes ago shows up here without anybody maintaining a second list —
- * and a port that is open for a server that no longer exists shows up as
- * exactly that.
+ * container it manages, and the standard ports of its services
+ * (STANDARD_SERVICE_PORTS). Deriving the list means a server started five
+ * minutes ago shows up here without anybody maintaining a second list — and a
+ * port that is open for a server that no longer exists shows up as exactly
+ * that.
  */
 const DETAIL = {
   rpc:
@@ -55,10 +57,12 @@ const DETAIL = {
   server: 'llama-server, geschützt durch seinen API-Key.',
   media:
     'Media API, geschützt durch ihren API-Schlüssel — spricht aber nur HTTP: Schlüssel und ' +
-    'Anmeldung gehen im Klartext über das Netz. Von außen besser über einen TLS-Reverse-Proxy.',
+    'Anmeldung gehen im Klartext über das Netz. Am besten nur für eine Quelle freigeben ' +
+    'oder einen TLS-Reverse-Proxy davorsetzen.',
   mediaLoopback:
-    'Media API, nur an 127.0.0.1 gebunden: eine Freigabe in der Firewall bewirkt nichts. ' +
-    'Zugriff von außen über einen TLS-Reverse-Proxy auf dieser Box.',
+    'Media API, nur an 127.0.0.1 gebunden: eine Freigabe in der Firewall bewirkt nichts, ' +
+    'solange sie nicht mit „Im Netzwerk erreichbar“ neu angelegt ist. Alternativ ein ' +
+    'TLS-Reverse-Proxy auf dieser Box.',
 }
 
 /** Ports without authentication. The UI warns harder for these. */
@@ -73,11 +77,12 @@ export function describeRole(server) {
     return { purpose: `ComfyUI '${server.name}'`, detail: DETAIL.comfy, kind: 'comfy' }
   }
   if (server.role === ROLE.media) {
-    const loopback = /^127\./.test(server.bindAddress ?? '')
+    const loopback = isLoopbackAddress(server.bindAddress)
     return {
       purpose: `Media API '${server.name}'`,
       detail: loopback ? DETAIL.mediaLoopback : DETAIL.media,
       kind: 'media',
+      loopbackOnly: loopback,
     }
   }
   return { purpose: `Server '${server.name}'`, detail: DETAIL.server, kind: 'server' }
@@ -118,13 +123,11 @@ async function requiredPorts(ctx, firewall) {
     })
   }
 
-  // These two belong on the list even with nothing running: their rules are what
-  // a machine is prepared with, usually before the container is ever started,
-  // and without the entries an existing rule would look like a stray.
-  for (const fallback of [
-    { port: RPC_PORT, purpose: 'RPC-Worker (Standardport)', kind: 'rpc' },
-    { port: COMFY_PORT, purpose: 'ComfyUI (Standardport)', kind: 'comfy' },
-  ]) {
+  // The services' standard ports belong on the list even with nothing running:
+  // their rules are what a machine is prepared with, usually before the
+  // container is ever started, and without the entries an existing rule would
+  // look like a stray.
+  for (const fallback of STANDARD_SERVICE_PORTS) {
     if (ports.some((p) => p.port === fallback.port)) continue
     ports.push({
       port: fallback.port,
@@ -191,7 +194,13 @@ export function networkRoutes(ctx) {
 
   router.post('/firewall/ports', validate({ body: portBody }), async (req, res, next) => {
     try {
-      res.json(await openPort(req.body.port, req.body.protocol))
+      const { port, protocol } = req.body
+      const firewall = await firewallStatus()
+      const ports = await requiredPorts(ctx, firewall)
+      if (!ports.some((p) => p.port === port && p.protocol === protocol)) {
+        throw conflict(unmanaged(port, protocol))
+      }
+      res.json(await openPort(port, protocol))
     } catch (err) {
       next(err)
     }

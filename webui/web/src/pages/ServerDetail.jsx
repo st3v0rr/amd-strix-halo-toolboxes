@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { mediaPlaygroundLink } from '../../../shared/media.js'
 import { del, get, post } from '../api/client.js'
 import { PageHead } from '../components/Layout.jsx'
 import { LogView } from '../components/LogView.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatBytes, formatDate } from '../components/format.js'
+import { MediaAccessCard } from './MediaAccessCard.jsx'
 import { ProfileDialog } from './ProfileDialog.jsx'
 
 export function ServerDetail() {
@@ -26,6 +28,14 @@ export function ServerDetail() {
   const isRpc = server.data?.server?.role === 'rpc'
   const isComfy = server.data?.server?.role === 'comfy'
   const isMedia = server.data?.server?.role === 'media'
+
+  // The media API's key, drift and service view; fingerprints only, never values.
+  const media = useQuery({
+    queryKey: ['media'],
+    queryFn: () => get('/media'),
+    enabled: isMedia,
+    refetchInterval: isMedia ? 10000 : false,
+  })
 
   // Filled from the container, then handed to the normal profile dialog — so
   // the user still names it and decides about autostart before anything is
@@ -103,6 +113,19 @@ export function ServerDetail() {
   }
 
   const s = server.data?.server
+  // From the container's own labels; a reverse proxy only counts for the
+  // container the stored settings describe.
+  const playground =
+    isMedia && s?.running
+      ? mediaPlaygroundLink(
+          {
+            publicUrl: media.data?.config?.name === name ? media.data.config.publicUrl : '',
+            bindAddress: s.bindAddress,
+            port: s.hostPort,
+          },
+          window.location.hostname,
+        )
+      : null
 
   return (
     <>
@@ -143,9 +166,14 @@ export function ServerDetail() {
           </a>
         ) : null}
         {isMedia ? (
-          <Link className="btn btn-primary" to="/media">
-            Einstellungen und Modelle
+          <Link className="btn" to="/media-models">
+            MediaAPI-Modelle
           </Link>
+        ) : null}
+        {playground?.url ? (
+          <a className="btn btn-primary" href={playground.url} target="_blank" rel="noopener noreferrer">
+            Playground öffnen
+          </a>
         ) : null}
         <button className="btn btn-danger" type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
           Entfernen
@@ -300,6 +328,22 @@ export function ServerDetail() {
                 </dd>
                 <dt>Status</dt>
                 <dd>{health.data?.status ?? health.data?.reason ?? 'wird geprüft …'}</dd>
+                {isMedia && playground?.note ? (
+                  <>
+                    <dt>Playground</dt>
+                    <dd className="small faint">{playground.note}</dd>
+                  </>
+                ) : null}
+                {isMedia && media.data?.container?.name === name && media.data.service ? (
+                  <>
+                    <dt>Geladen</dt>
+                    <dd className="small">
+                      {media.data.service.resident
+                        ? `${media.data.service.resident.model} / ${media.data.service.resident.profile}`
+                        : (media.data.service.error ?? 'nichts — das erste Modell lädt mit dem ersten Auftrag')}
+                    </dd>
+                  </>
+                ) : null}
                 {isRpc ? (
                   <>
                     <dt>Hinweis</dt>
@@ -350,6 +394,8 @@ export function ServerDetail() {
               </p>
             </section>
           ) : null}
+
+          {isMedia && media.data ? <MediaAccessCard name={name} status={media.data} /> : null}
 
           {s.command ? (
             <section className="card" style={{ gridColumn: '1 / -1' }}>

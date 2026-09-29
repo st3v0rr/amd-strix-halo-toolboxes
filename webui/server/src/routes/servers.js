@@ -10,14 +10,18 @@ import {
   RPC_PORT,
   SPEC_TYPES,
 } from '../../../shared/constants.js'
+import { mediaStartSchema } from '../config/schema.js'
 import { badRequest, notFound } from '../lib/errors.js'
 import { lastEventId, openSse } from '../lib/sse.js'
 import { q, validate } from '../lib/validate.js'
+import { resolveMediaConfig, saveMediaConfig } from '../media/config.js'
+import { invalidateMediaInventory } from '../media/models.js'
 import { clearRpcCache, rpcCacheInfo } from '../podman/cache.js'
 import { logSnapshot } from '../podman/client.js'
 import { attachLogClient } from '../podman/logstream.js'
 import {
   createComfyServer,
+  createMediaServer,
   createRpcWorker,
   createServer,
   deleteServer,
@@ -85,6 +89,18 @@ const createBody = z.union([
   specSchema.extend({ replace: z.boolean().optional() }),
 ])
 
+/**
+ * The media API takes the fewest of all: a name, a port, the address to
+ * publish on and whether it comes back after a reboot. The image, its
+ * directories, secrets and limits keep their stored settings. Validated on its
+ * own rather than in the union, so a bad field is named instead of drowning in
+ * "no variant matched".
+ */
+const mediaCreateBody = mediaStartSchema.extend({ replace: z.boolean().optional() })
+
+const validateCreate = (req, res, next) =>
+  validate({ body: req.body?.role === ROLE.media ? mediaCreateBody : createBody })(req, res, next)
+
 const nameParams = z.object({ name: z.string().regex(NAME_RE) })
 
 export function serverRoutes(ctx) {
@@ -113,7 +129,7 @@ export function serverRoutes(ctx) {
           throw badRequest('Ein RPC-Worker hat keine Profil-Einstellungen.')
         }
         if (server.role === ROLE.media) {
-          throw badRequest('Die Media API wird auf ihrer eigenen Seite eingestellt, nicht über Profile.')
+          throw badRequest('Die Media API wird über „Media API starten“ angelegt, nicht über Profile.')
         }
         res.json({ profile: profileFromContainer(server) })
       } catch (err) {
@@ -122,7 +138,7 @@ export function serverRoutes(ctx) {
     },
   )
 
-  router.post('/', validate({ body: createBody }), async (req, res, next) => {
+  router.post('/', validateCreate, async (req, res, next) => {
     try {
       const { replace = false, ...rest } = req.body
       let spec = rest
@@ -137,6 +153,23 @@ export function serverRoutes(ctx) {
       if (rest.role === ROLE.comfy) {
         const logs = []
         const result = await createComfyServer(ctx, spec, { replace, onLog: (l) => logs.push(l) })
+        res.status(201).json({ ...result, logs })
+        return
+      }
+
+      // Checked as a whole with the stored settings, and stored only once the
+      // container runs — a refused start leaves them as they were.
+      if (rest.role === ROLE.media) {
+        const { role: _role, ...choices } = rest
+        const config = resolveMediaConfig(ctx, choices)
+        const logs = []
+        const result = await createMediaServer(ctx, {
+          config,
+          replace,
+          persist: () => saveMediaConfig(ctx, config),
+          onLog: (l) => logs.push(l),
+        })
+        invalidateMediaInventory()
         res.status(201).json({ ...result, logs })
         return
       }
