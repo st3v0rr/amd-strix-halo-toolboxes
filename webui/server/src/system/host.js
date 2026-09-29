@@ -95,6 +95,7 @@ export async function readDisk(dir) {
   }
 }
 
+/** Seconds since the host last booted; /proc/uptime is not namespaced. */
 export async function readUptime() {
   try {
     const text = await fsp.readFile('/proc/uptime', 'utf8')

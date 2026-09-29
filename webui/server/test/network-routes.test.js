@@ -110,7 +110,7 @@ test('the media API port is listed and managed with nothing running, beside the 
   assert.equal(media.purpose, 'Media API (Standardport)')
   assert.equal(media.running, false)
   assert.equal(media.open, false)
-  assert.match(media.detail, /Klartext/)
+  assert.match(media.detail, /API-Schlüssel/)
   for (const port of [8420, 8000, 50052]) assert.ok(body.ports.some((p) => p.port === port), String(port))
   const ports = body.ports.map((p) => p.port)
   assert.deepEqual(ports, [...ports].sort((a, b) => a - b), 'ascending, as the page reads them')
@@ -195,7 +195,7 @@ test('a media container on another port is managed there too, and says when a ru
   assert.equal(exposed.status, 201, JSON.stringify(exposed.body))
   entry = await portEntry(port)
   assert.equal(entry.loopbackOnly, false)
-  assert.match(entry.detail, /Klartext/)
+  assert.match(entry.detail, /API-Schlüssel/)
 
   const restricted = await api('POST', '/network/firewall/rules', { body: { port, source: '192.168.1.0/24' } })
   assert.equal(restricted.status, 200, JSON.stringify(restricted.body))

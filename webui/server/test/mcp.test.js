@@ -318,10 +318,12 @@ test('configure_media_api merges limits, create_media_api starts like the Server
   assert.deepEqual(calls.at(-1).body, { logLevel: 'debug' }, 'no extra GET without limits')
   await tool('create_media_api').run({}, api)
   assert.deepEqual(calls.at(-1), { method: 'POST', path: '/servers', body: { role: 'media', replace: false } })
-  await tool('create_media_api').run({ port: 8101, bindAddress: '0.0.0.0', autostart: true, replace: true }, api)
-  assert.deepEqual(calls.at(-1).body, { role: 'media', replace: false, port: 8101, bindAddress: '0.0.0.0', autostart: true })
+  await tool('create_media_api').run({ port: 8101, bindAddress: '0.0.0.0', replace: true }, api)
+  assert.deepEqual(calls.at(-1).body, { role: 'media', replace: false, port: 8101, bindAddress: '0.0.0.0' })
   const schema = tool('create_media_api').inputSchema
-  assert.deepEqual(Object.keys(schema.properties).sort(), ['autostart', 'bindAddress', 'name', 'port'])
+  // Autostart is configure_media_api's, like a profile's — not a start choice.
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['bindAddress', 'name', 'port'])
+  assert.ok('autostart' in tool('configure_media_api').inputSchema.properties)
   assert.equal(schema.additionalProperties, false, 'no way to slip replace in')
 })
 

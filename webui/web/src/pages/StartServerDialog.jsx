@@ -5,6 +5,7 @@ import { get, post } from '../api/client.js'
 import { normalizeRpcPeers } from '../../../shared/rpc.js'
 import { Modal } from '../components/Modal.jsx'
 import { ModelPicker } from '../components/ModelPicker.jsx'
+import { StartNotice, useStartNotice } from '../components/StartNotice.jsx'
 import { ProjectorPicker } from '../components/ProjectorPicker.jsx'
 import { SpeculativePicker } from '../components/SpeculativePicker.jsx'
 import { ContextPicker, VramEstimate } from '../components/VramEstimate.jsx'
@@ -103,6 +104,7 @@ export function StartServerDialog({ onClose, initial }) {
   }
 
   const allowCustom = settings.data?.settings?.allowCustomImages
+  const notice = useStartNotice({ role: 'server', port: form.port, name: form.name })
 
   return (
     <Modal
@@ -118,7 +120,7 @@ export function StartServerDialog({ onClose, initial }) {
             type="submit"
             form="start-server-form"
             className="btn btn-primary"
-            disabled={start.isPending || !form.modelPath || !form.name}
+            disabled={start.isPending || !form.modelPath || !form.name || Boolean(notice.portTakenBy)}
           >
             {start.isPending ? 'Startet …' : 'Starten'}
           </button>
@@ -126,22 +128,14 @@ export function StartServerDialog({ onClose, initial }) {
       }
     >
       <form id="start-server-form" className="stack" onSubmit={submit}>
-        {conflictName ? (
-          <div className="alert alert-warn small stack-sm">
-            <span>
-              Ein Container namens <code>{conflictName}</code> existiert bereits.
-            </span>
-            <label className="row">
-              <input
-                type="checkbox"
-                style={{ width: 'auto' }}
-                checked={replace}
-                onChange={(e) => setReplace(e.target.checked)}
-              />
-              Vorhandenen Container stoppen, entfernen und neu anlegen
-            </label>
-          </div>
-        ) : null}
+        <StartNotice
+          notice={notice}
+          port={form.port}
+          conflictName={conflictName}
+          replace={replace}
+          onReplace={setReplace}
+          onClose={onClose}
+        />
 
         <div className="field">
           <label>Modell</label>

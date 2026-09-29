@@ -5,16 +5,16 @@ import { Link } from 'react-router-dom'
 import { MEDIA_PORT } from '../../../shared/constants.js'
 import { get, post } from '../api/client.js'
 import { Modal } from '../components/Modal.jsx'
+import { StartNotice, useStartNotice } from '../components/StartNotice.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { mediaStartBody, mediaStartErrors, mediaStartForm } from './mediaStart.js'
 
 /**
  * Start the media API.
  *
- * As small as the ComfyUI dialog: a name, a port, whether the port is reachable
- * from the network, and whether it comes back after a reboot. The API key is
- * not asked here — it is generated on the first successful start and managed on
- * the detail page. Image, directories, limits and the service's switches keep
+ * As small as the ComfyUI dialog: a name, a port and whether the port is
+ * reachable from the network. The API key is not asked here — it is generated
+ * on the first successful start and managed on the detail page, like autostart. Image, directories, limits and the service's switches keep
  * their stored settings, whose defaults fit this box; the models are fetched
  * under "MediaAPI-Modelle".
  *
@@ -55,6 +55,7 @@ export function StartMediaApiDialog({ onClose }) {
   // before the start is refused rather than after.
   const existing =
     conflictName ?? s?.container?.name ?? null
+  const notice = useStartNotice({ role: 'media', port: form?.port, name: form?.name })
 
   const set = (key) => (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value
@@ -88,7 +89,14 @@ export function StartMediaApiDialog({ onClose }) {
             type="submit"
             form="start-media-form"
             className="btn btn-primary"
-            disabled={start.isPending || !form || invalid || imageMissing || Boolean(existing)}
+            disabled={
+              start.isPending ||
+              !form ||
+              invalid ||
+              imageMissing ||
+              Boolean(existing) ||
+              Boolean(notice.portTakenBy)
+            }
           >
             {start.isPending ? 'Startet …' : 'Starten'}
           </button>
@@ -101,20 +109,7 @@ export function StartMediaApiDialog({ onClose }) {
         <div className="empty small">Wird geladen …</div>
       ) : (
         <form id="start-media-form" className="stack" onSubmit={submit}>
-          {existing ? (
-            <div className="alert alert-warn small stack-sm">
-              <span>
-                Ein Container namens <code>{existing}</code> existiert bereits.
-              </span>
-              <span>
-                Aus Sicherheitsgründen wird die Media API nicht direkt ersetzt. Öffne den{' '}
-                <Link to={`/servers/${encodeURIComponent(existing)}`} onClick={onClose}>
-                  vorhandenen Container
-                </Link>
-                , entferne ihn ausdrücklich und starte danach neu.
-              </span>
-            </div>
-          ) : null}
+          <StartNotice notice={notice} port={form.port} conflictName={existing} onClose={onClose} />
 
           {imageMissing ? (
             <div className="alert alert-warn small">
@@ -150,41 +145,19 @@ export function StartMediaApiDialog({ onClose }) {
               />
               <span>Im Netzwerk erreichbar</span>
             </label>
-            {form.exposed ? (
-              <div className="alert alert-warn small">
-                Der Dienst spricht nur HTTP: Schlüssel und Anmeldung gehen im Klartext über das
-                Netz. Unter{' '}
-                <Link to="/network" onClick={onClose}>
-                  Netzwerk
-                </Link>{' '}
-                den Port am besten nur für eine Quelle freigeben — oder einen TLS-Reverse-Proxy
-                davorsetzen.
-              </div>
-            ) : (
-              <span className="hint">
-                Aus: nur auf dieser Box (127.0.0.1) — von anderswo per SSH-Tunnel oder
-                TLS-Reverse-Proxy.
-              </span>
-            )}
+            <span className="hint">
+              {form.exposed
+                ? 'An: auf allen Schnittstellen der Box.'
+                : 'Aus: nur auf dieser Box (127.0.0.1).'}
+            </span>
           </div>
 
           <div className="alert alert-info small">
             {s.secrets.apiKey.configured
               ? 'Der gespeicherte API-Schlüssel bleibt unverändert.'
               : 'Beim erfolgreichen ersten Start wird ein zufälliger API-Schlüssel erzeugt.'}{' '}
-            Ändern lässt er sich anschließend auf der Container-Detailseite.
+            Ändern lässt er sich anschließend auf der Container-Detailseite, ebenso der Autostart.
           </div>
-
-          <label className="row" htmlFor="m-autostart">
-            <input
-              id="m-autostart"
-              type="checkbox"
-              style={{ width: 'auto' }}
-              checked={form.autostart}
-              onChange={set('autostart')}
-            />
-            <span>Beim Booten automatisch starten</span>
-          </label>
 
           <div className="alert alert-info small">
             <div>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, post } from '../api/client.js'
 import { COMFY_PORT, COMFY_TAGS, IMAGE_REPO } from '../../../shared/constants.js'
 import { Modal } from '../components/Modal.jsx'
+import { StartNotice, useStartNotice } from '../components/StartNotice.jsx'
 import { useToast } from '../components/Toast.jsx'
 
 /**
@@ -57,6 +58,7 @@ export function StartComfyDialog({ onClose }) {
 
   const s = settings.data?.settings
   const allowCustom = s?.allowCustomImages
+  const notice = useStartNotice({ role: 'comfy', port: form.port, name: form.name })
 
   return (
     <Modal
@@ -71,7 +73,7 @@ export function StartComfyDialog({ onClose }) {
             type="submit"
             form="start-comfy-form"
             className="btn btn-primary"
-            disabled={start.isPending || !form.name}
+            disabled={start.isPending || !form.name || Boolean(notice.portTakenBy)}
           >
             {start.isPending ? 'Startet …' : 'Starten'}
           </button>
@@ -79,22 +81,14 @@ export function StartComfyDialog({ onClose }) {
       }
     >
       <form id="start-comfy-form" className="stack" onSubmit={submit}>
-        {conflictName ? (
-          <div className="alert alert-warn small stack-sm">
-            <span>
-              Ein Container namens <code>{conflictName}</code> existiert bereits.
-            </span>
-            <label className="row">
-              <input
-                type="checkbox"
-                style={{ width: 'auto' }}
-                checked={replace}
-                onChange={(e) => setReplace(e.target.checked)}
-              />
-              Vorhandenen Container stoppen, entfernen und neu anlegen
-            </label>
-          </div>
-        ) : null}
+        <StartNotice
+          notice={notice}
+          port={form.port}
+          conflictName={conflictName}
+          replace={replace}
+          onReplace={setReplace}
+          onClose={onClose}
+        />
 
         <div className="form-grid">
           <div className="field">

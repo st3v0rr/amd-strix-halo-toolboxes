@@ -14,7 +14,6 @@ export function mediaStartForm(config) {
     name: config.name,
     port: String(config.port),
     exposed: !isLoopbackAddress(config.bindAddress),
-    autostart: Boolean(config.autostart),
   }
 }
 
@@ -38,6 +37,7 @@ export function mediaStartErrors(form) {
 /**
  * The POST /servers body. API-key changes are deliberately not part of start:
  * a refused container operation must never rotate persisted credentials.
+ * Neither is autostart — like a profile's, it is set on the detail page.
  *
  * "Im Netzwerk erreichbar" means every interface — unless the stored settings
  * already name one specific address (set through the API), which then stays.
@@ -50,7 +50,6 @@ export function mediaStartBody(form, config) {
     name: form.name.trim(),
     port: Number(form.port),
     bindAddress,
-    autostart: Boolean(form.autostart),
     replace: false,
   }
 }

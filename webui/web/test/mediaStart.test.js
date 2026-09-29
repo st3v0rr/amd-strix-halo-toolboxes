@@ -6,33 +6,33 @@ import { mediaStartBody, mediaStartErrors, mediaStartForm } from '../src/pages/m
 
 const stored = (patch = {}) => mediaConfigSchema.parse({ dataDir: '/srv/media-data', ...patch })
 
-test('the dialog opens on the stored settings: name, port, loopback and no autostart', () => {
+test('the dialog opens on the stored settings: name, port and loopback', () => {
   const form = mediaStartForm(stored())
-  assert.deepEqual(form, { name: 'media-api', port: '8100', exposed: false, autostart: false })
+  assert.deepEqual(form, { name: 'media-api', port: '8100', exposed: false })
   assert.deepEqual(mediaStartErrors(form), {})
 })
 
 test('a service stored as reachable from the network opens that way', () => {
   const form = mediaStartForm(stored({ bindAddress: '0.0.0.0', autostart: true, port: 8101, name: 'bilder' }))
-  assert.deepEqual(form, { name: 'bilder', port: '8101', exposed: true, autostart: true })
+  assert.deepEqual(form, { name: 'bilder', port: '8101', exposed: true })
 })
 
-test('the start body carries only the few choices and can never request replacement or a key change', () => {
-  const form = mediaStartForm(stored())
-  const body = mediaStartBody(form, stored())
+test('the start body carries only the few choices and can never request replacement, a key change or autostart', () => {
+  const form = mediaStartForm(stored({ autostart: true }))
+  const body = mediaStartBody(form, stored({ autostart: true }))
   assert.deepEqual(body, {
     role: 'media',
     name: 'media-api',
     port: 8100,
     bindAddress: '127.0.0.1',
-    autostart: false,
     replace: false,
   })
   assert.equal('apiKey' in form || 'apiKey' in body, false)
   // …and it is exactly what the server's schema for this start takes.
   const { replace: _replace, ...choices } = body
   assert.deepEqual(mediaStartSchema.parse(body), choices)
-
+  // Autostart is set on its own, like a profile's; a start cannot change it.
+  assert.equal('autostart' in mediaStartSchema.parse({ ...body, autostart: true }), false)
 })
 
 test('"Im Netzwerk erreichbar" publishes on every interface, or keeps an address set through the API', () => {
@@ -44,8 +44,7 @@ test('"Im Netzwerk erreichbar" publishes on every interface, or keeps an address
 })
 
 test('the form says what is wrong before anything is sent', () => {
-  const errors = mediaStartErrors({ name: 'bad name', port: '80', exposed: false, autostart: false })
+  const errors = mediaStartErrors({ name: 'bad name', port: '80', exposed: false })
   assert.deepEqual(Object.keys(errors).sort(), ['name', 'port'])
   assert.match(mediaStartErrors({ ...mediaStartForm(stored()), port: 'abc' }).port, /1024/)
-
 })

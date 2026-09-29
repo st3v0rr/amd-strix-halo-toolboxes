@@ -55,14 +55,11 @@ const DETAIL = {
     'und damit Dateien auf dieser Maschine lesen und schreiben. Nur in einem ' +
     'vertrauenswürdigen Netz öffnen.',
   server: 'llama-server, geschützt durch seinen API-Key.',
-  media:
-    'Media API, geschützt durch ihren API-Schlüssel — spricht aber nur HTTP: Schlüssel und ' +
-    'Anmeldung gehen im Klartext über das Netz. Am besten nur für eine Quelle freigeben ' +
-    'oder einen TLS-Reverse-Proxy davorsetzen.',
+  media: 'Media API, geschützt durch ihren API-Schlüssel.',
   mediaLoopback:
     'Media API, nur an 127.0.0.1 gebunden: eine Freigabe in der Firewall bewirkt nichts, ' +
     'solange sie nicht mit „Im Netzwerk erreichbar“ neu angelegt ist. Alternativ ein ' +
-    'TLS-Reverse-Proxy auf dieser Box.',
+    'Reverse-Proxy auf dieser Box.',
 }
 
 /** Ports without authentication. The UI warns harder for these. */

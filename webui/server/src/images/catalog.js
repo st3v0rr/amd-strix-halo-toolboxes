@@ -25,14 +25,15 @@ const FALLBACK_TAGS = [
   { tag: 'media-api', kind: 'media' },
 ]
 
+/** What each image does, in one style: stack and base, then its job. */
 const DESCRIPTIONS = {
-  'vulkan-radv': 'Vulkan mit Mesa RADV. Stabilste Variante, für die meisten Modelle empfohlen.',
-  'rocm-10.0': 'ROCm 10.0 (Fedora 44). Aktuellster stabiler ROCm-Zweig.',
+  'vulkan-radv': 'llama-server mit Vulkan (Mesa RADV) für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
+  'rocm-10.0': 'llama-server mit ROCm 10.0 für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
   'rocm-10.0-strix-llama':
-    'Experimentell: strix-llama.cpp auf eigener ROCm-Runtime (retained PM4). Laut Upstream der schnellste Stack für Qwen3.8-Flash-Next. Nur manuell gebaut.',
+    'strix-llama.cpp mit eigener ROCm-Runtime für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API, experimentell.',
   comfyui: 'ComfyUI mit ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung.',
   'media-api':
-    'Media API: Qwen-Image, Qwen-Image-Edit und MiniMax-H3 hinter einer API mit Schlüssel und Playground (diffusers, ROCm-Torch für gfx1151). Nur manuell gebaut.',
+    'Media API mit diffusers und ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung per API.',
 }
 
 /**

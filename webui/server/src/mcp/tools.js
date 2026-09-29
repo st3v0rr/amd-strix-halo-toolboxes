@@ -124,7 +124,7 @@ const mediaSettings = {
       ]),
     ),
   ),
-  autostart: bool('Beim Booten der Box automatisch starten.'),
+  autostart: bool('Beim Booten der Box automatisch starten (wie der Autostart eines Profils; ein Start ändert ihn nicht).'),
 }
 
 /** The standard service ports the network page always manages, as prose. */
@@ -628,9 +628,8 @@ export const tools = [
       name: str('Container-Name. Ohne Angabe: der gespeicherte, Standard "media-api".'),
       port: port(`Host-Port. Ohne Angabe: der gespeicherte, Standard ${MEDIA_PORT}.`),
       bindAddress: str(
-        'IPv4-Adresse, auf der der Port veröffentlicht wird: "127.0.0.1" nur diese Box (Standard), "0.0.0.0" im Netzwerk erreichbar. Der Dienst spricht nur HTTP — den Port dann per add_firewall_rule auf eine Quelle beschränken.',
+        'IPv4-Adresse, auf der der Port veröffentlicht wird: "127.0.0.1" nur diese Box (Standard), "0.0.0.0" im Netzwerk erreichbar.',
       ),
-      autostart: bool('Beim Booten der Box automatisch starten.'),
     }),
     annotations: WRITE,
     run: (args, api) => api('POST', '/servers', { body: { ...args, role: 'media', replace: false } }),
@@ -640,7 +639,7 @@ export const tools = [
     title: 'Media-API-Modelle',
     description:
       'Die kuratierten Modelle der Media API (Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3) mit ihren Profilen — Aufgaben, geschätzter Speicherbedarf, Status —, welche vollständig auf der Platte liegen (auch je Aufgabe) und welche Dateien fehlen. Nicht unterstützte Profile nennen ihren Grund.',
-    inputSchema: obj({ refresh: bool('Neu prüfen statt den kurzen Cache zu nutzen.') }),
+    inputSchema: obj({ refresh: bool('Neu einlesen statt den kurzen Cache zu nutzen.') }),
     annotations: READ,
     run: ({ refresh }, api) => (refresh ? api('POST', '/media/models/refresh') : api('GET', '/media/models')),
   },

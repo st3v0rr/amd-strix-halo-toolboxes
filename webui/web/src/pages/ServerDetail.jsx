@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { mediaPlaygroundLink } from '../../../shared/media.js'
-import { del, get, post } from '../api/client.js'
+import { del, get, post, put } from '../api/client.js'
 import { PageHead } from '../components/Layout.jsx'
 import { LogView } from '../components/LogView.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
@@ -35,6 +35,15 @@ export function ServerDetail() {
     queryFn: () => get('/media'),
     enabled: isMedia,
     refetchInterval: isMedia ? 10000 : false,
+  })
+
+  const mediaAutostart = useMutation({
+    mutationFn: (autostart) => put('/media/config', { autostart }),
+    onSuccess: (result) => {
+      toast.success(`Autostart ${result.config.autostart ? 'an' : 'aus'}.`)
+      queryClient.invalidateQueries({ queryKey: ['media'] })
+    },
+    onError: (err) => toast.error(err),
   })
 
   // Filled from the container, then handed to the normal profile dialog — so
@@ -223,6 +232,26 @@ export function ServerDetail() {
                   <dd className="mono small">{s.mediaDataDir ?? '–'}</dd>
                   <dt>Backend</dt>
                   <dd>{s.mediaBackend ?? '–'}</dd>
+                  {/* Like a profile's: brought back by the same reconciler after
+                      a reboot, and not part of the container itself. */}
+                  {media.data?.config?.name === name ? (
+                    <>
+                      <dt>Autostart</dt>
+                      <dd>
+                        <label className="row" htmlFor="media-autostart">
+                          <input
+                            id="media-autostart"
+                            type="checkbox"
+                            style={{ width: 'auto' }}
+                            checked={media.data.config.autostart}
+                            disabled={mediaAutostart.isPending}
+                            onChange={(e) => mediaAutostart.mutate(e.target.checked)}
+                          />
+                          <span>Beim Booten automatisch starten</span>
+                        </label>
+                      </dd>
+                    </>
+                  ) : null}
                 </>
               ) : null}
               {s.mmprojPath ? (

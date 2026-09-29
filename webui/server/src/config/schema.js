@@ -187,6 +187,10 @@ export const mediaConfigSchema = z.object({
       ),
     )
     .default({}),
+  /**
+   * Brought back after a reboot by the same reconciler as the profiles. Set on
+   * its own (PUT /media/config, the detail page), never by a start.
+   */
   autostart: z.boolean().default(false),
   updatedAt: z.string().nullable().default(null),
 })
@@ -194,10 +198,11 @@ export const mediaConfigSchema = z.object({
 /**
  * The choices "Media API starten" on the Servers page offers, as POST /servers
  * takes them. Merged into the stored settings above: whatever is not named
- * keeps its stored value, so the dialog stays as small as ComfyUI's.
+ * keeps its stored value, so the dialog stays as small as ComfyUI's. Autostart
+ * is not among them — like a profile's, it is a setting of its own.
  */
 export const mediaStartSchema = mediaConfigSchema
-  .pick({ name: true, port: true, bindAddress: true, autostart: true })
+  .pick({ name: true, port: true, bindAddress: true })
   .partial()
   .extend({ role: z.literal(ROLE.media) })
 

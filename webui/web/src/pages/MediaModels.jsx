@@ -71,7 +71,7 @@ export function MediaModels() {
         }
       >
         <button className="btn" type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
-          {refresh.isPending ? 'Prüft …' : 'Neu prüfen'}
+          {refresh.isPending ? 'Liest ein …' : 'Neu einlesen'}
         </button>
       </PageHead>
 

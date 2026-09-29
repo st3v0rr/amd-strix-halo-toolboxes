@@ -90,9 +90,9 @@ const createBody = z.union([
 ])
 
 /**
- * The media API takes the fewest of all: a name, a port, the address to
- * publish on and whether it comes back after a reboot. The image, its
- * directories, secrets and limits keep their stored settings. Validated on its
+ * The media API takes the fewest of all: a name, a port and the address to
+ * publish on. The image, its directories, secrets, limits and autostart keep
+ * their stored settings. Validated on its
  * own rather than in the union, so a bad field is named instead of drowning in
  * "no variant matched".
  */

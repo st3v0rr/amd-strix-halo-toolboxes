@@ -156,7 +156,7 @@ test('settings are validated as a whole before they are stored', async () => {
 test('"Media API starten" creates the hardened rootful container and generates the secrets as files', async () => {
   // Exactly what the Servers page dialog sends when nothing is changed.
   const { status, body } = await api('POST', '/servers', {
-    body: { role: 'media', name: 'media-api', port: mediaPort, bindAddress: '127.0.0.1', autostart: false, replace: false },
+    body: { role: 'media', name: 'media-api', port: mediaPort, bindAddress: '127.0.0.1', replace: false },
   })
   assert.equal(status, 201, JSON.stringify(body))
   assert.equal(body.role, 'media')
@@ -533,7 +533,7 @@ test('the Servers-page start: few choices, stored only once the container runs, 
   // not — and a refused start stores nothing and leaves the container alone.
   const before = JSON.parse(JSON.stringify(stored()))
   for (const replace of [false, true]) {
-    const taken = await api('POST', '/servers', { body: { role: 'media', bindAddress: '0.0.0.0', autostart: false, replace } })
+    const taken = await api('POST', '/servers', { body: { role: 'media', bindAddress: '0.0.0.0', replace } })
     assert.equal(taken.status, 409, `replace: ${replace}`)
     assert.equal(taken.body.error.details.existing, 'media-api')
     assert.equal(taken.body.error.details.removalRequired, true)
@@ -561,7 +561,7 @@ test('the Servers-page start: few choices, stored only once the container runs, 
   const chosenKey = 'my-own-media-client-key-0123456789abcdef'
   assert.equal((await api('PUT', '/media/secrets/api-key', { body: { value: chosenKey } })).status, 200)
   const exposed = await api('POST', '/servers', {
-    body: { role: 'media', name: 'media-api', port: mediaPort, bindAddress: '0.0.0.0', autostart: true, replace: false },
+    body: { role: 'media', name: 'media-api', port: mediaPort, bindAddress: '0.0.0.0', replace: false },
   })
   assert.equal(exposed.status, 201, JSON.stringify(exposed.body))
   let argv = lastArgv()
@@ -573,26 +573,31 @@ test('the Servers-page start: few choices, stored only once the container runs, 
   const keyFile = path.join(root, 'config', 'media-api', 'api-key')
   assert.equal(fs.readFileSync(keyFile, 'utf8').trim(), chosenKey, 'the new container mounts the chosen key')
   assert.equal(stored().bindAddress, '0.0.0.0', 'stored once the container runs')
+  // Autostart is not a start choice: it is set on its own, like a profile's.
+  assert.equal(stored().autostart, before.autostart, 'a start never touches autostart')
+  assert.equal((await api('PUT', '/media/config', { body: { autostart: true } })).status, 200)
   assert.equal(stored().autostart, true)
   const status = (await api('GET', '/media')).body
-  assert.deepEqual(status.drift, { config: false, secrets: false })
-  assert.ok(status.warnings.some((w) => w.level === 'danger' && /unverschlüsselt/.test(w.text)))
+  assert.deepEqual(status.drift, { config: false, secrets: false }, 'autostart is not part of the container')
+  assert.ok(!status.warnings.some((w) => /unverschlüsselt/.test(w.text)), 'the network is a normal choice')
   const listed = (await api('GET', '/servers')).body.servers.find((s) => s.name === 'media-api')
   assert.equal(listed.bindAddress, '0.0.0.0')
   assert.equal(listed.running, true)
 
-  // The same through MCP, back to loopback and without autostart. MCP cannot
-  // replace either: only delete_server, then create_media_api again.
+  // The same through MCP, back to loopback; autostart stays as it was set.
+  // MCP cannot replace either: only delete_server, then create_media_api again.
   const mcpCall = (id, name, args) =>
     call('POST', '/mcp', { auth: 'token', body: { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } } })
-  const refused = await mcpCall(31, 'create_media_api', { bindAddress: '127.0.0.1', autostart: false })
+  const refused = await mcpCall(31, 'create_media_api', { bindAddress: '127.0.0.1' })
   assert.equal(refused.body.result.isError, true, 'a running media API is never replaced')
   assert.equal((await mcpCall(32, 'delete_server', { name: 'media-api' })).body.result.isError, false)
-  const mcp = await mcpCall(33, 'create_media_api', { bindAddress: '127.0.0.1', autostart: false })
+  const mcp = await mcpCall(33, 'create_media_api', { bindAddress: '127.0.0.1' })
   assert.equal(mcp.body.result.isError, false, JSON.stringify(mcp.body))
   argv = lastArgv()
   assert.equal(argv[argv.indexOf('-p') + 1], `127.0.0.1:${mediaPort}:8100`)
   assert.equal(stored().bindAddress, '127.0.0.1')
+  assert.equal(stored().autostart, true)
+  assert.equal((await mcpCall(34, 'configure_media_api', { autostart: false })).body.result.isError, false)
   assert.equal(stored().autostart, false)
 
   // The ordinary lifecycle, with no Podman mode to ask about.

@@ -134,11 +134,17 @@ Host-Port, Name. Mehr braucht es nicht: kein
 Modell (das nennt der Workflow selbst), kein Context, kein API-Key. Auf der
 Detailseite führt **Oberfläche öffnen** zur ComfyUI-Weboberfläche.
 
+Alle vier Startdialoge der Server-Seite — llama.cpp, RPC-Worker, ComfyUI, Media
+API — haben denselben Hinweis: **Läuft bereits** nennt die laufenden Container
+derselben Art mit ihrem Port, und belegt ein laufender Container schon den
+gewählten Host-Port, steht darüber rot ein **Portkonflikt**; Starten bleibt dann
+gesperrt, bis ein anderer Port gewählt ist.
+
 > [!WARNING]
 > ComfyUI hat **keine Anmeldung**. Wer den Port erreicht, kann Workflows
 > ausführen und Dateien auf der Box lesen und schreiben. Auf der Netzwerk-Seite
-> steht Port 8000 deshalb mit derselben Warnung wie der RPC-Port und ist auch
-> ohne laufenden Container aufgeführt — gib ihn nur für eine Quelle frei, siehe
+> ist Port 8000 deshalb auch ohne laufenden Container aufgeführt, und ihn für
+> alle zu öffnen warnt wie beim RPC-Port — gib ihn nur für eine Quelle frei, siehe
 > [Netzwerk und Firewall](#netzwerk-und-firewall).
 
 Zwei Dinge unterscheiden das Fork-Image vom Original, beide nötig für den
@@ -213,15 +219,15 @@ wie jeder andere.
 **Media API starten** öffnet einen Dialog, so klein wie der von ComfyUI:
 
 - **Containername** und **Host-Port** (im Container immer 8100),
-- **Im Netzwerk erreichbar** — aus heißt: nur `127.0.0.1`, von anderswo per
-  SSH-Tunnel oder TLS-Reverse-Proxy; an heißt `0.0.0.0`, und weil der Dienst nur
-  HTTP spricht, gehört der Port dann unter **Netzwerk** am besten nur für eine
-  Quelle freigegeben,
-- **Beim Booten automatisch starten**.
+- **Im Netzwerk erreichbar** — aus heißt: nur `127.0.0.1`; an heißt `0.0.0.0`.
 
 Den API-Schlüssel fragt der Dialog nicht: Beim ersten erfolgreichen Start wird
 ein zufälliger erzeugt; ein eigener lässt sich danach auf der Detailseite
-(Karte **Zugang**) setzen — nie über die Startanfrage.
+(Karte **Zugang**) setzen — nie über die Startanfrage. Ebenso wenig den
+Autostart: Wie bei einem Profil ist er eine eigene Einstellung, geschaltet auf
+der Detailseite (**Beim Booten automatisch starten**) oder über
+`configure_media_api`, und ein Start ändert ihn nicht (siehe
+[Autostart](#autostart)).
 
 Alles andere hat Standardwerte, die zur Box passen, und taucht im Dialog nicht
 auf: das Image (`:media-api`), der ComfyUI-Modellbaum schreibgeschützt als
@@ -378,9 +384,7 @@ relevanten Ports durch:
 | 8100 | Media API — nur an `127.0.0.1` gebunden, außer mit „Im Netzwerk erreichbar“ gestartet | API-Schlüssel, Playground mit Sitzung + CSRF; nur HTTP |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
 
-Die Media API spricht nur HTTP: Schlüssel und Anmeldungen gehen im Klartext über
-das Netz. Port 8100 deshalb am besten nur für die Adressen ihrer Clients
-freigeben. Läuft ihr Container nur an `127.0.0.1`, sagt die Portzeile, dass eine
+Läuft der Media-API-Container nur an `127.0.0.1`, sagt die Portzeile, dass eine
 Freigabe nichts bewirkt, bis er mit „Im Netzwerk erreichbar“ neu angelegt ist.
 
 Zwei Dinge macht die Oberfläche bewusst nicht:
@@ -446,8 +450,9 @@ Verbindungsversuch.
 ## Übersicht
 
 Die Startseite zeigt live, was die Box gerade tut: GPU-Auslastung, GTT- und
-VRAM-Belegung, Temperatur, CPU, Arbeitsspeicher, freier Plattenplatz, Laufzeit
-und die laufenden Server mit ihren Container-Werten. Alle Kacheln führen zehn
+VRAM-Belegung, Temperatur, CPU, Arbeitsspeicher, freier Plattenplatz, die
+Uptime des Hosts seit dem letzten Boot (aus `/proc/uptime`, nicht die Laufzeit
+dieses Dienstes) und die laufenden Server mit ihren Container-Werten. Alle Kacheln führen zehn
 Minuten Verlauf mit.
 
 Darunter steht eine Tabelle mit **jeder Netzwerkschnittstelle**, die der Kernel
@@ -720,7 +725,9 @@ RPC-Worker haben keine Profil-Einstellungen; dort fehlt der Knopf.
 
 Rootless-Container kommen beim Boot **nicht** von selbst zurück. Statt
 `podman-restart.service` zu aktivieren (was zu Doppelstarts führt), gleicht die
-App 15 Sekunden nach ihrem eigenen Start alle Profile mit `autostart` ab:
+App 15 Sekunden nach ihrem eigenen Start alle Profile mit `autostart` ab — und
+zuletzt die Media API, wenn auf ihrer Detailseite **Beim Booten automatisch
+starten** an ist:
 
 - Container läuft → nichts tun
 - Container existiert, gestoppt → starten

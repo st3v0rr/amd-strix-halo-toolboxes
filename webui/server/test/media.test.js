@@ -115,8 +115,9 @@ test('warnings name the risky choices and stay quiet for the defaults', () => {
     modelsReadOnly: false,
     memoryCheck: 'off',
   }).map((w) => w.text)
-  assert.equal(texts.length, 4)
-  assert.ok(texts.some((t) => /unverschlüsselt/.test(t)))
+  // Publishing on the network is a normal choice here, not a warning.
+  assert.equal(texts.length, 3)
+  assert.ok(!texts.some((t) => /unverschlüsselt/.test(t)))
   assert.ok(texts.some((t) => /HTTPS/.test(t)))
 })
 
@@ -521,7 +522,7 @@ test('a media port bound to loopback says a firewall rule would not help', () =>
   assert.match(loopback.detail, /bewirkt nichts/)
   const exposed = describeRole({ role: ROLE.media, name: 'm', bindAddress: '0.0.0.0' })
   assert.equal(exposed.loopbackOnly, false)
-  assert.match(exposed.detail, /Klartext/)
+  assert.match(exposed.detail, /API-Schlüssel/)
 })
 
 test('the media image is in the catalog as its own kind', () => {

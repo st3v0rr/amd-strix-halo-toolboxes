@@ -6,7 +6,7 @@ import { get } from '../api/client.js'
 import { useEventStream } from '../api/sse.js'
 import { PageHead } from '../components/Layout.jsx'
 import { Sparkline, StatTile } from '../components/Sparkline.jsx'
-import { formatBytes, formatDuration, shortImage } from '../components/format.js'
+import { formatBytes, formatDate, formatDuration, shortImage } from '../components/format.js'
 
 const MAX_HISTORY = 300
 
@@ -163,10 +163,11 @@ export function Dashboard() {
             color="var(--info)"
           />
         ) : null}
+        {/* The host's, from /proc/uptime — not this app's process. */}
         <StatTile
-          label="Laufzeit"
-          value={latest?.uptime ? formatDuration(latest.uptime) : '–'}
-          secondary={`${running.length} Server aktiv`}
+          label="Uptime seit Boot"
+          value={latest?.uptime ? formatUptime(latest.uptime) : '–'}
+          secondary={bootedAt(latest)}
         />
       </div>
 
@@ -225,6 +226,21 @@ export function Dashboard() {
       </section>
     </>
   )
+}
+
+/** Host uptime in days once it runs to them — "312 h" is not how anyone reads it. */
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400)
+  if (days < 1) return formatDuration(seconds)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  return `${days} ${days === 1 ? 'Tag' : 'Tage'} ${hours} h`
+}
+
+/** When the box last booted: the sample's time minus its uptime. */
+function bootedAt(sample) {
+  if (!sample?.uptime || !sample.at) return null
+  const at = new Date(sample.at).getTime() - sample.uptime * 1000
+  return Number.isFinite(at) ? `gebootet ${formatDate(new Date(at).toISOString())}` : null
 }
 
 /**

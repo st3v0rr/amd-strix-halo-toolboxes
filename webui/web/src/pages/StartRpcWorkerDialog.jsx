@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { get, post } from '../api/client.js'
 import { Modal } from '../components/Modal.jsx'
+import { StartNotice, useStartNotice } from '../components/StartNotice.jsx'
 import { useToast } from '../components/Toast.jsx'
 
 const KNOWN_TAGS = ['vulkan-radv', 'rocm-10.0', 'rocm-10.0-strix-llama']
@@ -60,6 +61,7 @@ export function StartRpcWorkerDialog({ onClose }) {
   }
 
   const allowCustom = settings.data?.settings?.allowCustomImages
+  const notice = useStartNotice({ role: 'rpc', port: form.port, name: form.name })
 
   return (
     <Modal
@@ -74,7 +76,7 @@ export function StartRpcWorkerDialog({ onClose }) {
             type="submit"
             form="start-rpc-form"
             className="btn btn-primary"
-            disabled={start.isPending || !form.name}
+            disabled={start.isPending || !form.name || Boolean(notice.portTakenBy)}
           >
             {start.isPending ? 'Startet …' : 'Starten'}
           </button>
@@ -88,28 +90,14 @@ export function StartRpcWorkerDialog({ onClose }) {
           Netzwerk.
         </p>
 
-        <div className="alert alert-warn small">
-          Das RPC-Protokoll kennt <strong>keine Authentifizierung</strong>. Wer Port {form.port}{' '}
-          erreicht, kann auf dieser GPU rechnen lassen. Nur in einem vertrauenswürdigen Netz
-          betreiben.
-        </div>
-
-        {conflictName ? (
-          <div className="alert alert-warn small stack-sm">
-            <span>
-              Ein Container namens <code>{conflictName}</code> existiert bereits.
-            </span>
-            <label className="row">
-              <input
-                type="checkbox"
-                style={{ width: 'auto' }}
-                checked={replace}
-                onChange={(e) => setReplace(e.target.checked)}
-              />
-              Vorhandenen Container stoppen, entfernen und neu anlegen
-            </label>
-          </div>
-        ) : null}
+        <StartNotice
+          notice={notice}
+          port={form.port}
+          conflictName={conflictName}
+          replace={replace}
+          onReplace={setReplace}
+          onClose={onClose}
+        />
 
         <div className="form-grid">
           <div className="field">

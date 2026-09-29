@@ -212,14 +212,6 @@ export function mediaProfileState(profile) {
  */
 export function mediaConfigWarnings(config) {
   const out = []
-  if (config.bindAddress && !isLoopbackAddress(config.bindAddress)) {
-    out.push({
-      level: 'danger',
-      text:
-        `Der Port wird auf ${config.bindAddress} veröffentlicht: Schlüssel und Sitzungen gehen ` +
-        'unverschlüsselt über das Netz. Besser 127.0.0.1 und einen TLS-Reverse-Proxy davor.',
-    })
-  }
   if (/^https:/i.test(config.publicUrl ?? '') && !config.cookieSecure) {
     out.push({
       level: 'warn',
