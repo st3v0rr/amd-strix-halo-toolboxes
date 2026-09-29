@@ -104,7 +104,7 @@ test('every flag of the documented hardened command is in ours', () => {
   assert.equal(built.image, documented.image, 'same image by default')
 })
 
-test('ours adds nothing but restart policy, labels, service settings and the session secret', () => {
+test('ours adds nothing but restart policy, labels, service settings, HOME and the session secret', () => {
   const documented = new Set(documentedPairs().pairs.map(key))
   const extras = ours().pairs.filter((pair) => !documented.has(key(pair)))
   for (const [flag, value] of extras) {
@@ -112,9 +112,20 @@ test('ours adds nothing but restart policy, labels, service settings and the ses
       (flag === '--restart' && value === 'unless-stopped') ||
       flag === '--label' ||
       (flag === '-e' && /^MEDIA_[A-Z_]+=/.test(value) && !/^MEDIA_(API_KEY|SESSION_SECRET)=/.test(value)) ||
+      (flag === '-e' && value === 'HOME=/data/home') ||
       (flag === '-v' && value === `${sessionFile}:/run/secrets/media-api-session:ro,z`) ||
       (flag === '-d' && value === null)
     assert.ok(allowed, `unerwartete Zutat: ${flag} ${value ?? ''}`)
+  }
+})
+
+test('HOME points into the writable /data mount, for the real and the mock backend', () => {
+  // /root is 0550 in the image and --cap-drop=all leaves root no way around
+  // that: without this, Triton's kernel cache kills the first real generation.
+  for (const config of [mediaConfigSchema.parse({}), mediaConfigSchema.parse({ backend: 'mock' })]) {
+    const pairs = ours(config).pairs.map(key)
+    assert.ok(pairs.includes('-e HOME=/data/home'), pairs.join(' '))
+    assert.ok(pairs.includes(`-v ${home}/media-api-data:/data:z`), 'and /data is mounted writable')
   }
 })
 

@@ -333,6 +333,14 @@ const flag = (value) => (value ? '1' : '0')
  */
 export function mediaContainerEnv(config, { hfToken = false } = {}) {
   const env = [
+    // Not a setting of the service but of the libraries under it: Triton
+    // compiles its ROCm kernels into $HOME/.triton, and numba, torch
+    // extensions and the XDG caches write below $HOME as well. The image sets
+    // no HOME, so it would be /root — mode 0550 in the Fedora rootfs, and
+    // without CAP_DAC_OVERRIDE (--cap-drop=all) even root cannot write there:
+    // the first real generation died on it. /data/home is writable and
+    // persistent, so the Triton cache survives restarts instead of recompiling.
+    ['HOME', `${MEDIA_CONTAINER_DATA_DIR}/home`],
     ['MEDIA_HOST', '0.0.0.0'],
     ['MEDIA_PORT', String(MEDIA_PORT)],
     ['MEDIA_API_KEY_FILE', MEDIA_SECRET_MOUNTS.apiKey],

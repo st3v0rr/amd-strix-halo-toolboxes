@@ -51,6 +51,12 @@ RUN python -c 'import torch; print(torch.__version__)' && \
 ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ENV TORCH_BLAS_PREFER_HIPBLASLT=1
 
+# Fedora ships /root as 0550, and with --cap-drop=all root cannot bypass that,
+# so Triton's kernel cache in $HOME/.triton fails. The web interface points
+# HOME at /data/home; this covers a run without it. No ENV HOME=/data here: a
+# run without the /data mount would lose its HOME.
+RUN chmod 0700 /root
+
 ENV MEDIA_HOST=0.0.0.0
 ENV MEDIA_PORT=8100
 ENV MEDIA_MODELS_DIR=/models
