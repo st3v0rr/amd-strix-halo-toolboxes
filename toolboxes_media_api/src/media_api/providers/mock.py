@@ -1,8 +1,8 @@
 """MEDIA_BACKEND=mock: the whole service without torch, weights or a GPU.
 
 Output is a pure function of the request (task, prompt, seed, size, inputs),
-so the same request returns byte-identical files — which is what the tests and
-the container smoke test rely on. It walks the same steps, progress reports
+so the same request returns byte-identical files — which is what the tests
+rely on. It walks the same steps, progress reports
 and cancellation checks as a real job, and uses the same encoders.
 
 Only for tests and demos: `[mock:fail]` in a prompt makes the job fail.

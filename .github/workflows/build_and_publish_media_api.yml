@@ -7,6 +7,9 @@ name: Build & Publish Media API
 # Manual only, like the ComfyUI build: the image pulls a full ROCm torch, too
 # expensive to hang off a push. The tests run first, so a broken tree never
 # gets as far as the build.
+#
+# No container check here: the runner has no GPU, and a mock-mode run proves
+# little about the real image. It is checked on the Strix Halo box itself.
 on:
   workflow_dispatch:
 
@@ -83,13 +86,6 @@ jobs:
 
           echo "→ Building Dockerfile.media-api"
           docker build --no-cache -t "${LI}" -f Dockerfile.media-api .
-
-          # No GPU on the runner: the smoke test runs the real image in mock
-          # mode — health, key and session auth, one image, edit and video job.
-          # docker is the runtime this job built with; the runner's podman
-          # cannot see that image store and would try to pull the local tag.
-          echo "→ Running smoke test..."
-          SMOKE_RUNTIME=docker ./smoke-test.sh "${LI}"
 
           echo "→ Tag & push immutable → ${IMM}"
           docker tag "${LI}" "${IMM}"

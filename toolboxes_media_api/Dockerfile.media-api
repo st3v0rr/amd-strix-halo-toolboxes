@@ -5,9 +5,10 @@
 # but it does not contain or talk to ComfyUI. No model weights: models, the
 # Hugging Face cache, outputs, uploads and job state all live in mounts.
 #
-# TORCH_INDEX_URL / TORCH_PACKAGES exist only so the mock-mode smoke test can
-# build on a machine without the multi-gigabyte ROCm wheels
-# (./build.sh --cpu-torch). Published images always use the defaults.
+# TORCH_INDEX_URL / TORCH_PACKAGES exist only so the image can be built locally
+# for mock mode (MEDIA_BACKEND=mock) without the bandwidth and disk the
+# multi-gigabyte ROCm wheels take (./build.sh --cpu-torch). Such an image is
+# never published; published images always use the defaults.
 
 FROM registry.fedoraproject.org/fedora:rawhide
 

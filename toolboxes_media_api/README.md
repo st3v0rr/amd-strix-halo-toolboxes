@@ -218,10 +218,9 @@ pytest && ruff check src tests && ruff format --check src tests && mypy
 `MEDIA_TEST_TINY_H3=<dir of hf-internal-testing/tiny-minimax-h3-modular-pipe>` (44 MB of random
 test weights) both providers run end to end through diffusers.
 
-Container checks: `./build.sh [--cpu-torch]` then `./smoke-test.sh` (mock mode: health, key
-and session auth with CSRF, one image, one edit, one video job). CI:
-*Build & Publish Media API* (manual) runs the tests, builds, smoke-tests and pushes
-`:media-api` and `:media-api_<timestamp>`.
+Container build: `./build.sh [--cpu-torch]`. CI: *Build & Publish Media API* (manual) runs
+the tests, builds and pushes `:media-api` and `:media-api_<timestamp>`. There is no container
+check in CI — the runner has no GPU, so the image is checked on the Strix Halo box itself.
 
 **Not verified here:** real inference on gfx1151. Loaders, key layouts and both pipelines are
 exercised on CPU with random weights; speed, memory estimates and output quality of the real

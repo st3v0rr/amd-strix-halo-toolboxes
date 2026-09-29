@@ -247,7 +247,7 @@ both probe the image's `--help` output and pick the right pair, adding
 | :--- | :--- | :--- |
 | `toolboxes_llama_server/` | fork | Dockerfiles for the `llama-server` images |
 | `toolboxes_comfyui/` | vendored | kyuz0's ComfyUI build, copied in full; only the final `CMD` differs |
-| `toolboxes_media_api/` | fork | the media API image: Python/FastAPI service, playground, tests, `build.sh`, `smoke-test.sh` |
+| `toolboxes_media_api/` | fork | the media API image: Python/FastAPI service, playground, tests, `build.sh` |
 | `webui/` | fork | the management interface (Express + React, systemd service) |
 | `run-llama-server.sh` | fork | starts one server from the command line, and is the reference `npm run test:parity` checks the web interface against |
 | `.github/workflows/` | fork-adjusted | polls llama.cpp and the strix-llama sources, builds and prunes this fork's images |

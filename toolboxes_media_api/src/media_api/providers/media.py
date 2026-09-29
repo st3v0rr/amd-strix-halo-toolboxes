@@ -1,7 +1,8 @@
 """Writing results: images through Pillow, video (+ audio) through PyAV.
 
-Shared by the real and the mock backends, so the smoke test exercises the same
-encoder a real MiniMax-H3 job uses. diffusers' own encode_video hard-codes
+Shared by the real and the mock backends, so the mock backend — and with it
+the GPU-less tests (pytest) — runs through the same encoder a real MiniMax-H3
+job uses. diffusers' own encode_video hard-codes
 libx264; FFmpeg builds without it (Fedora's ffmpeg-free, LGPL builds) would
 fail there, so the encoder is picked from what this FFmpeg actually has.
 """
