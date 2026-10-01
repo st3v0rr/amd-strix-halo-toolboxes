@@ -48,7 +48,15 @@ def test_check_json_needs_no_key_and_reports_every_profile(cli_env: Path, capsys
     fp8 = next(p for p in models["qwen-image-2512"]["profiles"] if p["id"] == "fp8")
     assert fp8["default"] is True and fp8["available"] is False and fp8["downloadable"] is True
     assert "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors" in fp8["missing"]
-    nf4 = next(p for p in models["qwen-image-2512"]["profiles"] if p["id"] == "nf4-bitsandbytes")
+
+
+def test_check_json_reports_an_unsupported_profile_without_availability(
+    cli_env: Path, unsupported_config: dict[str, str], monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setenv("MEDIA_CONFIG", unsupported_config["MEDIA_CONFIG"])
+    assert cli.main(["check", "--json"]) == 0
+    qwen = next(m for m in json.loads(capsys.readouterr().out)["models"] if m["id"] == "qwen-image-2512")
+    nf4 = next(p for p in qwen["profiles"] if p["id"] == "nf4-bitsandbytes")
     # An unsupported profile says why and makes no availability claim.
     assert nf4["status"] == "unsupported" and nf4["reason"] and "available" not in nf4
 
@@ -82,7 +90,10 @@ def test_check_json_reports_availability_per_task(cli_env: Path, capsys) -> None
     assert all(m.startswith(f"{base}/transformer_ref") for m in int8["missing"])
 
 
-def test_text_check_is_unchanged(cli_env: Path, capsys) -> None:
+def test_text_check_is_unchanged(
+    cli_env: Path, unsupported_config: dict[str, str], monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setenv("MEDIA_CONFIG", unsupported_config["MEDIA_CONFIG"])
     assert cli.main(["check"]) == 0
     out = capsys.readouterr().out
     assert "qwen-image-2512/fp8 [supported, ~36 GB]: missing" in out
@@ -193,7 +204,10 @@ def test_fetch_json_refuses_when_the_disk_is_too_small(
     assert not [c for c in hub.calls if c[0] in ("download", "snapshot")]
 
 
-def test_fetch_json_rejects_unusable_requests_as_events(cli_env: Path, capsys) -> None:
+def test_fetch_json_rejects_unusable_requests_as_events(
+    cli_env: Path, unsupported_config: dict[str, str], monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setenv("MEDIA_CONFIG", unsupported_config["MEDIA_CONFIG"])
     assert cli.main(["fetch", "qwen-image-2512", "--profile", "nf4-bitsandbytes", "--json"]) == 1
     assert (
         cli.main(["fetch", "minimax-h3", "--profile", "turbo", "--task", "reference-to-video", "--json"]) == 1

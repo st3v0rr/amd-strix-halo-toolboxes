@@ -10,6 +10,8 @@ import yaml
 from media_api.errors import CapabilityError, ConfigError
 from media_api.registry import _default_model_data, load_registry
 
+from .conftest import unsupported_registry_models
+
 
 def test_default_registry_is_valid():
     registry = load_registry()
@@ -69,9 +71,9 @@ def test_task_and_profile_compatibility():
     with pytest.raises(CapabilityError, match="does not support 'image-edit'"):
         registry.resolve("image-edit", "qwen-image-2512", None)
     with pytest.raises(CapabilityError, match="cannot run"):
-        registry.resolve("text-to-image", "qwen-image-2512", "nf4-bitsandbytes")
-    with pytest.raises(CapabilityError, match="cannot run"):
-        registry.resolve("text-to-video", "minimax-h3", "comfy-pruned-int8-convrot")
+        load_registry(unsupported_registry_models()).resolve(
+            "text-to-image", "qwen-image-2512", "nf4-bitsandbytes"
+        )
     with pytest.raises(CapabilityError, match="does not support 'reference-to-video'"):
         registry.resolve("reference-to-video", "minimax-h3", "turbo")
     with pytest.raises(CapabilityError) as exc:

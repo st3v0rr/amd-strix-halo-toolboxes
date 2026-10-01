@@ -1,13 +1,12 @@
 # Built-in model registry. Paths are relative to MEDIA_MODELS_DIR and follow
-# the ComfyUI tree (diffusion_models/, text_encoders/, loras/, unet/), so an
+# the ComfyUI tree (diffusion_models/, text_encoders/, loras/), so an
 # existing ~/comfy-models can be mounted read-only and its files reused. The
 # diffusers/ subtree holds the configs, tokenizers, schedulers and VAEs the
 # single files need, plus MiniMax-H3's own weights.
 #
 # Every repo is pinned to the revision whose safetensors headers were checked
-# against the loaders (see README "Compatibility"). `status: unsupported`
-# profiles are listed on purpose: they document formats this stack cannot
-# load, and requesting one returns a capability error with the reason.
+# against the loaders (see README "Compatibility"). Only profiles that run are
+# listed; the formats that were rejected are documented in the README.
 #
 # estimated_memory_gb is the unified memory a job needs with that profile
 # resident (weights + activations at the default size); the admission check
@@ -119,37 +118,6 @@ models:
               revision: 1f12b17be14c89b026c51a91d67c32f84bb047bc
           text_encoder: *qwen_te_fp8
           vae: *qwen_vae
-      - id: gguf-q4km
-        label: GGUF Q4_K_M (low memory, experimental)
-        status: experimental
-        estimated_memory_gb: 28
-        description: >
-          unsloth's Q4_K_M transformer through diffusers' GGUF loader, which dequantizes in plain
-          PyTorch (its optional CUDA kernels stay off). Loads on any torch device, but its speed on
-          gfx1151 has not been measured.
-        components:
-          transformer:
-            format: gguf
-            storage: gguf
-            file:
-              path: unet/qwen-image-2512-Q4_K_M.gguf
-              repo: unsloth/Qwen-Image-2512-GGUF
-              filename: qwen-image-2512-Q4_K_M.gguf
-              revision: 1626d7531f84b4d2ea1cd6d2e69f41ec027dd354
-          text_encoder: *qwen_te_fp8
-          vae: *qwen_vae
-      - id: nf4-bitsandbytes
-        label: NF4 via bitsandbytes
-        status: unsupported
-        reason: >
-          bitsandbytes has no verified gfx1151 build for this image's ROCm torch (compilation and
-          precision issues are open upstream, ROCm/TheRock#2945). Use gguf-q4km for low memory.
-      - id: gguf-q4km-text-encoder
-        label: GGUF Qwen2.5-VL text encoder
-        status: unsupported
-        reason: >
-          The Qwen2.5-VL GGUF text encoder (with its separate mmproj) is only loadable by
-          ComfyUI-GGUF; transformers cannot load it. The GGUF profile keeps the FP8 text encoder.
 
   - id: qwen-image-edit-2511
     label: Qwen-Image-Edit-2511
@@ -235,28 +203,6 @@ models:
               revision: f68ace85e60b4a02a323e394253731947657b7d2
           text_encoder: *qwen_te_fp8
           vae: *qwen_vae
-      - id: gguf-q4km
-        label: GGUF Q4_K_M (low memory, experimental)
-        status: experimental
-        estimated_memory_gb: 28
-        description: unsloth's Q4_K_M transformer through diffusers' plain-PyTorch GGUF loader.
-        components:
-          transformer:
-            format: gguf
-            storage: gguf
-            file:
-              path: unet/qwen-image-edit-2511-Q4_K_M.gguf
-              repo: unsloth/Qwen-Image-Edit-2511-GGUF
-              filename: qwen-image-edit-2511-Q4_K_M.gguf
-              revision: 0d33d9692b4b26212297240d87b0d4719aa4fd06
-          text_encoder: *qwen_te_fp8
-          vae: *qwen_vae
-      - id: int8-convrot
-        label: INT8 ConvRot
-        status: unsupported
-        reason: >
-          qwen_image_edit_2511_int8_convrot.safetensors uses ComfyUI's own quantization layout
-          (comfy_quant int8 with a rotation), which only ComfyUI can load.
 
   - id: minimax-h3
     label: MiniMax-H3
@@ -351,18 +297,3 @@ models:
           text_encoder: *h3_text_encoder
           vae: *h3_vae
           audio_vae: *h3_audio_vae
-      - id: comfy-pruned-int8-convrot
-        label: Comfy pruned INT8 ConvRot + NVFP4-AWQ text encoder
-        status: unsupported
-        reason: >
-          Comfy-Org's minimax_h3_*_pruned_int8_convrot transformers replace the AdaLN MLP with a
-          precomputed timestep table (a different architecture: diffusers reports a size
-          mismatch) and store ComfyUI's int8 ConvRot layout; the NVFP4-AWQ Qwen3-VL encoder is a
-          ComfyUI format too. Only ComfyUI loads these files; use the int8 profile.
-      - id: gguf-q2
-        label: GGUF Q2 (pruned)
-        status: unsupported
-        reason: >
-          unsloth's MiniMax-H3 GGUF files are quantized from the pruned checkpoint and are only
-          loadable by ComfyUI-GGUF. Documented as a possible later profile; no non-Comfy loader
-          exists today.

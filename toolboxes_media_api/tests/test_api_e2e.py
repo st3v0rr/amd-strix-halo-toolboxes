@@ -20,10 +20,6 @@ def test_models_listing(client):
     assert data["backend"] == "mock"
     ids = {m["id"]: m for m in data["data"]}
     h3 = {p["id"]: p for p in ids["minimax-h3"]["profiles"]}
-    assert (
-        h3["comfy-pruned-int8-convrot"]["status"] == "unsupported"
-        and "reason" in h3["comfy-pruned-int8-convrot"]
-    )
     assert h3["turbo"]["tasks"] == ["text-to-video", "image-to-video", "start-end-to-video"]
 
 
@@ -134,16 +130,10 @@ def test_video_without_audio_and_webm(client):
             {"prompt": "x", "profile": "turbo", "reference_image_ids": ["upl_" + "a" * 32]},
             "capability_unsupported",
         ),
-        ("/api/v1/videos/generations", {"prompt": "x", "profile": "gguf-q2"}, "capability_unsupported"),
         ("/api/v1/images/generations", {"prompt": "x", "model": "minimax-h3"}, "capability_unsupported"),
         (
             "/api/v1/images/generations",
             {"prompt": "x", "width": 1000, "height": 1000},
-            "capability_unsupported",
-        ),
-        (
-            "/api/v1/images/generations",
-            {"prompt": "x", "profile": "nf4-bitsandbytes"},
             "capability_unsupported",
         ),
         ("/api/v1/images/generations", {"prompt": "x", "model": "nope"}, "unknown_model"),
@@ -164,6 +154,20 @@ def test_invalid_requests_never_queue(client, path, body, code):
     response = client.post(path, headers=AUTH, json=body)
     assert response.status_code in (400, 422), response.text
     assert response.json()["error"]["code"] == code
+    assert client.get("/api/v1/jobs", headers=AUTH).json()["data"] == []
+
+
+def test_unsupported_profile_is_listed_with_its_reason_and_never_queues(unsupported_config, make_client):
+    client = make_client()
+    qwen = next(
+        m for m in client.get("/api/v1/models", headers=AUTH).json()["data"] if m["id"] == "qwen-image-2512"
+    )
+    nf4 = next(p for p in qwen["profiles"] if p["id"] == "nf4-bitsandbytes")
+    assert nf4["status"] == "unsupported" and "bitsandbytes" in nf4["reason"]
+    body = {"prompt": "x", "profile": "nf4-bitsandbytes"}
+    response = client.post("/api/v1/images/generations", headers=AUTH, json=body)
+    assert response.status_code in (400, 422), response.text
+    assert response.json()["error"]["code"] == "capability_unsupported"
     assert client.get("/api/v1/jobs", headers=AUTH).json()["data"] == []
 
 

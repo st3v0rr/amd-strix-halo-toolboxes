@@ -132,9 +132,8 @@ real checkpoint headers (`tests/fixtures/checkpoint_keys.json.gz`).
 | qwen-image-2512 **fp8** (default) | Comfy-Org `qwen_image_2512_fp8_e4m3fn` + `qwen_2.5_vl_7b_fp8_scaled` + BF16 VAE | FP8 as stored (bit-exact), BF16 compute | 36 |
 | qwen-image-2512 bf16 (quality, opt-in) | Comfy-Org BF16 transformer + text encoder | BF16 — about twice the peak memory | 64 |
 | qwen-image-2512 lightning-4step (fast) | fp8 + lightx2v Qwen-Image-2512 Lightning 4-step LoRA (never the Edit LoRA) | LoRA fused, requantized per row | 36 |
-| qwen-image-2512 gguf-q4km (experimental) | unsloth Q4_K_M via diffusers GGUF | dequantized per forward in plain PyTorch | 28 |
 | qwen-image-edit-2511 **fp8mixed** (default) | Comfy-Org `fp8mixed` | FP8 layers with their scales, BF16 layers stay BF16 | 36 |
-| qwen-image-edit-2511 bf16 / lightning-4step / gguf-q4km | as above, with the dedicated Edit-2511 Lightning LoRA | | 64 / 36 / 28 |
+| qwen-image-edit-2511 bf16 / lightning-4step | as above, with the dedicated Edit-2511 Lightning LoRA | | 64 / 36 |
 | minimax-h3 **int8** (default) | MiniMaxAI/MiniMax-H3 diffusers BF16 | INT8 per row while streaming from disk (transformer + Qwen3-VL), BF16 video VAE, FP32 audio VAE | 86 |
 | minimax-h3 turbo (fast) | int8 + larryvrh Turbo LoRA v4 (fused before quantizing), 6 steps; t2v/i2v/start-end only | | 86 |
 
@@ -143,9 +142,12 @@ FP8 and INT8 are *weight-only*: weights are dequantized per forward and multipli
 torchao, no bitsandbytes, no FP8 matmul. Tensors are copied out of the file mapping
 (`MEDIA_DISABLE_MMAP=1`, as ComfyUI's `--disable-mmap`).
 
-**Rejected as unsupported** (listed as `status: unsupported`, requests get the reason):
+**Not offered.** These formats were checked and are left out of the registry
+(`status: unsupported` still exists for a `MEDIA_CONFIG` entry, which then lists its reason):
 
 - *NF4 / bitsandbytes* — no verified gfx1151 build for this ROCm torch (ROCm/TheRock#2945).
+- *Qwen-Image GGUF Q4_K_M (unsloth)* — loads through diffusers' plain-PyTorch GGUF path, but its
+  speed on gfx1151 was never measured; dropped as experimental.
 - *Comfy-Org MiniMax-H3 `*_pruned_int8_convrot` + `qwen3vl_32b_minimax_h3_nvfp4_awq`* — the plan's
   suggested default, but the pruned transformer replaces the AdaLN MLP with a precomputed
   timestep table (`adaln_t_table`, 8-wide `adaln_proj`: diffusers reports a size mismatch), and
