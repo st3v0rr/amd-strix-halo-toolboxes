@@ -115,72 +115,13 @@ von dieser Anwendung. Zwei Wege aus der Sackgasse, beide unter
   weiterhin erreichbar. Das ist meist die bessere Wahl.
 - **Token entfernen** — öffentliche Repos laden dann wieder ohne Xet.
 
-## ComfyUI
+## Server starten
 
-Neben llama.cpp lässt sich **ComfyUI** für Bild- und Videogenerierung betreiben.
-Grundlage ist kyuz0s zweites Repo,
-[amd-strix-halo-comfyui-toolboxes](https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes).
-Dessen Image ist wie die llama.cpp-Toolboxen eines zum Reinsteigen.
-`toolboxes_comfyui/Dockerfile.comfyui` ist eine Kopie ihres Dockerfiles, bei der
-nur der abschließende `CMD` den Server startet statt einer Shell — ein Diff
-gegen ihre Datei zeigt genau diesen Unterschied und sonst nichts. Ihr
-Build-Kontext (`scripts/` und `workflows/`) liegt daneben im Fork, damit
-`toolboxes_comfyui/build.sh` ohne fremdes Repository baut; Herkunft, Revision
-und Nachziehen stehen in
-[toolboxes_comfyui/UPSTREAM.md](../toolboxes_comfyui/UPSTREAM.md).
-
-Auf der Server-Seite legt **ComfyUI starten** einen Container an — Image,
-Host-Port, Name. Mehr braucht es nicht: kein
-Modell (das nennt der Workflow selbst), kein Context, kein API-Key. Auf der
-Detailseite führt **Oberfläche öffnen** zur ComfyUI-Weboberfläche.
-
-Alle vier Startdialoge der Server-Seite — llama.cpp, RPC-Worker, ComfyUI, Media
-API — haben denselben Hinweis: **Läuft bereits** nennt die laufenden Container
+Alle drei Startdialoge der Server-Seite — llama.cpp, RPC-Worker, Media API —
+haben denselben Hinweis: **Läuft bereits** nennt die laufenden Container
 derselben Art mit ihrem Port, und belegt ein laufender Container schon den
 gewählten Host-Port, steht darüber rot ein **Portkonflikt**; Starten bleibt dann
 gesperrt, bis ein anderer Port gewählt ist.
-
-> [!WARNING]
-> ComfyUI hat **keine Anmeldung**. Wer den Port erreicht, kann Workflows
-> ausführen und Dateien auf der Box lesen und schreiben. Auf der Netzwerk-Seite
-> ist Port 8000 deshalb auch ohne laufenden Container aufgeführt, und ihn für
-> alle zu öffnen warnt wie beim RPC-Port — gib ihn nur für eine Quelle frei, siehe
-> [Netzwerk und Firewall](#netzwerk-und-firewall).
-
-Zwei Dinge unterscheiden das Fork-Image vom Original, beide nötig für den
-Serverbetrieb:
-
-- `--listen 0.0.0.0`. Upstreams Alias hat es nicht, ComfyUI bindet dann
-  `127.0.0.1` — im Container heißt das, dass ein veröffentlichter Port ins Leere
-  zeigt.
-- `TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL` und `TORCH_BLAS_PREFER_HIPBLASLT`
-  als `ENV`. Upstream setzt sie in `/etc/profile.d/`, was nur eine Login-Shell
-  liest; ein Container, der direkt Python startet, bekäme sie nicht und liefe
-  langsamer, ohne dass etwas darauf hinweist.
-
-### ComfyUI-Modelle
-
-Eigene Seite, getrennt von den GGUFs: andere Ordner, andere Dateien, andere
-Werkzeuge. Sie zeigt die acht Ordner, die ComfyUI kennt (`checkpoints`,
-`loras`, `vae`, `diffusion_models`, …) mit Größe und Inhalt — leere inklusive,
-weil ein leeres `loras/` eine Aussage ist. Ordner, die ComfyUI *nicht* liest,
-werden als **unbekannt** markiert: dort belegen Dateien Platz, ohne je gefunden
-zu werden.
-
-**Herunterladen** startet die Skripte, die im Image liegen (`get_wan22.sh`,
-`get_qwen_image.sh`, `get_ltx2.sh`, `get_hunyuan15.sh`, `get_minimax_h3.sh`) in
-einem Wegwerf-Container mit dem Modellverzeichnis gemountet. Die Skripte sind
-getestet, kennen die richtigen Zielordner und setzen abgebrochene Downloads
-fort — deshalb werden sie benutzt statt nachgebaut. Der Fortschritt läuft über
-dieselbe Download-Liste wie die GGUF-Downloads.
-
-Bei den meisten Familien muss zuerst der Eintrag **Gemeinsame Teile** geladen
-werden; er bringt Text-Encoder und VAEs, auf die die eigentlichen Modelle
-aufbauen.
-
-**Löschen** verlangt, dass ComfyUI vorher gestoppt ist. Anders als bei einem
-llama-Server, dessen Modell in seinen Labels steht, lässt sich von außen nicht
-sagen, welche Datei ein Workflow gerade lädt.
 
 ### Speculative Decoding
 
@@ -212,11 +153,11 @@ aber nicht zur Wahl — dafür bleibt `--extra-args` offen.
 
 Die [Media API](../toolboxes_media_api/README.md) — Qwen-Image-2512,
 Qwen-Image-Edit-2511 und MiniMax-H3 hinter einer API mit Schlüssel und einem
-Playground — läuft hier wie ComfyUI und llama.cpp: als Container auf dem Podman
+Playground — läuft hier wie llama.cpp: als Container auf dem Podman
 der Box, angelegt auf der Seite **Server** und gestartet, gestoppt und entfernt
 wie jeder andere.
 
-**Media API starten** öffnet einen Dialog, so klein wie der von ComfyUI:
+**Media API starten** öffnet einen kleinen Dialog:
 
 - **Containername** und **Host-Port** (im Container immer 8100),
 - **Im Netzwerk erreichbar** — aus heißt: nur `127.0.0.1`; an heißt `0.0.0.0`.
@@ -230,8 +171,8 @@ der Detailseite (**Beim Booten automatisch starten**) oder über
 [Autostart](#autostart)).
 
 Alles andere hat Standardwerte, die zur Box passen, und taucht im Dialog nicht
-auf: das Image (`:media-api`), der ComfyUI-Modellbaum schreibgeschützt als
-Modellverzeichnis, `~/media-api-data` für Ergebnisse, Uploads und Aufträge, das
+auf: das Image (`:media-api`), das Media-Modellverzeichnis aus den
+Einstellungen schreibgeschützt als Modellverzeichnis, `~/media-api-data` für Ergebnisse, Uploads und Aufträge, das
 reale GPU-Backend mit Speicherprüfung, die Grenzen des Dienstes. Wer davon etwas
 ändern muss, tut es über die API (`PUT /api/media/config`) oder das MCP-Werkzeug
 `configure_media_api`. Gespeichert werden die Angaben des Dialogs erst, wenn der
@@ -249,7 +190,7 @@ dem alten Schlüssel (**Neu starten**) läuft — er trägt einen Hash seines
 vollständigen Aufrufs als Label.
 
 - **Der Aufruf** ist der aus der README der Media API, Flag für Flag: Podman,
-  Geräte und die Gruppen `video` und `render` wie bei ComfyUI und llama.cpp,
+  Geräte und die Gruppen `video` und `render` wie bei llama.cpp,
   keine eigene Betriebsart und kein Schalter dafür. Zusätzlich
   `--cap-drop=all`, `--security-opt=no-new-privileges`, Modelle und Schlüssel
   schreibgeschützt, der Port auf `127.0.0.1`, solange er nicht ausdrücklich ins
@@ -280,7 +221,7 @@ vollständigen Aufrufs als Label.
 
 ### MediaAPI-Modelle
 
-Eigene Seite wie bei llama.cpp und ComfyUI, aber ohne freie Suche: Sie zeigt nur
+Eigene Seite wie bei llama.cpp, aber ohne freie Suche: Sie zeigt nur
 die kuratierten Modelle — Qwen-Image-2512, Qwen-Image-Edit-2511 und MiniMax-H3 —
 mit ihren Profilen; was ein Image darüber hinaus meldet, fällt weg. Welche
 Profile es gibt, weiß das Image selbst: Die Übersicht ruft
@@ -309,10 +250,12 @@ sagt die Seite das dazu.
   sobald der freie Platz unter die Reserve fällt; Teildateien bleiben für
   „Fortsetzen“. Nur dieser Wächter macht Einträge ohne bekannte Größe zulässig —
   der Dienst selbst (`MEDIA_ALLOW_DOWNLOADS`) hat keinen und lädt sie nicht.
-- **Modellbaum.** Standard ist der ComfyUI-Baum: Die Media API liest dessen
-  Layout direkt und benutzt vorhandene FP8-Dateien mit. Ihre eigenen Ordner dort
-  (`diffusers/`, `huggingface/`) stehen auf der ComfyUI-Seite als „Media API“
-  statt als „unbekannt“.
+- **Modellbaum.** Standard ist die Einstellung **Media-Modellverzeichnis**
+  (`mediaModelsDir`, vorbelegt mit `~/media-api-models`, neben
+  `~/media-api-data`): Einzeldateien nach Rolle (`diffusion_models/`,
+  `text_encoders/`, `loras/`), dazu `diffusers/` und `huggingface/`. Eine ältere
+  Konfiguration mit `comfyModelsDir` wird beim Laden übernommen. Die Media-Einstellungen (`modelsDir`) können einen eigenen Baum
+  nennen; leer heißt: dieser.
 - **Downloads durch den Dienst selbst** (`MEDIA_ALLOW_DOWNLOADS`) lassen sich
   nur über die API einschalten, verlangen dann einen beschreibbaren Modell-Mount
   und werden mit einer Warnung quittiert; der HF-Token kommt dann ebenfalls als
@@ -331,7 +274,7 @@ irgendwo im Pfad wird nicht verfolgt, sondern abgelehnt. Die einzige Ausnahme si
 Links, die root in einem nur für root beschreibbaren Verzeichnis angelegt hat —
 das Systemlayout, etwa `/home` → `/var/home` auf Fedora Atomic und Bazzite.
 `/root` ist tabu, außer es ist das eigene Home des Dienstes: Bei der
-root-Installation liegen die Standardverzeichnisse dort (`/root/comfy-models`,
+root-Installation liegen die Standardverzeichnisse dort (`/root/media-api-models`,
 `/root/media-api-data`), und es gelten dieselben Regeln wie für jedes Home. Kein
 Verzeichnis auf dem Pfad darf für andere als den Benutzer des Dienstes und root
 beschreibbar sein (auch kein Sticky-Verzeichnis wie `/tmp`), sonst könnte ein
@@ -366,8 +309,7 @@ beschreiben kann, entfernt sie auch nicht.
 
 Welche Ports das sind, wird nicht gepflegt, sondern hergeleitet: der eigene Port
 aus den Einstellungen, dazu je ein Port pro verwaltetem Container und die
-Standardports der Dienste — 50052 (RPC-Worker), 8000 (ComfyUI) und 8100 (Media
-API) —, auch wenn gerade keiner läuft, weil man ihre Freigaben meist vor dem
+Standardports der Dienste — 50052 (RPC-Worker) und 8100 (Media API) —, auch wenn gerade keiner läuft, weil man ihre Freigaben meist vor dem
 ersten Start einrichtet. Ein Server, der vor fünf Minuten gestartet wurde, steht
 dort ohne weiteres Zutun, und ein Port, der für einen längst gelöschten Server
 offen ist, fällt auf. Öffnen, Sperren und „Nur für Quelle“ gehen für jeden
@@ -380,7 +322,6 @@ relevanten Ports durch:
 |---|---|---|
 | 8420 | das Webinterface selbst | Passwort + JWT-Cookie |
 | 11434 | llama-server (Default je Server) | `--api-key` |
-| 8000 | ComfyUI (Default je Container) | **nichts** |
 | 8100 | Media API — nur an `127.0.0.1` gebunden, außer mit „Im Netzwerk erreichbar“ gestartet | API-Schlüssel, Playground mit Sitzung + CSRF; nur HTTP |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
 
@@ -501,7 +442,7 @@ der Abschnitt ersatzlos, wie die GPU-Kacheln auch.
 Unter `http://<box>:8420/mcp` spricht die Webapp das
 [Model Context Protocol](https://modelcontextprotocol.io). Ein Agent wie
 Claude Desktop, Claude Code oder Hermes Agent kann die Box damit genauso steuern
-wie diese Oberfläche: Server, RPC-Worker, ComfyUI und die Media API starten und stoppen, Logs
+wie diese Oberfläche: Server, RPC-Worker und die Media API starten und stoppen, Logs
 lesen, Modelle suchen, laden, schätzen und löschen, Profile pflegen, Images
 ziehen, Firewall-Ports freigeben, Einstellungen ändern, Updates einspielen.
 Jede Box ist ihr eigener MCP-Server — bei mehreren Boxen trägt man jede einzeln

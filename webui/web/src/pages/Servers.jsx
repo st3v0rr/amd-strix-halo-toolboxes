@@ -7,7 +7,6 @@ import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { formatDate, shortImage } from '../components/format.js'
-import { StartComfyDialog } from './StartComfyDialog.jsx'
 import { StartMediaApiDialog } from './StartMediaApiDialog.jsx'
 import { StartRpcWorkerDialog } from './StartRpcWorkerDialog.jsx'
 import { StartServerDialog } from './StartServerDialog.jsx'
@@ -17,7 +16,6 @@ export function Servers() {
   const queryClient = useQueryClient()
   const [starting, setStarting] = useState(false)
   const [startingRpc, setStartingRpc] = useState(false)
-  const [startingComfy, setStartingComfy] = useState(false)
   const [startingMedia, setStartingMedia] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
 
@@ -62,9 +60,6 @@ export function Servers() {
         <button className="btn btn-primary" type="button" onClick={() => setStartingMedia(true)}>
           Media API starten
         </button>
-        <button className="btn btn-primary" type="button" onClick={() => setStartingComfy(true)}>
-          ComfyUI starten
-        </button>
         <button className="btn btn-primary" type="button" onClick={() => setStarting(true)}>
           llama.cpp starten
         </button>
@@ -103,8 +98,6 @@ export function Servers() {
                       <Link to={`/servers/${encodeURIComponent(server.name)}`}>{server.name}</Link>
                       {server.role === 'rpc' ? (
                         <span className="badge badge-info">RPC</span>
-                      ) : server.role === 'comfy' ? (
-                        <span className="badge badge-info">ComfyUI</span>
                       ) : server.role === 'media' ? (
                         <span className="badge badge-info">Media API</span>
                       ) : null}
@@ -114,8 +107,6 @@ export function Servers() {
                   <td className="small mono" style={{ maxWidth: 280 }}>
                     {server.role === 'rpc' ? (
                       <span className="faint">GPU-Worker</span>
-                    ) : server.role === 'comfy' ? (
-                      <span className="faint">Bild- und Videogenerierung</span>
                     ) : server.role === 'media' ? (
                       <span className="faint">Bild- und Videogenerierung per API</span>
                     ) : (
@@ -181,8 +172,6 @@ export function Servers() {
 
       {starting ? <StartServerDialog onClose={() => setStarting(false)} /> : null}
       {startingRpc ? <StartRpcWorkerDialog onClose={() => setStartingRpc(false)} /> : null}
-
-      {startingComfy ? <StartComfyDialog onClose={() => setStartingComfy(false)} /> : null}
       {startingMedia ? <StartMediaApiDialog onClose={() => setStartingMedia(false)} /> : null}
 
       {pendingDelete ? (

@@ -3,7 +3,7 @@
  *
  * toolboxes_media_api/README.md ("Run it") is the reference for how the media
  * API is meant to run: on the host's rootful Podman with the same devices and
- * groups as ComfyUI, but with no capabilities, no privilege escalation, the key
+ * groups as llama-server, but with no capabilities, no privilege escalation, the key
  * as a read-only file and the model tree read-only. This reads that very block
  * and holds buildMediaRunArgv to every flag in it — and to nothing beyond a
  * short list of known additions, so a flag that weakens the container cannot
@@ -15,6 +15,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { defaultMediaModelsDir } from '../src/config/paths.js'
 import { mediaConfigSchema } from '../src/config/schema.js'
 import { buildMediaLabels } from '../src/podman/labels.js'
 import { buildMediaRunArgv, mediaContainerEnv } from '../src/podman/argv.js'
@@ -58,6 +59,11 @@ function normalize(argv) {
 const home = '/home/someone'
 const keyFile = `${home}/.config/strix-halo-webui/media-api/api-key`
 const sessionFile = `${home}/.config/strix-halo-webui/media-api/session-secret`
+/**
+ * The model tree's folder name comes from the web interface's own default, so
+ * the README's mount and that default cannot drift apart unnoticed.
+ */
+const modelsFolder = path.basename(defaultMediaModelsDir)
 
 /** The README's host paths, as the web interface would fill them in. */
 function documentedPairs() {
@@ -66,7 +72,7 @@ function documentedPairs() {
     flag,
     value
       ?.replace('$HOME/.config/media-api/api-key', keyFile)
-      .replace('$HOME/comfy-models', `${home}/comfy-models`)
+      .replace(`$HOME/${modelsFolder}`, `${home}/${modelsFolder}`)
       .replace('$HOME/media-api-data', `${home}/media-api-data`),
   ])
   return { pairs: mapped, image }
@@ -78,7 +84,7 @@ function ours(config = mediaConfigSchema.parse({})) {
     image: config.image,
     hostPort: config.port,
     bindAddress: config.bindAddress,
-    modelsDir: `${home}/comfy-models`,
+    modelsDir: `${home}/${modelsFolder}`,
     modelsReadOnly: config.modelsReadOnly,
     dataDir: `${home}/media-api-data`,
     backend: config.backend,

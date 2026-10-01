@@ -35,7 +35,7 @@ const { reconcile } = await import('../src/podman/autostart.js')
 const { createMediaSecrets } = await import('../src/media/secrets.js')
 
 const webuiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const comfyModels = path.join(root, 'comfy-models')
+const mediaModels = path.join(root, 'media-models')
 const dataDir = path.join(root, 'media-data')
 
 let ctx
@@ -93,7 +93,7 @@ before(async () => {
   await ctx.config.update((c) => {
     c.jwtSecret = Buffer.alloc(32, 7).toString('base64')
     c.apiToken = { hash: hashApiToken(token), hint: 'x', createdAt: new Date().toISOString() }
-    c.settings.comfyModelsDir = comfyModels
+    c.settings.mediaModelsDir = mediaModels
     return c
   })
   mediaPort = await freePort()
@@ -120,7 +120,7 @@ test('the status starts from safe defaults, with no Podman mode of its own', asy
   assert.equal(body.config.bindAddress, '127.0.0.1')
   assert.equal(body.config.modelsReadOnly, true)
   assert.equal(body.config.allowDownloads, false)
-  assert.equal(body.effective.modelsDir, comfyModels, 'the ComfyUI tree by default')
+  assert.equal(body.effective.modelsDir, mediaModels, 'the general media tree by default')
   assert.equal(body.container, null)
   assert.equal(body.image.installed, true)
   assert.equal(body.secrets.apiKey.configured, false)
@@ -169,7 +169,7 @@ test('"Media API starten" creates the hardened rootful container and generates t
   assert.ok(argv.includes('--cap-drop=all') && argv.includes('--security-opt=no-new-privileges'))
   assert.ok(!argv.includes('--userns=keep-id') && !argv.includes('keep-groups'), 'no rootless-only flags')
   assert.equal(argv[argv.indexOf('-p') + 1], `127.0.0.1:${mediaPort}:8100`)
-  assert.ok(argv.includes(`${comfyModels}:/models:ro,z`))
+  assert.ok(argv.includes(`${mediaModels}:/models:ro,z`))
   assert.ok(argv.some((a) => a.endsWith(':/run/secrets/media-api-key:ro,z')))
   assert.ok(!argv.includes('/dev/kfd'), 'mock backend: no GPU')
 
@@ -284,7 +284,7 @@ test('fetch validates against the inventory, runs one at a time and reports prog
   assert.equal(done.job.progress.pct, 100)
   assert.equal(done.job.progress.files.done, 3)
   assert.equal(done.job.type, 'media-model-fetch')
-  assert.ok(fs.existsSync(path.join(comfyModels, 'diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors')))
+  assert.ok(fs.existsSync(path.join(mediaModels, 'diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors')))
 
   const { body } = await api('GET', '/media/models')
   const fp8 = body.models.find((m) => m.id === 'qwen-image-2512').profiles.find((p) => p.id === 'fp8')
@@ -292,10 +292,6 @@ test('fetch validates against the inventory, runs one at a time and reports prog
   const again = await api('POST', '/media/fetch', { body: { model: 'qwen-image-2512', profile: 'fp8' } })
   assert.equal(again.status, 409)
   assert.match(again.body.error.message, /bereits vollständig/)
-
-  // The shared tree's new diffusers folder shows up on the ComfyUI page as the media API's.
-  const comfy = await api('GET', '/comfy/models')
-  assert.equal(comfy.body.folders.find((f) => f.name === 'diffusers').owner, 'media')
 })
 
 test('a finished fetch can be resumed, a running one cannot', async () => {
@@ -363,7 +359,7 @@ test('with the models moved, inventory and fetch follow the saved settings, not 
   assert.equal(inv.status, 200, JSON.stringify(inv.body))
   assert.equal(inv.body.source, 'image', 'not the container, which still mounts the old tree')
   assert.equal(inv.body.modelsDir, path.join(fs.realpathSync(root), 'moved-models'))
-  assert.equal(inv.body.running.modelsDir, fs.realpathSync(comfyModels))
+  assert.equal(inv.body.running.modelsDir, fs.realpathSync(mediaModels))
   const fp8 = inv.body.models.find((m) => m.id === 'qwen-image-2512').profiles.find((p) => p.id === 'fp8')
   assert.equal(fp8.available, false, 'judged by the new, empty tree')
   const started = await api('POST', '/media/fetch', { body: { model: 'qwen-image-2512', profile: 'fp8' } })
@@ -567,7 +563,7 @@ test('the Servers-page start: few choices, stored only once the container runs, 
   let argv = lastArgv()
   assert.equal(argv[argv.indexOf('-p') + 1], `0.0.0.0:${mediaPort}:8100`)
   assert.ok(!argv.includes('--userns=keep-id') && !argv.includes('keep-groups'), 'rootful: no rootless-only flags')
-  for (const value of ['--cap-drop=all', '--security-opt=no-new-privileges', `${comfyModels}:/models:ro,z`]) {
+  for (const value of ['--cap-drop=all', '--security-opt=no-new-privileges', `${mediaModels}:/models:ro,z`]) {
     assert.ok(argv.includes(value), value)
   }
   const keyFile = path.join(root, 'config', 'media-api', 'api-key')

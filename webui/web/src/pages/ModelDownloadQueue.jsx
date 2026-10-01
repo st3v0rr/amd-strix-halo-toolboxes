@@ -35,8 +35,8 @@ const BADGE = {
  * table is fed by one SSE stream for all jobs rather than one per row, and it is
  * also the only place from which an interrupted download can be picked back up.
  *
- * The job type is a parameter because the GGUF page and the ComfyUI page each
- * show only their own downloads — they write to different directories and mean
+ * The job type is a parameter because the GGUF page and the media models page
+ * each show only their own downloads — they write to different directories and mean
  * different things, so mixing them in one table would be misleading.
  *
  * @param {object} props

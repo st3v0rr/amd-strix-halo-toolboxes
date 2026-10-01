@@ -3,7 +3,6 @@ import net from 'node:net'
 import { randomBytes } from 'node:crypto'
 
 import {
-  COMFY_PORT,
   CONTAINER_PORT,
   IMAGE_REPO,
   MEDIA_CONTAINER_DATA_DIR,
@@ -30,7 +29,6 @@ import {
   verifyMediaMounts,
 } from '../media/config.js'
 import {
-  buildComfyRunArgv,
   buildMediaRunArgv,
   buildRpcRunArgv,
   buildRunArgv,
@@ -38,13 +36,7 @@ import {
   normalizeModelPath,
   rpcCacheVolume,
 } from './argv.js'
-import {
-  buildComfyLabels,
-  buildLabels,
-  buildMediaLabels,
-  buildRpcLabels,
-  parseLabels,
-} from './labels.js'
+import { buildLabels, buildMediaLabels, buildRpcLabels, parseLabels } from './labels.js'
 import {
   containerExists,
   createVerified,
@@ -104,17 +96,11 @@ function replacedContainerHoldsPort(containers, port, ignoreName) {
 export function describeContainer(entry) {
   const labels = parseLabels(entry.Labels ?? {})
   const name = (entry.Names ?? [])[0] ?? entry.Id?.slice(0, 12) ?? 'unbekannt'
-  // Each role publishes a different container port — 50052 for a worker, 8000
-  // for ComfyUI, 11434 for llama-server. Looking for the wrong one would
+  // Each role publishes a different container port — 50052 for a worker, 8100
+  // for the media API, 11434 for llama-server. Looking for the wrong one would
   // silently report "kein Port" for that whole role.
   const innerPort =
-    labels.role === ROLE.rpc
-      ? RPC_PORT
-      : labels.role === ROLE.comfy
-        ? COMFY_PORT
-        : labels.role === ROLE.media
-          ? MEDIA_PORT
-          : CONTAINER_PORT
+    labels.role === ROLE.rpc ? RPC_PORT : labels.role === ROLE.media ? MEDIA_PORT : CONTAINER_PORT
   const published = (entry.Ports ?? []).find((p) => p.container_port === innerPort)
   return {
     name,
@@ -545,70 +531,9 @@ export async function createRpcWorker(ctx, spec, { replace = false, onLog = () =
 }
 
 /**
- * Create and start a ComfyUI container.
- *
- * Much smaller than createServer: the image starts ComfyUI on its own, with the
- * flags baked into toolboxes_comfyui/Dockerfile.comfyui. There is no model to
- * pick — ComfyUI loads whatever a workflow asks for from the mounted directory
- * — and so nothing to detect at the image either.
- *
- * The two host directories are created if missing. Podman would create them
- * too, but as root-owned directories that the user then cannot write to.
- */
-export async function createComfyServer(ctx, spec, { replace = false, onLog = () => {} } = {}) {
-  const settings = ctx.settings
-  const exists = await containerExists(spec.name)
-  if (exists && !replace) {
-    throw conflict(`Ein Container namens '${spec.name}' existiert bereits.`, {
-      existing: spec.name,
-    })
-  }
-
-  await validateCommon(ctx, spec, { ignoreName: exists ? spec.name : undefined })
-
-  const modelsDir = settings.comfyModelsDir
-  const outputDir = settings.comfyOutputDir
-  for (const dir of [modelsDir, outputDir]) {
-    try {
-      fs.mkdirSync(dir, { recursive: true })
-    } catch (err) {
-      throw failedDependency(`Verzeichnis ${dir} lässt sich nicht anlegen: ${err.message}`)
-    }
-  }
-
-  if (exists) {
-    onLog(`Ersetze vorhandenen Container '${spec.name}' …`)
-    closeLogSession(spec.name)
-    await stopContainer(spec.name)
-    await removeContainer(spec.name, { force: true })
-  }
-
-  const labels = buildComfyLabels({
-    image: spec.image,
-    hostPort: spec.port,
-    modelsDir,
-    outputDir,
-  })
-  const argv = buildComfyRunArgv({
-    containerName: spec.name,
-    image: spec.image,
-    hostPort: spec.port,
-    modelsDir,
-    outputDir,
-    labels,
-  })
-
-  onLog(`Starte ComfyUI ${spec.name} (${spec.image}) auf Port ${spec.port} …`)
-  const id = await runContainer(argv)
-  log.info(`ComfyUI '${spec.name}' gestartet (${id.slice(0, 12)})`)
-
-  return { name: spec.name, id, role: ROLE.comfy, port: spec.port, modelsDir, outputDir }
-}
-
-/**
  * Create and start the media API.
  *
- * Unlike the other three this takes no spec of its own: the service is one per
+ * Unlike the other two this takes no spec of its own: the service is one per
  * box, and its container is made from its settings — the stored ones (apply,
  * autostart), or the stored ones with the Servers page's few choices applied,
  * which the caller stores once this succeeded. Before podman sees anything,
@@ -784,24 +709,6 @@ export async function serverHealth(name) {
   if (server.role === ROLE.rpc) {
     const result = await tcpReachable('127.0.0.1', server.hostPort)
     return { ...result, role: ROLE.rpc }
-  }
-
-  // ComfyUI has no health endpoint either, but it does serve its own UI, and a
-  // model loading for minutes still answers there. /system_stats is the
-  // cheapest honest signal it offers.
-  if (server.role === ROLE.comfy) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 3000)
-    try {
-      const res = await fetch(`http://127.0.0.1:${server.hostPort}/system_stats`, {
-        signal: controller.signal,
-      })
-      return { reachable: res.ok, status: res.status, role: ROLE.comfy }
-    } catch (err) {
-      return { reachable: false, reason: err.name === 'AbortError' ? 'Zeitüberschreitung' : err.message, role: ROLE.comfy }
-    } finally {
-      clearTimeout(timer)
-    }
   }
 
   // The media API has an unauthenticated liveness route that says nothing but

@@ -8,6 +8,7 @@ import { settingsPatchSchema } from '../config/schema.js'
 import { badRequest, failedDependency } from '../lib/errors.js'
 import { mask, registerSecret, unregisterSecret } from '../lib/redact.js'
 import { validate } from '../lib/validate.js'
+import { checkMediaDir } from '../media/config.js'
 
 function refreshMediaToken(ctx, token) {
   return ctx.mediaSecrets.refreshHfToken(token)
@@ -107,6 +108,11 @@ export function settingsRoutes(ctx) {
         } catch (err) {
           throw badRequest(`Modellverzeichnis nicht nutzbar: ${err.message}`)
         }
+      }
+      // Mounted into the media container, so held to the same rules as the
+      // media settings' own paths. Created only when the service starts.
+      if (patch.mediaModelsDir !== undefined) {
+        checkMediaDir('Das Media-Modellverzeichnis', patch.mediaModelsDir)
       }
 
       if (hfToken !== undefined) await updateHfToken(ctx, hfToken)

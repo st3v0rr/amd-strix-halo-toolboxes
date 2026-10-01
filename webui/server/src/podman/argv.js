@@ -1,7 +1,4 @@
 import {
-  COMFY_CONTAINER_MODELS_DIR,
-  COMFY_CONTAINER_OUTPUT_DIR,
-  COMFY_PORT,
   CONTAINER_MODELS_DIR,
   CONTAINER_PORT,
   EXTRA_ARGS_OLD,
@@ -250,71 +247,6 @@ export function buildRpcRunArgv(spec) {
   return argv
 }
 
-/**
- * Builds the `podman run` argv for a ComfyUI container.
- *
- * A third sibling of buildRunArgv and buildRpcRunArgv, for the same reason they
- * are siblings of each other: buildRunArgv is a transcription of
- * run-llama-server.sh that dev/parity diffs against the real script, and
- * folding another shape into it would leave that check covering only part of
- * the function.
- *
- * No command is passed. Unlike the llama images, whose CMD has to be overridden
- * to add flags, toolboxes_comfyui/Dockerfile.comfyui already starts ComfyUI
- * with the right arguments — including `--listen 0.0.0.0`, without which a
- * published port reaches nothing.
- *
- * @param {object} spec
- * @param {string} spec.containerName
- * @param {string} spec.image
- * @param {number} spec.hostPort published port on the host
- * @param {string} spec.modelsDir absolute host path holding the ComfyUI models
- * @param {string} spec.outputDir absolute host path for generated images
- * @param {Record<string,string>} [spec.labels]
- * @returns {string[]}
- */
-export function buildComfyRunArgv(spec) {
-  const { containerName, image, hostPort, modelsDir, outputDir, labels = {} } = spec
-
-  const argv = [
-    'run',
-    '-d',
-    '--restart',
-    'unless-stopped',
-    '--device',
-    '/dev/dri',
-    '--device',
-    '/dev/kfd',
-    '--group-add',
-    'video',
-    '--group-add',
-    'render',
-    '--security-opt',
-    'seccomp=unconfined',
-    '-p',
-    `${hostPort}:${COMFY_PORT}`,
-    '--name',
-    containerName,
-  ]
-
-  for (const [key, value] of Object.entries(labels)) {
-    argv.push('--label', `${key}=${value}`)
-  }
-
-  // Both mounts matter for different reasons: without the first ComfyUI finds
-  // no models, without the second every generated image dies with the
-  // container.
-  argv.push(
-    '-v',
-    `${modelsDir}:${COMFY_CONTAINER_MODELS_DIR}:z`,
-    '-v',
-    `${outputDir}:${COMFY_CONTAINER_OUTPUT_DIR}:z`,
-    image,
-  )
-
-  return argv
-}
-
 const flag = (value) => (value ? '1' : '0')
 
 /**
@@ -382,12 +314,15 @@ export function mediaPublish(bindAddress, hostPort) {
 /**
  * Builds the `podman run` argv for the media API.
  *
- * A fourth sibling of buildRunArgv, for the reasons the other two give. Its
- * reference is not a script but the hardened command documented in
- * toolboxes_media_api/README.md and build.sh, and
- * server/test/media-parity.test.js holds this argv to every documented flag.
+ * A third sibling of buildRunArgv, for the same reason buildRpcRunArgv is one:
+ * buildRunArgv is a transcription of run-llama-server.sh that dev/parity diffs
+ * against the real script, and folding another shape into it would leave that
+ * check covering only part of the function. Its reference is not a script but
+ * the hardened command documented in toolboxes_media_api/README.md and
+ * build.sh, and server/test/media-parity.test.js holds this argv to every
+ * documented flag.
  *
- * It runs on the host's Podman exactly as ComfyUI and llama-server do — the
+ * It runs on the host's Podman exactly as llama-server and the RPC worker do — the
  * same devices and the same `video`/`render` groups — and keeps what those two
  * do not have: no capabilities, no privilege escalation, secrets as read-only
  * files, the model tree read-only and the port on loopback unless the settings

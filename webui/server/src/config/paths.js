@@ -58,12 +58,8 @@ export const logFile = path.join(stateDir, 'app.log')
 /** Default models directory. Absolute, and deliberately not repo-relative. */
 export const defaultModelsDir = path.join(home, 'models')
 
-/**
- * ComfyUI's directories, named the way upstream's own toolbox names them, so a
- * box that already ran ComfyUI by hand finds its existing models.
- */
-export const defaultComfyModelsDir = path.join(home, 'comfy-models')
-export const defaultComfyOutputDir = path.join(home, 'comfy-outputs')
+/** The media API's model tree, mounted read-only into its container. */
+export const defaultMediaModelsDir = path.join(home, 'media-api-models')
 
 /** Outputs, uploads and job records of the media API — the one writable mount. */
 export const defaultMediaDataDir = path.join(home, 'media-api-data')
@@ -85,7 +81,6 @@ export const vramEstimator = path.join(
  * covers all of them when checking for updates.
  */
 export const dockerfileDir = path.join(repoRoot, 'toolboxes_llama_server')
-export const comfyDockerfileDir = path.join(repoRoot, 'toolboxes_comfyui')
 export const mediaDockerfileDir = path.join(repoRoot, 'toolboxes_media_api')
 
 /**

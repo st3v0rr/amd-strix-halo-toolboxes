@@ -12,7 +12,7 @@ import { mediaStartBody, mediaStartErrors, mediaStartForm } from './mediaStart.j
 /**
  * Start the media API.
  *
- * As small as the ComfyUI dialog: a name, a port and whether the port is
+ * Deliberately small: a name, a port and whether the port is
  * reachable from the network. The API key is not asked here — it is generated
  * on the first successful start and managed on the detail page, like autostart. Image, directories, limits and the service's switches keep
  * their stored settings, whose defaults fit this box; the models are fetched

@@ -1,5 +1,4 @@
 import {
-  COMFY_PORT,
   JOB_FINISHED_STATUS,
   MEDIA_PORT,
   JOB_STATUS,
@@ -44,7 +43,7 @@ const obj = (properties = {}, required = []) => ({
 })
 
 const port = (description, extra = {}) => int(description, { minimum: PORT_MIN, maximum: PORT_MAX, ...extra })
-const name = str('Container-Name, z. B. "qwen3" oder "comfyui".')
+const name = str('Container-Name, z. B. "qwen3" oder "media-api".')
 const replace = bool('Einen vorhandenen Container gleichen Namens ersetzen. Standard: false.')
 const image = (description) => str(description)
 
@@ -98,14 +97,14 @@ const mediaSettings = {
     'IPv4-Adresse, auf der der Port veröffentlicht wird. Standard 127.0.0.1 — der Dienst spricht nur HTTP; von außen gehört ein TLS-Reverse-Proxy davor.',
   ),
   publicUrl: str('Adresse eines Reverse-Proxys vor dem Dienst (für den Playground-Link), z. B. "https://media.box.lan". Leer: keiner.'),
-  modelsDir: str('Absoluter Pfad des Modellbaums. Leer: der ComfyUI-Modellbaum, dessen Layout der Dienst direkt liest.'),
+  modelsDir: str('Absoluter Pfad des Modellbaums. Leer: das Media-Modellverzeichnis aus den Einstellungen (mediaModelsDir).'),
   modelsReadOnly: bool('Modellbaum schreibgeschützt mounten (Standard und empfohlen).'),
   dataDir: str('Absoluter Pfad für Ergebnisse, Uploads und Job-Zustand.'),
   backend: str('"real" (GPU) oder "mock" (ohne GPU und Modelle, liefert Testbilder).', { enum: [...MEDIA_BACKENDS] }),
   allowDownloads: bool('Der Dienst lädt fehlende Modelle beim ersten Auftrag selbst. Braucht modelsReadOnly=false; abgeraten — besser fetch_media_models.'),
   memoryCheck: str('Speicherprüfung vor dem Laden eines Modells.', { enum: [...MEDIA_MEMORY_CHECKS] }),
   memoryReserveGb: { type: 'number', minimum: 0, maximum: 1024, description: 'Reserve in GB, die frei bleiben muss.' },
-  disableMmap: bool('Gewichte kopieren statt mappen (Standard, wie ComfyUIs --disable-mmap).'),
+  disableMmap: bool('Gewichte kopieren statt mappen (Standard).'),
   logLevel: str('Log-Level des Dienstes.', { enum: [...MEDIA_LOG_LEVELS] }),
   cookieSecure: bool('Sitzungs-Cookie nur über HTTPS — hinter einem TLS-Reverse-Proxy einschalten.'),
   allowXApiKey: bool('Neben "Authorization: Bearer" auch den Header X-API-Key annehmen.'),
@@ -180,7 +179,7 @@ export const tools = [
     name: 'get_overview',
     title: 'Überblick',
     description:
-      'Der beste Einstieg: Speicher, GPU, Auslastung, alle verwalteten Container (llama-server, RPC-Worker, ComfyUI, Media API) und laufende Jobs in einem Aufruf.',
+      'Der beste Einstieg: Speicher, GPU, Auslastung, alle verwalteten Container (llama-server, RPC-Worker, Media API) und laufende Jobs in einem Aufruf.',
     inputSchema: obj(),
     annotations: READ,
     async run(_args, api) {
@@ -229,7 +228,7 @@ export const tools = [
   {
     name: 'list_servers',
     title: 'Container auflisten',
-    description: 'Alle verwalteten Container mit Rolle (server, rpc, comfy, media), Status, Port, Modell und Image.',
+    description: 'Alle verwalteten Container mit Rolle (server, rpc, media), Status, Port, Modell und Image.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/servers'),
@@ -246,7 +245,7 @@ export const tools = [
     name: 'get_server_health',
     title: 'Server-Gesundheit',
     description:
-      'Fragt ab, ob ein Container antwortet: /health beim llama-server (zeigt, ob das Modell geladen ist), /healthz bei der Media API, /system_stats bei ComfyUI, TCP beim RPC-Worker.',
+      'Fragt ab, ob ein Container antwortet: /health beim llama-server (zeigt, ob das Modell geladen ist), /healthz bei der Media API, TCP beim RPC-Worker.',
     inputSchema: obj({ name }, ['name']),
     annotations: READ,
     run: ({ name }, api) => api('GET', `/servers/${enc(name)}/health`),
@@ -289,23 +288,6 @@ export const tools = [
     ),
     annotations: WRITE,
     run: (args, api) => api('POST', '/servers', { body: { role: 'rpc', ...args } }),
-  },
-  {
-    name: 'create_comfyui',
-    title: 'ComfyUI starten',
-    description:
-      'Startet ComfyUI als Container. Modell- und Ausgabeverzeichnis kommen aus den Einstellungen. ComfyUI kennt keine Anmeldung.',
-    inputSchema: obj(
-      {
-        name,
-        image: image('Image-Referenz, das ComfyUI-Image (Tag :comfyui).'),
-        port: port(`Host-Port, Standard ${COMFY_PORT}.`),
-        replace,
-      },
-      ['name', 'image'],
-    ),
-    annotations: WRITE,
-    run: (args, api) => api('POST', '/servers', { body: { role: 'comfy', ...args } }),
   },
   ...['start', 'stop', 'restart'].map((action) => ({
     name: `${action}_server`,
@@ -544,55 +526,6 @@ export const tools = [
     run: ({ jobId }, api) => api('POST', `/models/downloads/${enc(jobId)}/resume`),
   },
 
-  /* --------------------------------- ComfyUI --------------------------------- */
-  {
-    name: 'list_comfy_models',
-    title: 'ComfyUI-Modelle auflisten',
-    description: 'Die Dateien im ComfyUI-Modellbaum (checkpoints, loras, vae, …) mit Größen und freiem Platz.',
-    inputSchema: obj({ refresh: bool('Verzeichnis neu einlesen statt den Cache zu nutzen.') }),
-    annotations: READ,
-    run: ({ refresh }, api) =>
-      refresh ? api('POST', '/comfy/models/refresh') : api('GET', '/comfy/models'),
-  },
-  {
-    name: 'delete_comfy_model',
-    title: 'ComfyUI-Modell löschen',
-    description: 'Löscht eine Datei aus dem ComfyUI-Modellbaum. Geht nur, solange kein ComfyUI läuft.',
-    inputSchema: obj({ rel: str('Pfad relativ zum ComfyUI-Modellverzeichnis, wie list_comfy_models ihn nennt.') }, ['rel']),
-    annotations: DESTRUCTIVE,
-    run: ({ rel }, api) => api('DELETE', '/comfy/models', { query: { rel } }),
-  },
-  {
-    name: 'list_comfy_catalog',
-    title: 'ComfyUI-Download-Katalog',
-    description: 'Die Modellpakete (Workflows samt Gewichten), die das ComfyUI-Image herunterladen kann.',
-    inputSchema: obj(),
-    annotations: READ,
-    run: (_args, api) => api('GET', '/comfy/catalog'),
-  },
-  {
-    name: 'download_comfy_models',
-    title: 'ComfyUI-Modelle herunterladen',
-    description: 'Lädt ein Paket aus list_comfy_catalog als Hintergrund-Job herunter.',
-    inputSchema: obj(
-      {
-        id: str('ID des Pakets aus list_comfy_catalog.'),
-        image: image('Das ComfyUI-Image, dessen Download-Skript benutzt wird (Tag :comfyui).'),
-      },
-      ['id', 'image'],
-    ),
-    annotations: ONLINE_WRITE,
-    run: (args, api) => api('POST', '/comfy/downloads', { body: args }),
-  },
-  {
-    name: 'list_comfy_outputs',
-    title: 'ComfyUI-Ergebnisse',
-    description: 'Die zuletzt von ComfyUI erzeugten Bilder und Videos, neueste zuerst.',
-    inputSchema: obj(),
-    annotations: READ,
-    run: (_args, api) => api('GET', '/comfy/outputs'),
-  },
-
   /* -------------------------------- Media API -------------------------------- */
   {
     name: 'get_media_api',
@@ -672,7 +605,7 @@ export const tools = [
   {
     name: 'list_images',
     title: 'Images auflisten',
-    description: 'Verfügbare Container-Images (llama-server-Backends wie vulkan-radv, rocm-10.0, ComfyUI und die Media API): lokal vorhanden oder nicht, Update verfügbar, erkannte Argumente.',
+    description: 'Verfügbare Container-Images (llama-server-Backends wie vulkan-radv, rocm-10.0 und die Media API): lokal vorhanden oder nicht, Update verfügbar, erkannte Argumente.',
     inputSchema: obj(),
     annotations: READ,
     run: (_args, api) => api('GET', '/images'),
@@ -786,7 +719,7 @@ export const tools = [
   {
     name: 'open_firewall_port',
     title: 'Port öffnen',
-    description: `Öffnet einen Port in firewalld für alle — nur Ports verwalteter Dienste (get_network), darunter ${standardPorts}. Für RPC-Worker und ComfyUI (ohne Authentifizierung) und die Media API (nur HTTP) lieber add_firewall_rule mit einem Quellnetz.`,
+    description: `Öffnet einen Port in firewalld für alle — nur Ports verwalteter Dienste (get_network), darunter ${standardPorts}. Für RPC-Worker (ohne Authentifizierung) und die Media API (nur HTTP) lieber add_firewall_rule mit einem Quellnetz.`,
     inputSchema: obj(
       { port: port('Port.'), protocol: str('Standard tcp.', { enum: ['tcp', 'udp'] }) },
       ['port'],
@@ -845,8 +778,7 @@ export const tools = [
     description: 'Ändert einzelne Einstellungen; nicht genannte bleiben. bindAddress und port wirken erst nach restart_webui.',
     inputSchema: obj({
       modelsDir: str('Absoluter Pfad des GGUF-Modellverzeichnisses.'),
-      comfyModelsDir: str('Absoluter Pfad des ComfyUI-Modellbaums.'),
-      comfyOutputDir: str('Absoluter Pfad für ComfyUI-Ausgaben.'),
+      mediaModelsDir: str('Absoluter Pfad des Modellbaums der Media API (Standard ~/media-api-models).'),
       bindAddress: str('Adresse, auf der das Webinterface lauscht.'),
       port: port('Port des Webinterface.'),
       defaultImage: image('Standard-Image für neue Server.'),
@@ -899,7 +831,7 @@ export const tools = [
   },
 ]
 
-export const instructions = `Steuert eine AMD-Strix-Halo-Box (Ryzen AI Max, bis 124 GiB gemeinsamer Speicher für CPU und GPU): llama-server-Container für GGUF-Modelle, RPC-Worker für verteilte Inferenz, ComfyUI, die Media API für Bild- und Videogenerierung, die Modellverzeichnisse, Images, Firewall und Einstellungen.
+export const instructions = `Steuert eine AMD-Strix-Halo-Box (Ryzen AI Max, bis 124 GiB gemeinsamer Speicher für CPU und GPU): llama-server-Container für GGUF-Modelle, RPC-Worker für verteilte Inferenz, die Media API für Bild- und Videogenerierung, die Modellverzeichnisse, Images, Firewall und Einstellungen.
 
 Vorgehen:
 - Mit get_overview beginnen.

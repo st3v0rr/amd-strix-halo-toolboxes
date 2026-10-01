@@ -15,27 +15,6 @@ export const CONTAINER_PORT = 11434
 export const CONTAINER_MODELS_DIR = '/workspace/models'
 
 /**
- * ComfyUI's port inside the container, and the two paths it reads.
- *
- * The paths are fixed, not configurable: upstream's set_extra_paths.sh derives
- * the model directory from $HOME, so pointing ComfyUI elsewhere would mean
- * rewriting extra_model_paths.yaml ourselves. The host side of the mount is
- * what the user actually chooses.
- */
-export const COMFY_PORT = 8000
-export const COMFY_CONTAINER_MODELS_DIR = '/root/comfy-models'
-export const COMFY_CONTAINER_OUTPUT_DIR = '/root/comfy-outputs'
-
-/**
- * ComfyUI image tags this fork publishes.
- *
- * One, not two: upstream's `latest` and `dev` are the same source — they build
- * from main as `dev` and promote a tested one to `latest`. Building from source
- * ourselves, there is no second channel to inherit.
- */
-export const COMFY_TAGS = /** @type {const} */ (['comfyui'])
-
-/**
  * The media API (toolboxes_media_api/): its port inside the container, the
  * paths its image expects, and the one tag this fork publishes.
  *
@@ -54,29 +33,6 @@ export const MEDIA_SECRET_MOUNTS = /** @type {const} */ ({
   hfTokenDir: '/run/secrets/hf-token.d',
   hfTokenFile: '/run/secrets/hf-token.d/token',
 })
-
-/**
- * Folders in the shared model tree that belong to the media API rather than to
- * ComfyUI: diffusers configs and weights, and the Hugging Face cache its image
- * points HF_HOME at. The ComfyUI page names them instead of calling them stray.
- */
-export const MEDIA_MODEL_DIRS = /** @type {const} */ (['diffusers', 'huggingface'])
-
-/**
- * The model subfolders ComfyUI expects, as created by set_extra_paths.sh.
- * Listing them explicitly is what lets the models page show empty ones too —
- * an absent folder is a normal state, not an error.
- */
-export const COMFY_MODEL_DIRS = /** @type {const} */ ([
-  'checkpoints',
-  'clip_vision',
-  'diffusion_models',
-  'latent_upscale_models',
-  'loras',
-  'text_encoders',
-  'unet',
-  'vae',
-])
 
 /**
  * Labels stamped onto every container we create. Ownership lives in the
@@ -100,8 +56,6 @@ export const LABEL = {
   specDraftModel: 'shx.spec-draft-model',
   specDraftNMax: 'shx.spec-draft-n-max',
   rpcPeers: 'shx.rpc-peers',
-  comfyModelsDir: 'shx.comfy-models-dir',
-  comfyOutputDir: 'shx.comfy-output-dir',
   bindAddress: 'shx.bind-address',
   mediaModelsDir: 'shx.media-models-dir',
   mediaModelsReadOnly: 'shx.media-models-ro',
@@ -117,14 +71,13 @@ export const LABEL = {
  * What a managed container actually is.
  *
  * `server` is a llama-server serving HTTP; `rpc` is a ggml-rpc-server offering
- * its GPU to someone else's llama-server; `comfy` is ComfyUI; `media` is the
- * media API. Containers created before this label existed carry no role and
- * are read as `server` — which is what they are.
+ * its GPU to someone else's llama-server; `media` is the media API. Containers
+ * created before this label existed carry no role and are read as `server` —
+ * which is what they are.
  */
 export const ROLE = /** @type {const} */ ({
   server: 'server',
   rpc: 'rpc',
-  comfy: 'comfy',
   media: 'media',
 })
 
@@ -147,7 +100,6 @@ export const RPC_PORT = 50052
  */
 export const STANDARD_SERVICE_PORTS = /** @type {const} */ ([
   { port: RPC_PORT, kind: 'rpc', purpose: 'RPC-Worker (Standardport)' },
-  { port: COMFY_PORT, kind: 'comfy', purpose: 'ComfyUI (Standardport)' },
   { port: MEDIA_PORT, kind: 'media', purpose: 'Media API (Standardport)' },
 ])
 
@@ -258,7 +210,6 @@ export const JOB_FINISHED_STATUS = /** @type {const} */ ([
 
 export const JOB_TYPE = /** @type {const} */ ([
   'model-download',
-  'comfy-model-download',
   'media-model-fetch',
   'image-pull',
   'feature-detect',

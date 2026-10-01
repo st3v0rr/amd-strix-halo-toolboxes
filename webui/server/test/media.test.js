@@ -7,7 +7,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { LABEL, MEDIA_MODEL_DIRS, ROLE } from '../../shared/constants.js'
+import { LABEL, ROLE } from '../../shared/constants.js'
 import {
   MEDIA_MODEL_IDS,
   checkMediaApiKey,
@@ -20,7 +20,7 @@ import {
   parseOrigin,
   parsePublicUrl,
 } from '../../shared/media.js'
-import { mediaConfigSchema } from '../src/config/schema.js'
+import { configSchema, mediaConfigSchema } from '../src/config/schema.js'
 import { JsonStore } from '../src/config/store.js'
 import { catalog } from '../src/images/catalog.js'
 import { clearSecrets, redact } from '../src/lib/redact.js'
@@ -37,14 +37,13 @@ import {
 import { explainCheckFailure, parseInventory } from '../src/media/models.js'
 import { MediaFetchProgress, rateMeter } from '../src/media/progress.js'
 import { createMediaSecrets } from '../src/media/secrets.js'
-import { invalidateComfyModelCache, scanComfyModels } from '../src/models/comfyscan.js'
 import {
   MEDIA_FETCH_LABEL,
-  buildComfyRunArgv,
   buildMediaCheckArgv,
   buildMediaExecCheckArgv,
   buildMediaFetchArgv,
   buildMediaRunArgv,
+  buildRunArgv,
   mediaContainerEnv,
   mediaFetchContainer,
 } from '../src/podman/argv.js'
@@ -128,7 +127,7 @@ const SPEC = {
   containerName: 'media-api',
   image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:media-api',
   hostPort: 8100,
-  modelsDir: '/home/u/comfy-models',
+  modelsDir: '/home/u/media-models',
   dataDir: '/home/u/media-api-data',
   secretFiles: FILES,
 }
@@ -142,7 +141,7 @@ test('the media argv carries the hardening of the documented command', () => {
     '--device', '/dev/dri', '--device', '/dev/kfd', '--group-add', 'video', '--group-add', 'render',
   ])
   assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100')
-  assert.ok(argv.includes('/home/u/comfy-models:/models:ro,z'))
+  assert.ok(argv.includes('/home/u/media-models:/models:ro,z'))
   assert.ok(argv.includes('/home/u/media-api-data:/data:z'))
   assert.ok(argv.includes('/cfg/media-api/api-key:/run/secrets/media-api-key:ro,z'))
   assert.ok(argv.includes('MEDIA_API_KEY_FILE=/run/secrets/media-api-key'))
@@ -152,7 +151,7 @@ test('the media argv carries the hardening of the documented command', () => {
   assert.ok(!argv.some((a) => /^MEDIA_API_KEY=|^MEDIA_SESSION_SECRET=|HF_TOKEN=/.test(a)), 'no secret values')
 })
 
-test('the argv is rootful like ComfyUI and llama-server: no rootless-only flags, every hardening control kept', () => {
+test('the argv is rootful like llama-server: no rootless-only flags, every hardening control kept', () => {
   const argv = buildMediaRunArgv({ ...SPEC, env: mediaContainerEnv(defaults()) })
   assert.ok(!argv.includes('--userns=keep-id'))
   assert.ok(!argv.includes('keep-groups'))
@@ -163,14 +162,26 @@ test('the argv is rootful like ComfyUI and llama-server: no rootless-only flags,
     '--security-opt=seccomp=unconfined',
     '/cfg/media-api/api-key:/run/secrets/media-api-key:ro,z',
     '/cfg/media-api/session-secret:/run/secrets/media-api-session:ro,z',
-    '/home/u/comfy-models:/models:ro,z',
+    '/home/u/media-models:/models:ro,z',
   ]) assert.ok(argv.includes(value), value)
   assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100', 'loopback unless told otherwise')
 
-  // The GPU part is exactly ComfyUI's: same devices, same groups.
-  const comfy = buildComfyRunArgv({ containerName: 'c', image: 'i', hostPort: 8000, modelsDir: '/m', outputDir: '/o' })
+  // The GPU part is exactly llama-server's — whose argv dev/parity holds to
+  // run-llama-server.sh: same devices, same groups.
+  const llama = buildRunArgv({
+    containerName: 'l',
+    image: 'i',
+    hostPort: 11434,
+    modelsDir: '/m',
+    modelPath: 'x.gguf',
+    ctxSize: 4096,
+    gpuLayers: 999,
+    threads: 12,
+    apiKey: 'k',
+    extraArgs: '-fa 1 --no-mmap',
+  })
   const gpu = (list) => list.slice(list.indexOf('--device'), list.indexOf('--device') + 8)
-  assert.deepEqual(gpu(argv), gpu(comfy))
+  assert.deepEqual(gpu(argv), gpu(llama))
 
   const mock = buildMediaRunArgv({ ...SPEC, backend: 'mock' })
   assert.ok(!mock.includes('/dev/kfd'))
@@ -193,7 +204,7 @@ test('a writable model mount and a token file only when asked for', () => {
     bindAddress: '10.0.0.5',
     secretFiles: { ...FILES, hfToken: '/cfg/media-api/hf-token' },
   })
-  assert.ok(argv.includes('/home/u/comfy-models:/models:z'))
+  assert.ok(argv.includes('/home/u/media-models:/models:z'))
   assert.ok(argv.includes('/cfg/media-api/hf-token:/run/secrets/hf-token.d:ro,z'))
   assert.equal(argv[argv.indexOf('-p') + 1], '10.0.0.5:8100:8100')
 })
@@ -315,21 +326,33 @@ function fakeCtx(overrides = {}) {
     media: { data: { ...defaults(), dataDir: path.join(root, 'media-data'), ...overrides } },
     mediaSecrets: createMediaSecrets(secretsDir),
     config: { data: { hfToken: '' } },
-    settings: { comfyModelsDir: path.join(root, 'comfy-models') },
+    settings: { mediaModelsDir: path.join(root, 'media-models') },
   }
 }
 
 test('downloads by the service need a writable tree, and the trees must not nest', () => {
   const ctx = fakeCtx()
   assert.deepEqual(checkMediaConfig(ctx, ctx.media.data), {
-    modelsDir: ctx.settings.comfyModelsDir,
+    modelsDir: ctx.settings.mediaModelsDir,
     dataDir: ctx.media.data.dataDir,
   })
   assert.throws(() => checkMediaConfig(ctx, { ...ctx.media.data, allowDownloads: true }), /beschreibbaren/)
   assert.throws(
-    () => checkMediaConfig(ctx, { ...ctx.media.data, dataDir: path.join(ctx.settings.comfyModelsDir, 'out') }),
+    () => checkMediaConfig(ctx, { ...ctx.media.data, dataDir: path.join(ctx.settings.mediaModelsDir, 'out') }),
     /ineinander/,
   )
+})
+
+test('the model tree defaults to ~/media-api-models and a stored ComfyUI tree carries over', () => {
+  assert.equal(configSchema.parse({}).settings.mediaModelsDir, path.join(os.homedir(), 'media-api-models'))
+  // A box that had moved ComfyUI's tree keeps it as the media tree …
+  const moved = configSchema.parse({ settings: { comfyModelsDir: '/srv/models', comfyOutputDir: '/srv/out' } })
+  assert.equal(moved.settings.mediaModelsDir, '/srv/models')
+  assert.equal('comfyModelsDir' in moved.settings, false, 'the old keys are not written back')
+  assert.equal('comfyOutputDir' in moved.settings, false)
+  // … unless the new setting is there already.
+  const both = configSchema.parse({ settings: { comfyModelsDir: '/srv/old', mediaModelsDir: '/srv/new' } })
+  assert.equal(both.settings.mediaModelsDir, '/srv/new')
 })
 
 test('the spec hash tracks every setting that changes the container', () => {
@@ -367,12 +390,12 @@ test("the service's own home may hold its directories, root's included — its c
   const rootHome = fs.realpathSync('/root')
   try {
     // The rootful appliance: the web interface runs as root, $HOME is /root,
-    // and the defaults put the ComfyUI tree and the data there.
+    // and the defaults put the model tree and the data there.
     process.env.HOME = '/root'
     assert.equal(checkMediaDir('Das Datenverzeichnis', '/root/media-api-data'), path.join(rootHome, 'media-api-data'))
     assert.equal(checkMediaDir('Das Datenverzeichnis', '/root/media-api-data/jobs/2026'), path.join(rootHome, 'media-api-data/jobs/2026'))
-    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/comfy-models'), path.join(rootHome, 'comfy-models'))
-    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/comfy-models/diffusers/qwen'), path.join(rootHome, 'comfy-models/diffusers/qwen'))
+    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/media-api-models'), path.join(rootHome, 'media-api-models'))
+    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/media-api-models/diffusers/qwen'), path.join(rootHome, 'media-api-models/diffusers/qwen'))
     for (const bad of [
       '/root',
       '/',
@@ -513,7 +536,7 @@ test('an image from before --json says so instead of failing obscurely', () => {
   assert.equal(explainCheckFailure(1, '', 'Traceback …').status, 502)
 })
 
-/* ------------------------- network, catalog, comfy ------------------------- */
+/* ---------------------------- network, catalog ---------------------------- */
 
 test('a media port bound to loopback says a firewall rule would not help', () => {
   const loopback = describeRole({ role: ROLE.media, name: 'm', bindAddress: '127.0.0.1' })
@@ -530,22 +553,6 @@ test('the media image is in the catalog as its own kind', () => {
   assert.equal(entry.kind, 'media')
   assert.match(entry.ref, /:media-api$/)
   assert.ok(entry.description)
-})
-
-test('the media API folders in the shared tree are measured, not called stray', async () => {
-  invalidateComfyModelCache()
-  const root = tmp('shx-comfy-')
-  for (const [rel, size] of [['diffusers/Qwen-Image-2512/vae/model.safetensors', 300], ['diffusers/Qwen-Image-2512/model_index.json', 20], ['irgendwas/x.bin', 5]]) {
-    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })
-    fs.writeFileSync(path.join(root, rel), Buffer.alloc(size))
-  }
-  const { folders } = await scanComfyModels(root, { force: true })
-  const diffusers = folders.find((f) => f.name === 'diffusers')
-  assert.equal(diffusers.owner, 'media')
-  assert.equal(diffusers.totalBytes, 320)
-  assert.equal(diffusers.fileCount, 2)
-  assert.equal(folders.find((f) => f.name === 'irgendwas').owner, undefined)
-  assert.ok(MEDIA_MODEL_DIRS.includes('huggingface'))
 })
 
 /* -------------------------- symlinks and TOCTOU --------------------------- */

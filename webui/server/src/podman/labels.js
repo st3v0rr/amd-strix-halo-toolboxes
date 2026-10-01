@@ -49,26 +49,6 @@ export function buildRpcLabels(spec) {
 }
 
 /**
- * Labels for a ComfyUI container.
- *
- * Like an RPC worker it carries only what it has: no model, no context, no API
- * key. The mounted host directories are recorded so the detail page can show
- * where its models and outputs actually live.
- */
-export function buildComfyLabels(spec) {
-  return {
-    [LABEL.managed]: 'true',
-    [LABEL.version]: LABEL_VERSION,
-    [LABEL.role]: ROLE.comfy,
-    [LABEL.image]: spec.image,
-    [LABEL.port]: String(spec.hostPort),
-    [LABEL.comfyModelsDir]: spec.modelsDir,
-    [LABEL.comfyOutputDir]: spec.outputDir,
-    [LABEL.created]: new Date().toISOString(),
-  }
-}
-
-/**
  * Labels for the media API container.
  *
  * What it was started with, so the detail pages can say where its models and
@@ -96,7 +76,7 @@ export function buildMediaLabels(spec) {
   }
 }
 
-const KNOWN_ROLES = new Set([ROLE.rpc, ROLE.comfy, ROLE.media])
+const KNOWN_ROLES = new Set([ROLE.rpc, ROLE.media])
 
 /** Recover a server spec from a container's labels. */
 export function parseLabels(labels = {}) {
@@ -128,8 +108,6 @@ export function parseLabels(labels = {}) {
     specDraftModel: labels[LABEL.specDraftModel] || null,
     specDraftNMax: num(LABEL.specDraftNMax, null),
     rpcPeers: (labels[LABEL.rpcPeers] || '').split(',').filter(Boolean),
-    comfyModelsDir: labels[LABEL.comfyModelsDir] || null,
-    comfyOutputDir: labels[LABEL.comfyOutputDir] || null,
     bindAddress: labels[LABEL.bindAddress] || null,
     mediaModelsDir: labels[LABEL.mediaModelsDir] || null,
     mediaModelsReadOnly: labels[LABEL.mediaModelsReadOnly] === undefined ? null : labels[LABEL.mediaModelsReadOnly] === 'true',

@@ -4,8 +4,8 @@ name: Build & Publish Media API
 # the web interface's image catalog read toolboxes_llama_server/, and this is
 # not a llama-server backend.
 #
-# Manual only, like the ComfyUI build: the image pulls a full ROCm torch, too
-# expensive to hang off a push. The tests run first, so a broken tree never
+# Manual only: the image pulls a full ROCm torch, too expensive to hang off a
+# push. The tests run first, so a broken tree never
 # gets as far as the build.
 #
 # No container check here: the runner has no GPU, and a mock-mode run proves

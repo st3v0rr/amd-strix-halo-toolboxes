@@ -84,29 +84,17 @@ export function Settings() {
               </span>
             </div>
             <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label htmlFor="comfyModelsDir">ComfyUI-Modellverzeichnis</label>
+              <label htmlFor="mediaModelsDir">Media-Modellverzeichnis</label>
               <input
-                id="comfyModelsDir"
+                id="mediaModelsDir"
                 type="text"
-                value={form.comfyModelsDir ?? ''}
-                onChange={(e) => field('comfyModelsDir', e.target.value)}
+                value={form.mediaModelsDir ?? ''}
+                onChange={(e) => field('mediaModelsDir', e.target.value)}
               />
               <span className="hint">
-                Eigener Baum mit checkpoints, loras, vae und so weiter — getrennt von den GGUFs.
-                Wird nach /root/comfy-models gemountet.
-              </span>
-            </div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label htmlFor="comfyOutputDir">ComfyUI-Ausgabeverzeichnis</label>
-              <input
-                id="comfyOutputDir"
-                type="text"
-                value={form.comfyOutputDir ?? ''}
-                onChange={(e) => field('comfyOutputDir', e.target.value)}
-              />
-              <span className="hint">
-                Wohin ComfyUI erzeugte Bilder und Videos schreibt. Ohne diesen Mount verschwinden
-                sie mit dem Container.
+                Eigener Baum der Media API mit diffusion_models, text_encoders, loras und so weiter —
+                getrennt von den GGUFs. Wird nach /models gemountet, sofern die Media API kein
+                eigenes Verzeichnis eingestellt hat.
               </span>
             </div>
             <div className="field">

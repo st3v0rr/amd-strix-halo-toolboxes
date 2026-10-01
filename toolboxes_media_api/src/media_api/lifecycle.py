@@ -4,7 +4,7 @@ At most one (model, profile) is resident. Switching drops every reference,
 runs the garbage collector and empties the torch allocator cache *before* the
 next model loads, and the admission check runs after that release — on Strix
 Halo the GPU's memory is the host's memory, so what counts is what the box has
-free at that moment, llama-server and ComfyUI containers included.
+free at that moment, llama-server containers included.
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ class ModelManager:
         message = (
             f"Profile '{profile.id}' needs about {profile.estimated_memory_gb:.0f} GB plus a "
             f"{self.settings.memory_reserve_gb:.0f} GB reserve, but only {available:.1f} GB are free. "
-            "Stop other GPU containers (llama-server, ComfyUI) or choose a smaller profile."
+            "Stop other GPU containers (such as llama-server) or choose a smaller profile."
         )
         if mode == "warn":
             log.warning(message)

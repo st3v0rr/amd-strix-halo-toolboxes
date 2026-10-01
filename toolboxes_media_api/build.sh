@@ -35,7 +35,7 @@ echo "==> Baue $TAG aus $HERE"
 cat <<EOT
 
 Fertig: $TAG
-Hardened localhost start (as root, on rootful Podman like the ComfyUI and llama.cpp containers):
+Hardened localhost start (as root, on rootful Podman like the llama.cpp containers):
   install -d -m 700 "\$HOME/.config/media-api"
   umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "\$HOME/.config/media-api/api-key"
   podman run -d --name media-api \\
@@ -44,7 +44,7 @@ Hardened localhost start (as root, on rootful Podman like the ComfyUI and llama.
     -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \\
     -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \\
     -v "\$HOME/.config/media-api/api-key:/run/secrets/media-api-key:ro,z" \\
-    -v "\$HOME/comfy-models:/models:ro,z" \\
+    -v "\$HOME/media-api-models:/models:ro,z" \\
     -v "\$HOME/media-api-data:/data:z" \\
     $TAG
 For remote access, keep this loopback binding and use a TLS reverse proxy with MEDIA_COOKIE_SECURE=1.

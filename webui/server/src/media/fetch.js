@@ -2,7 +2,6 @@ import { JOB_FINISHED_STATUS, MEDIA_CONTAINER_MODELS_DIR } from '../../../shared
 import { AppError, badRequest, conflict, failedDependency, notFound } from '../lib/errors.js'
 import { run } from '../lib/exec.js'
 import { log } from '../lib/log.js'
-import { invalidateComfyModelCache } from '../models/comfyscan.js'
 import { MEDIA_FETCH_LABEL, buildMediaFetchArgv, mediaFetchContainer } from '../podman/argv.js'
 import { createVerified, imageId, removeContainer, streamVerifiedContainer } from '../podman/client.js'
 import { assertMediaImageAllowed, ensureMediaDir, pinMediaDir, verifyMediaMounts } from './config.js'
@@ -171,8 +170,6 @@ function runMediaFetch(ctx, { job, setProgress, appendLog, setMessage, onCancel,
       if (child === null || child.exitCode !== null || child.signalCode !== null) clearTimeout(killTimer)
       ctx.mediaSecrets.removeFetchToken(job.id)
       invalidateMediaInventory()
-      // The tree is usually ComfyUI's too; its page should see the new files.
-      invalidateComfyModelCache()
       fn()
     }
 

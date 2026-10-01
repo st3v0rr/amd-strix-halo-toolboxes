@@ -20,20 +20,14 @@ import {
   parseOrigin,
   parsePublicUrl,
 } from '../../../shared/media.js'
-import {
-  defaultComfyModelsDir,
-  defaultComfyOutputDir,
-  defaultMediaDataDir,
-  defaultModelsDir,
-} from './paths.js'
+import { defaultMediaDataDir, defaultMediaModelsDir, defaultModelsDir } from './paths.js'
 
 const port = z.number().int().min(PORT_MIN).max(PORT_MAX)
 
 export const settingsSchema = z.object({
   modelsDir: z.string().min(1).default(defaultModelsDir),
-  /** ComfyUI keeps its own tree of .safetensors, quite separate from the GGUFs. */
-  comfyModelsDir: z.string().min(1).default(defaultComfyModelsDir),
-  comfyOutputDir: z.string().min(1).default(defaultComfyOutputDir),
+  /** The media API keeps its own tree of .safetensors, quite separate from the GGUFs. */
+  mediaModelsDir: z.string().min(1).default(defaultMediaModelsDir),
   bindAddress: z.string().min(1).default('0.0.0.0'),
   port: port.default(8420),
   defaultImage: z.string().min(1).default(SERVER_DEFAULTS.image),
@@ -73,8 +67,23 @@ export const configSchema = z.object({
     .object({ hash: z.string().length(64), hint: z.string(), createdAt: z.string() })
     .nullable()
     .default(null),
-  settings: settingsSchema.default({}),
+  settings: z.preprocess(carryOverComfyModelsDir, settingsSchema.default({})),
 })
+
+/**
+ * The model tree used to be ComfyUI's setting, `comfyModelsDir`, which the
+ * media API fell back to. A box that moved it keeps its tree: the old value
+ * becomes `mediaModelsDir` unless that is set already. Parsing drops the old
+ * key, so the next write leaves only the new one.
+ */
+function carryOverComfyModelsDir(settings) {
+  if (!settings || typeof settings !== 'object') return settings
+  const { comfyModelsDir, ...rest } = settings
+  if (typeof comfyModelsDir === 'string' && comfyModelsDir && rest.mediaModelsDir === undefined) {
+    rest.mediaModelsDir = comfyModelsDir
+  }
+  return rest
+}
 
 export const profileSchema = z.object({
   id: z.string().min(1),
@@ -158,7 +167,7 @@ export const mediaConfigSchema = z.object({
     .max(400)
     .refine((v) => v === '' || parsePublicUrl(v) !== null, 'keine http(s)-Adresse')
     .default(''),
-  /** '' means the ComfyUI model tree, whose layout the service reads as-is. */
+  /** '' means the media model tree of the general settings (settings.mediaModelsDir). */
   modelsDir: z.string().max(1000).default(''),
   modelsReadOnly: z.boolean().default(true),
   dataDir: z.string().min(1).max(1000).default(defaultMediaDataDir),
@@ -198,7 +207,7 @@ export const mediaConfigSchema = z.object({
 /**
  * The choices "Media API starten" on the Servers page offers, as POST /servers
  * takes them. Merged into the stored settings above: whatever is not named
- * keeps its stored value, so the dialog stays as small as ComfyUI's. Autostart
+ * keeps its stored value, so the dialog stays small. Autostart
  * is not among them — like a profile's, it is a setting of its own.
  */
 export const mediaStartSchema = mediaConfigSchema

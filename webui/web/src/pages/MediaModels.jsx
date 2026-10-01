@@ -11,7 +11,7 @@ import { formatBytes, formatDate } from '../components/format.js'
 import { ModelDownloadQueue } from './ModelDownloadQueue.jsx'
 
 /**
- * The media API's model tree, as the llama.cpp and ComfyUI pages show theirs.
+ * The media API's model tree, as the llama.cpp page shows its own.
  *
  * Only the curated models — Qwen-Image-2512, Qwen-Image-Edit-2511 and
  * MiniMax-H3 with their profiles — and only what the image's own registry says

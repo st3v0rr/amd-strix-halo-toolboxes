@@ -2,8 +2,8 @@
 
 An authenticated HTTP API plus a browser playground for **Qwen-Image-2512** (text → image),
 **Qwen-Image-Edit-2511** (image edit) and **MiniMax-H3** (text/image/start-end/reference → video
-with stereo audio), on AMD Ryzen AI Max "Strix Halo" (gfx1151). A Python service on diffusers —
-no ComfyUI inside, none needed alongside. The image holds no weights: models, the Hugging Face
+with stereo audio), on AMD Ryzen AI Max "Strix Halo" (gfx1151). A Python service on diffusers.
+The image holds no weights: models, the Hugging Face
 cache, outputs, uploads and job state live in mounts.
 
 ## Run it
@@ -19,19 +19,19 @@ podman run -d --name media-api \
   -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \
   -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \
   -v "$HOME/.config/media-api/api-key:/run/secrets/media-api-key:ro,z" \
-  -v "$HOME/comfy-models:/models:ro,z" -v "$HOME/media-api-data:/data:z" \
+  -v "$HOME/media-api-models:/models:ro,z" -v "$HOME/media-api-data:/data:z" \
   docker.io/st3v0rr/amd-strix-halo-toolboxes:media-api
 ```
 
 This is how the appliance runs it: as root, on the host's rootful Podman — the same Podman,
-devices and `video`/`render` groups as its ComfyUI and llama.cpp containers, with no Podman mode
+devices and `video`/`render` groups as its llama.cpp containers, with no Podman mode
 of its own to choose. Then open `http://127.0.0.1:8100/ui/`. Without a readable
 `MEDIA_API_KEY_FILE` or valid `MEDIA_API_KEY` (or with the commented `.env.example` placeholder)
 the container exits with status 2 — it never runs unprotected.
 
 The ROCm userspace currently needs `seccomp=unconfined` on this platform. That disables syscall
 filtering, and under rootful Podman a container escape means root on the appliance — the exposure
-its ComfyUI and llama.cpp containers have as well. This container narrows it where those do not:
+its llama.cpp containers have as well. This container narrows it where those do not:
 all capabilities dropped, `no-new-privileges`, secrets and model weights mounted read-only, and
 `seccomp=unconfined` only for the real ROCm backend (the mock backend keeps Podman's filter). No
 untested custom seccomp profile is provided. Keep the host port loopback-only unless you mean to
@@ -47,9 +47,11 @@ its Network page lets 8100 through for one source network only. For anything wid
 needed. Prefer `MEDIA_API_KEY_FILE` and `MEDIA_SESSION_SECRET_FILE` mounted from mode-0600 files
 (or Podman secrets) instead of environment values.
 
-Model files use the ComfyUI tree layout, so an existing `~/comfy-models` can be mounted as-is
-(read-only works) and its FP8 files are reused. Missing files are reported, never fetched behind
-your back:
+The model tree (`~/media-api-models`, mounted read-only at `/models`) keeps single-file weights
+by role — `diffusion_models/`, `text_encoders/`, `loras/` — beside `diffusers/` for the configs,
+tokenizers, schedulers and VAEs those files need (and MiniMax-H3's own weights) and
+`huggingface/` for the Hub cache. A tree already laid out this way can be mounted as-is and its
+FP8 files are reused. Missing files are reported, never fetched behind your back:
 
 ```bash
 podman exec media-api media-api-models check                        # what each profile has/lacks
@@ -168,7 +170,7 @@ Nothing loads at startup. The first job loads its (model, profile); a job for an
 unloads it first — references dropped, `gc.collect()`, `torch.cuda.empty_cache()` — and only
 then does the admission check compare the profile's estimate plus `MEDIA_MEMORY_RESERVE_GB`
 with free memory (`MemAvailable`, which on Strix Halo is the GPU's memory too). If llama-server
-or ComfyUI hold the memory, the job fails with `insufficient_memory` instead of the box
+or another GPU container holds the memory, the job fails with `insufficient_memory` instead of the box
 swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for ref2va.
 
 ## Security model
@@ -187,7 +189,7 @@ swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for r
   pattern-checked; every path is confined to its directory.
 - Results are served only by authenticated routes; no static output directory. No CORS unless
   `MEDIA_CORS_ORIGINS` lists explicit origins (credentials never allowed). Strict CSP.
-- The appliance runs the container on rootful Podman, like its ComfyUI and llama.cpp containers;
+- The appliance runs the container on rootful Podman, like its llama.cpp containers;
   it always gets `--cap-drop=all` and `--security-opt=no-new-privileges`, only `/data` is writable
   and models are mounted read-only. ROCm currently requires `seccomp=unconfined` — a documented
   residual risk that, rootful, would make an escape root on the host; hence port 8100 stays on

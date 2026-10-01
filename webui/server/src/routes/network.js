@@ -50,10 +50,6 @@ const DETAIL = {
     'ggml-rpc-server kennt keine Authentifizierung — wer diesen Port erreicht, kann die ' +
     'GPU dieser Maschine benutzen und beliebige Dateien lesen. Nur in einem ' +
     'vertrauenswürdigen Netz öffnen.',
-  comfy:
-    'ComfyUI kennt keine Anmeldung — wer diesen Port erreicht, kann Workflows ausführen ' +
-    'und damit Dateien auf dieser Maschine lesen und schreiben. Nur in einem ' +
-    'vertrauenswürdigen Netz öffnen.',
   server: 'llama-server, geschützt durch seinen API-Key.',
   media: 'Media API, geschützt durch ihren API-Schlüssel.',
   mediaLoopback:
@@ -63,15 +59,12 @@ const DETAIL = {
 }
 
 /** Ports without authentication. The UI warns harder for these. */
-const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
+const UNAUTHENTICATED = new Set(['rpc'])
 
 /** What a container's port is for, by role. */
 export function describeRole(server) {
   if (server.role === ROLE.rpc) {
     return { purpose: `RPC-Worker '${server.name}'`, detail: DETAIL.rpc, kind: 'rpc' }
-  }
-  if (server.role === ROLE.comfy) {
-    return { purpose: `ComfyUI '${server.name}'`, detail: DETAIL.comfy, kind: 'comfy' }
   }
   if (server.role === ROLE.media) {
     const loopback = isLoopbackAddress(server.bindAddress)

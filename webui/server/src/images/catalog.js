@@ -1,18 +1,16 @@
 import fs from 'node:fs'
 
 import { IMAGE_REPO } from '../../../shared/constants.js'
-import { comfyDockerfileDir, dockerfileDir, mediaDockerfileDir } from '../config/paths.js'
+import { dockerfileDir, mediaDockerfileDir } from '../config/paths.js'
 import { log } from '../lib/log.js'
 
 /**
  * Where the tags come from. Each directory holds `Dockerfile.<tag>` files, and
- * `kind` is what the images page uses to tell a llama-server backend from
- * ComfyUI or the media API — unrelated software that merely shares a
- * DockerHub repo.
+ * `kind` is what the images page uses to tell a llama-server backend from the
+ * media API — unrelated software that merely shares a DockerHub repo.
  */
 const SOURCES = [
   { dir: dockerfileDir, kind: 'llama' },
-  { dir: comfyDockerfileDir, kind: 'comfy' },
   { dir: mediaDockerfileDir, kind: 'media' },
 ]
 
@@ -21,7 +19,6 @@ const FALLBACK_TAGS = [
   { tag: 'vulkan-radv', kind: 'llama' },
   { tag: 'rocm-10.0', kind: 'llama' },
   { tag: 'rocm-10.0-strix-llama', kind: 'llama' },
-  { tag: 'comfyui', kind: 'comfy' },
   { tag: 'media-api', kind: 'media' },
 ]
 
@@ -31,7 +28,6 @@ const DESCRIPTIONS = {
   'rocm-10.0': 'llama-server mit ROCm 10.0 für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
   'rocm-10.0-strix-llama':
     'strix-llama.cpp mit eigener ROCm-Runtime für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API, experimentell.',
-  comfyui: 'ComfyUI mit ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung.',
   'media-api':
     'Media API mit diffusers und ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung per API.',
 }

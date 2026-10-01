@@ -1,7 +1,7 @@
-# Built-in model registry. Paths are relative to MEDIA_MODELS_DIR and follow
-# the ComfyUI tree (diffusion_models/, text_encoders/, loras/), so an
-# existing ~/comfy-models can be mounted read-only and its files reused. The
-# diffusers/ subtree holds the configs, tokenizers, schedulers and VAEs the
+# Built-in model registry. Paths are relative to MEDIA_MODELS_DIR, which keeps
+# single-file weights by role (diffusion_models/, text_encoders/, loras/), so
+# an existing tree in that layout can be mounted read-only and its files
+# reused. The diffusers/ subtree holds the configs, tokenizers, schedulers and VAEs the
 # single files need, plus MiniMax-H3's own weights.
 #
 # Every repo is pinned to the revision whose safetensors headers were checked

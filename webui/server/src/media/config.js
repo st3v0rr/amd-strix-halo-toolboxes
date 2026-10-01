@@ -137,7 +137,7 @@ function protectedDirs() {
   }
 }
 
-const ROOT_MEDIA_TREES = ['/root/comfy-models', '/root/media-api-data']
+const ROOT_MEDIA_TREES = ['/root/media-api-models', '/root/media-api-data']
 
 /**
  * Only the appliance defaults (and their descendants) may live under /root,
@@ -258,15 +258,15 @@ export function assertMediaImageAllowed(ctx, image) {
   }
 }
 
-/** The model tree the service reads: its own setting, or else the ComfyUI tree. */
+/** The model tree the service reads: its own setting, or else the general media tree. */
 export function mediaModelsDir(ctx, config = ctx.media.data) {
-  return path.resolve(config.modelsDir || ctx.settings.comfyModelsDir)
+  return path.resolve(config.modelsDir || ctx.settings.mediaModelsDir)
 }
 
 /**
  * Everything the settings allow on their own but not together, plus the path
  * rules. Called on save and again right before a container is created, since
- * the ComfyUI tree the models may default to is a setting of its own.
+ * the tree the models may default to is a general setting of its own.
  */
 export function checkMediaConfig(ctx, config) {
   const modelsDir = checkMediaDir('Das Modellverzeichnis', mediaModelsDir(ctx, config))

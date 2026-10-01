@@ -1,9 +1,8 @@
 # Media API: image and video generation behind an authenticated HTTP API.
 #
-# Built on the same base as toolboxes_comfyui/Dockerfile.comfyui — Fedora with
-# Python 3.13 in /opt/venv and TheRock's multi-arch PyTorch scoped to gfx1151 —
-# but it does not contain or talk to ComfyUI. No model weights: models, the
-# Hugging Face cache, outputs, uploads and job state all live in mounts.
+# Fedora with Python 3.13 in /opt/venv and TheRock's multi-arch PyTorch scoped
+# to gfx1151. No model weights: models, the Hugging Face cache, outputs,
+# uploads and job state all live in mounts.
 #
 # TORCH_INDEX_URL / TORCH_PACKAGES exist only so the image can be built locally
 # for mock mode (MEDIA_BACKEND=mock) without the bandwidth and disk the
@@ -12,8 +11,7 @@
 
 FROM registry.fedoraproject.org/fedora:rawhide
 
-# Compilers and Python headers stay for Triton's runtime launcher builds, as in
-# the ComfyUI image. FFmpeg comes with PyAV's wheel (it has libx264 and aac).
+# Compilers and Python headers stay for Triton's runtime launcher builds. FFmpeg comes with PyAV's wheel (it has libx264 and aac).
 RUN dnf -y install --setopt=install_weak_deps=False --nodocs \
     python3.13 python3.13-devel gcc libatomic libdrm ca-certificates curl \
     && dnf clean all && rm -rf /var/cache/dnf/*
@@ -46,8 +44,8 @@ RUN python -c 'import torch; print(torch.__version__)' && \
     python -c 'import diffusers, transformers; from diffusers import MiniMaxH3Blocks, QwenImageEditPlusPipeline, QwenImagePipeline; print(diffusers.__version__, transformers.__version__)' && \
     MEDIA_API_KEY=build-check-0123456789abcdef python -c 'from media_api.config import load_settings; print(len(load_settings().registry.models), "models")'
 
-# The two variables toolboxes_comfyui/scripts/01-rocm-envs.sh exports for
-# login shells; this container starts Python directly, so they are set here.
+# Upstream's ROCm toolboxes export these two for login shells only (in
+# /etc/profile.d/); this container starts Python directly, so they are set here.
 ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ENV TORCH_BLAS_PREFER_HIPBLASLT=1
 

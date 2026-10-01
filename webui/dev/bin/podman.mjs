@@ -401,7 +401,7 @@ if (cmd === 'run') {
   // The image is the first non-flag argument after the option block; in our
   // argv it directly precedes `llama-server`.
   const llamaIdx = argv.indexOf('llama-server')
-  // ComfyUI and the media API take no command, so their image is the last word.
+  // The media API takes no command, so its image is the last word.
   const image = llamaIdx > 0 ? argv[llamaIdx - 1] : (labels['shx.image'] ?? argv[argv.length - 1])
 
   const id = Math.random().toString(16).slice(2).padEnd(64, '0')

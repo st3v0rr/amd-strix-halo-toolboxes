@@ -3,8 +3,8 @@
  * random port, firewall-cmd replaced by dev/bin/firewall-cmd with a state file
  * of its own, podman by dev/bin/podman.
  *
- * The point: the media API's port 8100 is managed like the RPC and ComfyUI
- * ports — listed with nothing running, opened, closed and let through for one
+ * The point: the media API's port 8100 is managed like the RPC port — listed
+ * with nothing running, opened, closed and let through for one
  * source — while a port no managed service claims stays untouchable.
  */
 import assert from 'node:assert/strict'
@@ -83,7 +83,7 @@ before(async () => {
   await ctx.config.update((c) => {
     c.jwtSecret = Buffer.alloc(32, 9).toString('base64')
     c.apiToken = { hash: hashApiToken(token), hint: 'x', createdAt: new Date().toISOString() }
-    c.settings.comfyModelsDir = path.join(root, 'comfy-models')
+    c.settings.mediaModelsDir = path.join(root, 'media-models')
     return c
   })
   await ctx.media.update((m) => ({ ...m, dataDir: path.join(root, 'media-data'), backend: 'mock' }))
@@ -111,7 +111,9 @@ test('the media API port is listed and managed with nothing running, beside the 
   assert.equal(media.running, false)
   assert.equal(media.open, false)
   assert.match(media.detail, /API-Schlüssel/)
-  for (const port of [8420, 8000, 50052]) assert.ok(body.ports.some((p) => p.port === port), String(port))
+  for (const port of [8420, 50052]) assert.ok(body.ports.some((p) => p.port === port), String(port))
+  // ComfyUI's former 8000 is no standard port any more.
+  assert.equal(body.ports.some((p) => p.port === 8000), false)
   const ports = body.ports.map((p) => p.port)
   assert.deepEqual(ports, [...ports].sort((a, b) => a - b), 'ascending, as the page reads them')
   assert.equal(body.others.includes('8100/tcp'), false)

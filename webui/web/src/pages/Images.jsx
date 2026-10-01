@@ -77,11 +77,7 @@ export function Images() {
                   {image.tag}
                   {/* Both kinds share one DockerHub repository but are unrelated
                       software, so the card says which is which. */}
-                  {image.kind === 'comfy' ? (
-                    <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
-                      ComfyUI
-                    </span>
-                  ) : image.kind === 'media' ? (
+                  {image.kind === 'media' ? (
                     <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
                       Media API
                     </span>

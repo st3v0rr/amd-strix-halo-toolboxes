@@ -46,9 +46,9 @@ jobs:
         run: |
           IN='${{ github.event.inputs.backends }}'
           if [[ "$IN" == "all" || -z "$IN" ]]; then
-            # Retired prefixes (rocm-6.4.4, rocm-7.1.1, rocm-7.14, rocm-7.2,
-            # rocm7-nightlies, vulkan-amdvlk) stay here until their immutable
-            # tags age out of Docker Hub.
+            # Retired prefixes (comfyui, rocm-6.4.4, rocm-7.1.1, rocm-7.14,
+            # rocm-7.2, rocm7-nightlies, vulkan-amdvlk) stay here until their
+            # immutable tags age out of Docker Hub.
             JSON='["comfyui","media-api","rocm-10.0","rocm-10.0-strix-llama","rocm-6.4.4","rocm-7.14","rocm-7.1.1","rocm-7.2","rocm7-nightlies","vulkan-amdvlk","vulkan-radv"]'
           else
             IN_CLEAN=$(echo "$IN" | tr -d '[:space:]')

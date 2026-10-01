@@ -71,7 +71,7 @@
         },
         {
           "id": "int8-convrot", "label": "INT8 ConvRot", "status": "unsupported",
-          "reason": "ComfyUI's own int8 ConvRot layout; only ComfyUI can load it.",
+          "reason": "int8 ConvRot layout; diffusers cannot load it.",
           "estimated_memory_gb": 0
         }
       ]
@@ -96,7 +96,7 @@
         },
         {
           "id": "gguf-q2", "label": "GGUF Q2 (pruned)", "status": "unsupported",
-          "reason": "Only loadable by ComfyUI-GGUF.",
+          "reason": "Pruned GGUF layout; diffusers cannot load it.",
           "estimated_memory_gb": 0
         }
       ]

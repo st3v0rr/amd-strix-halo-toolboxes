@@ -42,17 +42,17 @@ test('the catalog is derived from the Dockerfile directories', () => {
     assert.ok(names.includes(expected), `expected tag ${expected} in ${names.join(', ')}`)
     assert.equal(tags.find((t) => t.tag === expected).kind, 'llama')
   }
-  // … and ComfyUI, which lives in its own directory. Without it the images
-  // page cannot pull, re-pull or remove that image at all.
-  assert.ok(names.includes('comfyui'))
-  assert.equal(tags.find((t) => t.tag === 'comfyui').kind, 'comfy')
+  // … and the media API, which lives in its own directory. Without it the
+  // images page cannot pull, re-pull or remove that image at all.
+  assert.ok(names.includes('media-api'))
+  assert.equal(tags.find((t) => t.tag === 'media-api').kind, 'media')
 })
 
-test('ComfyUI is not offered as a llama-server backend', () => {
+test('the media API is not offered as a llama-server backend', () => {
   // Both kinds share a DockerHub repository but nothing else. The start dialog
-  // for a llama server must never list the ComfyUI image.
+  // for a llama server must never list the media API image.
   const llama = catalog().filter((e) => e.kind === 'llama').map((e) => e.tag)
-  assert.equal(llama.includes('comfyui'), false)
+  assert.equal(llama.includes('media-api'), false)
 })
 
 test('every catalog entry carries a full image reference', () => {

@@ -9,10 +9,10 @@ import { useToast } from '../components/Toast.jsx'
 import { formatBytes } from '../components/format.js'
 
 /** Services on these ports have no authentication at all. */
-const UNAUTHENTICATED = new Set(['rpc', 'comfy'])
+const UNAUTHENTICATED = new Set(['rpc'])
 
 /**
- * Ports better let through for one source than for everyone: the two above,
+ * Ports better let through for one source than for everyone: the one above,
  * and the media API, whose key and logins cross the network as plain HTTP.
  */
 const PREFER_SOURCE = new Set([...UNAUTHENTICATED, 'media'])
