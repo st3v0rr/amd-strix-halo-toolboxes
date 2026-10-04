@@ -30,23 +30,27 @@
     <div id="result"></div>
   </section>
   <section class="composer" id="form-panel">
-    <nav id="tasks" role="tablist"></nav>
-    <form id="gen-form" novalidate>
-      <div data-for="images" class="uploads">
-        <label>Input images (1–3) <input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
-        <div id="images-preview" class="previews"></div>
-      </div>
-      <div data-for="start" class="uploads">
-        <label>Start image <input id="start_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
-        <div id="start_image-preview" class="previews"></div>
-      </div>
-      <div data-for="end" class="uploads">
-        <label>End image <input id="end_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
-        <div id="end_image-preview" class="previews"></div>
-      </div>
-      <div data-for="references" class="uploads">
-        <label>Reference images (up to 9, referred to as &lt;Picture 1&gt;, … in the prompt) <input id="references" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
-        <div id="references-preview" class="previews"></div>
+    <nav id="tasks" role="tablist" aria-label="Task"></nav>
+    <form id="gen-form" role="tabpanel" novalidate>
+      <!-- fixed-height slot: switching tasks swaps its content, never the composer's height -->
+      <div class="task-inputs">
+        <p data-for="none" id="task-hint" class="inputs-empty"></p>
+        <div data-for="images" class="uploads">
+          <label>Input images (1–3) <input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
+          <div id="images-preview" class="previews"></div>
+        </div>
+        <div data-for="start" class="uploads">
+          <label>Start image <input id="start_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div id="start_image-preview" class="previews"></div>
+        </div>
+        <div data-for="end" class="uploads">
+          <label>End image <input id="end_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div id="end_image-preview" class="previews"></div>
+        </div>
+        <div data-for="references" class="uploads">
+          <label>Reference images (up to 9) — <span class="hint">refer to them as &lt;Picture 1&gt;, … in the prompt</span> <input id="references" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
+          <div id="references-preview" class="previews"></div>
+        </div>
       </div>
       <div class="prompt-box">
         <label class="sr-only" for="prompt">Prompt</label>
@@ -60,7 +64,7 @@
       </div>
       <p id="profile-note" class="note"></p>
       <details class="settings">
-        <summary>Settings</summary>
+        <summary>Settings <span id="settings-hint" class="hint"></span></summary>
         <label data-for="negative">Negative prompt <textarea id="negative_prompt" rows="2"></textarea></label>
         <div class="row">
           <label>Width <input id="width" type="number" min="64" step="16"></label>

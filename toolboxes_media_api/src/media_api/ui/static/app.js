@@ -5,9 +5,9 @@
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 const $ = (id) => document.getElementById(id);
 const TASKS = {
-  "text-to-image": { label: "Text → image", kind: "image" },
+  "text-to-image": { label: "Text → image", kind: "image", hint: "Text → image: the prompt alone describes the picture, no input images needed." },
   "image-edit": { label: "Image edit", kind: "image", fields: ["images"] },
-  "text-to-video": { label: "Text → video", kind: "video" },
+  "text-to-video": { label: "Text → video", kind: "video", hint: "Text → video: the prompt alone describes the clip, no input images needed." },
   "image-to-video": { label: "Image → video", kind: "video", fields: ["start"] },
   "start-end-to-video": { label: "Start/end → video", kind: "video", fields: ["start", "end"] },
   "reference-to-video": { label: "References → video", kind: "video", fields: ["references"] },
@@ -41,19 +41,60 @@ function modelsFor(t) { return models.filter((m) => m.tasks.includes(t)); }
 function currentModel() { return models.find((m) => m.id === $("model").value); }
 function currentProfile() { const m = currentModel(); return m && m.profiles.find((p) => p.id === $("profile").value); }
 
+// Tabs are built once; switching only flips aria-selected, so focus stays put.
 function renderTasks() {
   const nav = $("tasks");
   nav.textContent = "";
-  for (const [id, meta] of Object.entries(TASKS)) {
-    if (!modelsFor(id).length) continue;
+  const available = Object.keys(TASKS).filter((id) => modelsFor(id).length);
+  if (available.length && !available.includes(task)) task = available[0];
+  let kind = null;
+  for (const id of available) {
+    const meta = TASKS[id];
+    if (kind && meta.kind !== kind) nav.appendChild(Object.assign(document.createElement("span"), { className: "tab-sep" }));
+    kind = meta.kind;
     const button = document.createElement("button");
     button.type = "button";
+    button.id = `task-${id}`;
+    button.dataset.task = id;
+    button.dataset.kind = meta.kind;
     button.textContent = meta.label;
     button.setAttribute("role", "tab");
-    button.setAttribute("aria-selected", String(id === task));
-    button.addEventListener("click", () => { task = id; renderTasks(); renderModels(); });
+    button.setAttribute("aria-controls", "gen-form");
+    button.addEventListener("click", () => selectTask(id));
     nav.appendChild(button);
   }
+  markTask();
+}
+
+function markTask() {
+  for (const button of $("tasks").querySelectorAll("[role=tab]")) {
+    const active = button.dataset.task === task;
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+  $("gen-form").setAttribute("aria-labelledby", `task-${task}`);
+}
+
+function selectTask(id) {
+  if (id === task) return;
+  task = id;
+  markTask();
+  renderModels();
+}
+
+function onTabKey(event) {
+  const tabs = [...$("tasks").querySelectorAll("[role=tab]")];
+  const index = tabs.indexOf(document.activeElement);
+  if (index < 0) return;
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+  let next = null;
+  if (step) next = tabs[(index + step + tabs.length) % tabs.length];
+  else if (event.key === "Home") next = tabs[0];
+  else if (event.key === "End") next = tabs[tabs.length - 1];
+  if (!next) return;
+  event.preventDefault();
+  next.focus();
+  selectTask(next.dataset.task);
 }
 
 function renderModels() {
@@ -90,11 +131,18 @@ function applyProfile() {
   document.querySelectorAll("[data-for]").forEach((el) => {
     const key = el.dataset.for;
     let show = (meta.fields || []).includes(key);
+    if (key === "none") show = !(meta.fields || []).length;
     if (key === "video") show = meta.kind === "video";
     if (key === "negative") show = !!c.negative_prompt;
     if (key === "guidance") show = !!c.guidance;
     el.classList.toggle("hidden", !show);
   });
+  $("task-hint").textContent = meta.hint || "";
+  const rare = ["size", "steps", "seed"];
+  if (c.guidance) rare.push("guidance");
+  if (c.negative_prompt) rare.push("negative prompt");
+  if (meta.kind === "video") rare.push("duration", "fps", "audio");
+  $("settings-hint").textContent = rare.join(" · ");
   $("width").step = $("height").step = c.size_multiple || 8;
   $("width").placeholder = d.width || "auto";
   $("height").placeholder = d.height || "auto";
@@ -103,8 +151,9 @@ function applyProfile() {
   $("duration").placeholder = d.duration_seconds || "";
   $("fps").placeholder = d.fps || "";
   const formats = meta.kind === "video" ? ["mp4", "webm"] : ["png", "jpeg", "webp"];
+  const chosen = $("format").value;
   $("format").textContent = "";
-  formats.forEach((f) => $("format").add(new Option(f, f)));
+  formats.forEach((f) => $("format").add(new Option(f, f, false, f === chosen)));
 }
 
 function preview(inputId) {
@@ -232,6 +281,7 @@ async function init() {
   $("model").addEventListener("change", renderProfiles);
   $("profile").addEventListener("change", applyProfile);
   for (const id of ["images", "start_image", "end_image", "references"]) $(id).addEventListener("change", () => preview(id));
+  $("tasks").addEventListener("keydown", onTabKey);
   $("gen-form").addEventListener("submit", submit);
   $("prompt").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !$("submit").disabled) $("gen-form").requestSubmit();
