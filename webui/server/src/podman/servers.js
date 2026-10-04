@@ -47,10 +47,10 @@ import {
   listManaged,
   removeContainer,
   runContainer,
-  startContainer,
   startVerifiedContainer,
   stopContainer,
 } from './client.js'
+import { verifyGpuDevices } from './devices.js'
 import { resolveExtraArgs } from './features.js'
 import { closeLogSession } from './logstream.js'
 
@@ -641,17 +641,20 @@ export function probeHost(bindAddress) {
 }
 
 /**
- * What a media container must pass on every start, restart and autostart, not
- * just when it is created: an image still allowed, and bind sources that are
+ * Every managed role verifies saved GPU mappings before lifecycle execution.
+ * Media additionally requires an image still allowed and bind sources that are
  * still exactly the directories that were checked.
  */
 async function guardStart(ctx, server) {
-  if (server.role !== ROLE.media) return
+  const info = await inspectContainer(server.name)
+  const gpuOptions = { required: server.role !== ROLE.media || server.mediaBackend !== 'mock' }
+  verifyGpuDevices(info, gpuOptions)
+  const verifyGpu = (_mounts, current) => verifyGpuDevices(current, gpuOptions)
+  if (server.role !== ROLE.media) return verifyGpu
   // Check the image recorded on the container, not merely today's saved
   // settings. A custom image may have been created while custom images were
   // enabled and stopped after the policy was tightened.
   assertMediaImageAllowed(ctx, server.image)
-  const info = await inspectContainer(server.name)
   const wanted = [
     ['Das Modellverzeichnis', MEDIA_CONTAINER_MODELS_DIR, 0o755],
     ['Das Datenverzeichnis', MEDIA_CONTAINER_DATA_DIR, 0o700],
@@ -661,13 +664,15 @@ async function guardStart(ctx, server) {
     if (!mount?.Source) throw conflict(`${label}: der Container hat keinen Mount für ${destination}.`)
     return { ...pinMediaDir(label, mount.Source, mode), destination }
   })
-  return (mounts) => verifyMediaMounts(mounts, pins)
+  return (mounts, current) => {
+    verifyGpu(mounts, current)
+    verifyMediaMounts(mounts, pins)
+  }
 }
 
 export async function startServer(ctx, name) {
   const verify = await guardStart(ctx, await getServer(name))
-  if (verify) await startVerifiedContainer(name, verify)
-  else await startContainer(name)
+  await startVerifiedContainer(name, verify)
   return getServer(name)
 }
 

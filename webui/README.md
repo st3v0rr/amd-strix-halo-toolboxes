@@ -7,6 +7,42 @@ Images und die App selbst aktualisieren — alles im Browser statt per SSH.
 Läuft als `systemd --user`-Dienst auf der Strix-Halo-Box und startet nach einem
 Reboot automatisch mit.
 
+## GPU-Geräte nach einem Kernel-/Host-Upgrade
+
+Podman speichert Gerätenummern beim Anlegen eines Containers. Ändern sie sich
+nach einem Upgrade, kann beispielsweise `/dev/ng0n1` statt des aktuellen
+`/dev/kfd` auf das Container-KFD-Gerät zeigen. Ein gewöhnlicher Neustart behebt
+diese gespeicherte Zuordnung nicht und ROCm kann ohne nutzbare GPU starten.
+
+Die WebUI prüft bestehende verwaltete llama-Server, RPC-Worker und die reale
+Media API vor Start und Neustart; Autostart benutzt dieselbe Prüfung. Geprüft
+werden die KFD-/DRI-Hostpfade, Zeichengerät-Typen und die gespeicherten
+Major-/Minor-Nummern aus der lokalen OCI-Konfiguration gegen die aktuellen
+Hostgeräte. Unmittelbar vor `podman start` wird erneut geprüft. Beim Neustart
+erfolgt die erste Prüfung **vor dem Stoppen**. Der GPU-freie Media-Mock ist
+von der Gerätepflicht ausgenommen. Fehlende/unlesbare Inspect- oder
+OCI-Gerätedaten führen ebenfalls zur Ablehnung statt zu einem ungeprüften Start.
+
+Bei einer Abweichung erscheint eine Fehlermeldung mit der Aufforderung, den
+Container ausdrücklich aus seiner ursprünglichen Konfiguration neu anzulegen.
+Die WebUI entfernt oder rekonstruiert ihn nicht automatisch: Labels und heutige
+Profile/Einstellungen enthalten nicht garantiert die vollständige tatsächlich
+verwendete Konfiguration. Vor dem Ersetzen deshalb Modell-/Mountpfade,
+Speculative-/MTP- und Zusatzargumente, Ports, RPC-Peers, Autostart sowie
+API-Schlüssel sichern und beim Neuanlegen beibehalten. Bei der Media API auch
+die bestehenden Modell-/Datenverzeichnisse und Secret-Dateien beibehalten; bei
+RPC den bestehenden Cache-Volume-Namen. Keine Schlüssel in Support-Logs kopieren.
+Das fehlgeschlagene Starten selbst verändert weder Container noch Profile,
+Einstellungen, Secrets oder Daten. Autostart meldet den Fehler, ohne die
+veraltete Konfiguration wiederholt zu starten.
+
+Die Prüfung setzt lokale Podman-Geräte und eine lesbare `OCIConfigPath` voraus.
+Sie ist keine ROCm-Funktionsprüfung und repariert keine bereits laufenden
+Container. Bereits laufende Dienste werden beim Autostart weiterhin übersprungen;
+Starts durch Podman selbst (Restart-Policy, externe systemd-Units oder manuelle
+CLI-Aufrufe) liegen außerhalb dieser WebUI-Prüfung. Frisch angelegte Container
+bekommen ihre Geräte weiterhin aus den aktuellen `--device`-Pfaden.
+
 ## Installation
 
 ```bash

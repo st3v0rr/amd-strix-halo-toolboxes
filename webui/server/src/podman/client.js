@@ -92,7 +92,7 @@ export async function createVerified(argv, verify) {
  */
 export async function startVerifiedContainer(name, verify, { attach = false } = {}) {
   const info = await inspectContainer(name)
-  verify(info?.Mounts ?? [])
+  verify(info?.Mounts ?? [], info)
   const argv = ['start']
   if (attach) argv.push('--attach')
   argv.push(name)
