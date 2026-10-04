@@ -56,7 +56,7 @@ ENV TORCH_BLAS_PREFER_HIPBLASLT=1
 RUN chmod 0700 /root
 
 ENV MEDIA_HOST=0.0.0.0
-ENV MEDIA_PORT=8100
+ENV MEDIA_PORT=8000
 ENV MEDIA_MODELS_DIR=/models
 ENV MEDIA_OUTPUT_DIR=/data/outputs
 ENV MEDIA_UPLOAD_DIR=/data/uploads
@@ -64,7 +64,7 @@ ENV MEDIA_STATE_DIR=/data/state
 ENV HF_HOME=/models/huggingface
 ENV HF_HUB_DISABLE_TELEMETRY=1
 
-EXPOSE 8100
+EXPOSE 8000
 
 # Refuses to start without MEDIA_API_KEY (exit status 2).
 CMD ["python", "-m", "media_api"]

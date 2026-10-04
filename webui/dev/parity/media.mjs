@@ -70,7 +70,7 @@ const answers = JSON.parse(
 const expected = (config) => ({
   backend: config.backend,
   host: '0.0.0.0',
-  port: 8100,
+  port: 8000,
   models_dir: '/models',
   output_dir: '/data/outputs',
   upload_dir: '/data/uploads',

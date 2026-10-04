@@ -8,7 +8,7 @@ const stored = (patch = {}) => mediaConfigSchema.parse({ dataDir: '/srv/media-da
 
 test('the dialog opens on the stored settings: name, port and loopback', () => {
   const form = mediaStartForm(stored())
-  assert.deepEqual(form, { name: 'media-api', port: '8100', exposed: false })
+  assert.deepEqual(form, { name: 'media-api', port: '8000', exposed: false })
   assert.deepEqual(mediaStartErrors(form), {})
 })
 
@@ -23,7 +23,7 @@ test('the start body carries only the few choices and can never request replacem
   assert.deepEqual(body, {
     role: 'media',
     name: 'media-api',
-    port: 8100,
+    port: 8000,
     bindAddress: '127.0.0.1',
     replace: false,
   })

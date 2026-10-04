@@ -3,7 +3,7 @@
  * random port, firewall-cmd replaced by dev/bin/firewall-cmd with a state file
  * of its own, podman by dev/bin/podman.
  *
- * The point: the media API's port 8100 is managed like the RPC port — listed
+ * The point: the media API's port 8000 is managed like the RPC port — listed
  * with nothing running, opened, closed and let through for one
  * source — while a port no managed service claims stays untouchable.
  */
@@ -38,7 +38,7 @@ const { signToken } = await import('../src/auth/tokens.js')
 const { generateApiToken, hashApiToken } = await import('../src/auth/apitoken.js')
 const { loopbackUrl } = await import('../src/mcp/routes.js')
 
-const MEDIA_RULE = 'rule family="ipv4" source address="10.7.7.0/24" port port="8100" protocol="tcp" accept'
+const MEDIA_RULE = 'rule family="ipv4" source address="10.7.7.0/24" port port="8000" protocol="tcp" accept'
 
 let ctx
 let server
@@ -105,40 +105,39 @@ after(async () => {
 test('the media API port is listed and managed with nothing running, beside the other standard ports', async () => {
   const { status, body } = await api('GET', '/network')
   assert.equal(status, 200, JSON.stringify(body))
-  const media = body.ports.find((p) => p.port === 8100)
+  const media = body.ports.find((p) => p.port === 8000)
   assert.equal(media.kind, 'media')
   assert.equal(media.purpose, 'Media API (Standardport)')
   assert.equal(media.running, false)
   assert.equal(media.open, false)
   assert.match(media.detail, /API-Schlüssel/)
   for (const port of [8420, 50052]) assert.ok(body.ports.some((p) => p.port === port), String(port))
-  // ComfyUI's former 8000 is no standard port any more.
-  assert.equal(body.ports.some((p) => p.port === 8000), false)
+  assert.equal(body.ports.filter((p) => p.port === 8000).length, 1, 'listed once, as the media API')
   const ports = body.ports.map((p) => p.port)
   assert.deepEqual(ports, [...ports].sort((a, b) => a - b), 'ascending, as the page reads them')
-  assert.equal(body.others.includes('8100/tcp'), false)
+  assert.equal(body.others.includes('8000/tcp'), false)
 })
 
-test('8100 opens and closes in the running and the permanent firewall', async () => {
-  const opened = await api('POST', '/network/firewall/ports', { body: { port: 8100 } })
+test('8000 opens and closes in the running and the permanent firewall', async () => {
+  const opened = await api('POST', '/network/firewall/ports', { body: { port: 8000 } })
   assert.equal(opened.status, 200, JSON.stringify(opened.body))
-  assert.deepEqual(opened.body, { spec: '8100/tcp', zone: 'public', permanent: true })
-  assert.ok(firewall().runtime.includes('8100/tcp') && firewall().permanent.includes('8100/tcp'))
-  assert.equal((await portEntry(8100)).open, true)
+  assert.deepEqual(opened.body, { spec: '8000/tcp', zone: 'public', permanent: true })
+  assert.ok(firewall().runtime.includes('8000/tcp') && firewall().permanent.includes('8000/tcp'))
+  assert.equal((await portEntry(8000)).open, true)
 
-  const closed = await api('DELETE', '/network/firewall/ports?port=8100&protocol=tcp')
+  const closed = await api('DELETE', '/network/firewall/ports?port=8000&protocol=tcp')
   assert.equal(closed.status, 200, JSON.stringify(closed.body))
-  assert.ok(!firewall().runtime.includes('8100/tcp') && !firewall().permanent.includes('8100/tcp'))
-  assert.equal((await portEntry(8100)).open, false)
+  assert.ok(!firewall().runtime.includes('8000/tcp') && !firewall().permanent.includes('8000/tcp'))
+  assert.equal((await portEntry(8000)).open, false)
 })
 
-test('8100 can be let through for one source network, shown with its port, and removed again', async () => {
-  const added = await api('POST', '/network/firewall/rules', { body: { port: 8100, source: '10.7.7.0/24' } })
+test('8000 can be let through for one source network, shown with its port, and removed again', async () => {
+  const added = await api('POST', '/network/firewall/rules', { body: { port: 8000, source: '10.7.7.0/24' } })
   assert.equal(added.status, 200, JSON.stringify(added.body))
   assert.equal(added.body.rule, MEDIA_RULE)
   assert.deepEqual(firewall().permanentRules, [MEDIA_RULE])
 
-  const media = await portEntry(8100)
+  const media = await portEntry(8000)
   assert.equal(media.open, false, 'still closed to everyone else')
   assert.deepEqual(media.sources, [{ source: '10.7.7.0/24', raw: MEDIA_RULE }])
   const { body } = await api('GET', '/network')
@@ -161,18 +160,18 @@ test('a port no managed service claims stays untouchable', async () => {
   assert.equal(rule.status, 409)
 })
 
-test('an agent manages 8100 through the same routes', async () => {
+test('an agent manages 8000 through the same routes', async () => {
   const rpc = (id, name, args) =>
     call('POST', '/mcp', {
       auth: 'token',
       body: { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } },
     })
-  const opened = await rpc(1, 'open_firewall_port', { port: 8100 })
+  const opened = await rpc(1, 'open_firewall_port', { port: 8000 })
   assert.equal(opened.body.result.isError, false, JSON.stringify(opened.body))
-  assert.ok(firewall().runtime.includes('8100/tcp'))
-  const closed = await rpc(2, 'close_firewall_port', { port: 8100 })
+  assert.ok(firewall().runtime.includes('8000/tcp'))
+  const closed = await rpc(2, 'close_firewall_port', { port: 8000 })
   assert.equal(closed.body.result.isError, false, JSON.stringify(closed.body))
-  assert.ok(!firewall().runtime.includes('8100/tcp'))
+  assert.ok(!firewall().runtime.includes('8000/tcp'))
   const refused = await rpc(3, 'close_firewall_port', { port: 9999 })
   assert.equal(refused.body.result.isError, true)
   const refusedOpen = await rpc(4, 'open_firewall_port', { port: 9999 })
@@ -190,7 +189,7 @@ test('a media container on another port is managed there too, and says when a ru
   assert.equal(entry.purpose, "Media API 'media-api'")
   assert.equal(entry.loopbackOnly, true, 'published on 127.0.0.1 only')
   assert.match(entry.detail, /bewirkt nichts/)
-  assert.ok(await portEntry(8100), 'the standard port stays listed')
+  assert.ok(await portEntry(8000), 'the standard port stays listed')
 
   assert.equal((await api('DELETE', '/servers/media-api')).status, 200)
   const exposed = await api('POST', '/servers', { body: { role: 'media', port, bindAddress: '0.0.0.0' } })

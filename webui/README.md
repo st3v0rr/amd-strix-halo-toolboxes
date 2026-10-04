@@ -195,7 +195,7 @@ wie jeder andere.
 
 **Media API starten** öffnet einen kleinen Dialog:
 
-- **Containername** und **Host-Port** (im Container immer 8100),
+- **Containername** und **Host-Port** (im Container immer 8000),
 - **Im Netzwerk erreichbar** — aus heißt: nur `127.0.0.1`; an heißt `0.0.0.0`.
 
 Den API-Schlüssel fragt der Dialog nicht: Beim ersten erfolgreichen Start wird
@@ -345,7 +345,7 @@ beschreiben kann, entfernt sie auch nicht.
 
 Welche Ports das sind, wird nicht gepflegt, sondern hergeleitet: der eigene Port
 aus den Einstellungen, dazu je ein Port pro verwaltetem Container und die
-Standardports der Dienste — 50052 (RPC-Worker) und 8100 (Media API) —, auch wenn gerade keiner läuft, weil man ihre Freigaben meist vor dem
+Standardports der Dienste — 50052 (RPC-Worker) und 8000 (Media API) —, auch wenn gerade keiner läuft, weil man ihre Freigaben meist vor dem
 ersten Start einrichtet. Ein Server, der vor fünf Minuten gestartet wurde, steht
 dort ohne weiteres Zutun, und ein Port, der für einen längst gelöschten Server
 offen ist, fällt auf. Öffnen, Sperren und „Nur für Quelle“ gehen für jeden
@@ -358,7 +358,7 @@ relevanten Ports durch:
 |---|---|---|
 | 8420 | das Webinterface selbst | Passwort + JWT-Cookie |
 | 11434 | llama-server (Default je Server) | `--api-key` |
-| 8100 | Media API — nur an `127.0.0.1` gebunden, außer mit „Im Netzwerk erreichbar“ gestartet | API-Schlüssel, Playground mit Sitzung + CSRF; nur HTTP |
+| 8000 | Media API — nur an `127.0.0.1` gebunden, außer mit „Im Netzwerk erreichbar“ gestartet | API-Schlüssel, Playground mit Sitzung + CSRF; nur HTTP |
 | 50052 | RPC-Worker (`ggml-rpc-server`) | **nichts** |
 
 Läuft der Media-API-Container nur an `127.0.0.1`, sagt die Portzeile, dass eine

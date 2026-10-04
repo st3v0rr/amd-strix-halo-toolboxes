@@ -96,7 +96,7 @@ function replacedContainerHoldsPort(containers, port, ignoreName) {
 export function describeContainer(entry) {
   const labels = parseLabels(entry.Labels ?? {})
   const name = (entry.Names ?? [])[0] ?? entry.Id?.slice(0, 12) ?? 'unbekannt'
-  // Each role publishes a different container port — 50052 for a worker, 8100
+  // Each role publishes a different container port — 50052 for a worker, 8000
   // for the media API, 11434 for llama-server. Looking for the wrong one would
   // silently report "kein Port" for that whole role.
   const innerPort =

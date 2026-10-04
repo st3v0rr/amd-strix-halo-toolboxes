@@ -1,6 +1,10 @@
-body{font-family:system-ui,sans-serif;background:#111827;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0}
-.card{background:#1f2937;padding:2rem;border-radius:12px;max-width:26rem;width:90%}
-h1{margin-top:0;font-size:1.3rem}label{display:block;margin:.8rem 0 .3rem}
-input{width:100%;padding:.55rem;border-radius:6px;border:1px solid #374151;background:#111827;color:inherit;box-sizing:border-box}
-button{margin-top:1rem;padding:.55rem 1.2rem;border:0;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer}
-.error{color:#f87171;min-height:1.2em}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f9fafb;color:#111827;display:grid;place-items:center;min-height:100vh;margin:0;color-scheme:light}
+.card{background:#fff;border:1px solid #e5e7eb;box-shadow:0 1px 4px rgb(0 0 0/.06);padding:2rem;border-radius:16px;max-width:26rem;width:90%}
+.brand{display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem}
+h1{margin:0;font-size:1.2rem;font-weight:600}p{color:#6b7280;font-size:.9rem;line-height:1.45}
+label{display:block;margin:.8rem 0 .3rem;font-size:.85rem;color:#6b7280}
+input{width:100%;padding:.55rem;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:inherit;font:inherit;box-sizing:border-box}
+input:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgb(37 99 235/.15)}
+button{margin-top:1rem;width:100%;padding:.6rem 1.2rem;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font:inherit;font-weight:500}
+button:hover{background:#1d4ed8}
+.error{color:#dc2626;min-height:1.2em}

@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Media API — log in</title>
+<link rel="icon" type="image/svg+xml" href="/ui/static/favicon.svg">
 <link rel="stylesheet" href="/ui/static/login.css">
 </head>
 <body>
 <main class="card">
-  <h1>Strix Halo Media API</h1>
+  <div class="brand"><img src="/ui/static/favicon.svg" alt="" width="32" height="32"><h1>Strix Halo Media API</h1></div>
   <p>Log in with the API key (MEDIA_API_KEY). The browser keeps a session cookie, never the key.</p>
   <form method="post" action="/ui/login" autocomplete="off">
     <label for="api_key">API key</label>

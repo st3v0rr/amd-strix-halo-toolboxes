@@ -22,7 +22,7 @@ export const CONTAINER_MODELS_DIR = '/workspace/models'
  * its own config directory and mounts each one read-only at these paths,
  * which the image reads through MEDIA_API_KEY_FILE and friends.
  */
-export const MEDIA_PORT = 8100
+export const MEDIA_PORT = 8000
 export const MEDIA_TAGS = /** @type {const} */ (['media-api'])
 export const MEDIA_CONTAINER_MODELS_DIR = '/models'
 export const MEDIA_CONTAINER_DATA_DIR = '/data'

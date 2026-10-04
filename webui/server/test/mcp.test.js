@@ -335,10 +335,9 @@ test('no MCP tool offers or describes a Podman runtime switch for the media API'
 
 test('the firewall tools name the standard service ports, the media API port among them', () => {
   for (const name of ['get_network', 'open_firewall_port', 'add_firewall_rule']) {
-    assert.match(tool(name).description, /8100/, name)
+    assert.match(tool(name).description, /8000/, name)
   }
-  assert.match(tool('get_network').description, /50052.*8100/)
-  assert.doesNotMatch(tool('get_network').description, /8000/, 'ComfyUI is gone')
+  assert.match(tool('get_network').description, /50052.*8000/)
 })
 
 /* -------------------------------- loopback -------------------------------- */

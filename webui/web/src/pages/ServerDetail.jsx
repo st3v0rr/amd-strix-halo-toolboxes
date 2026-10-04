@@ -256,7 +256,7 @@ export function ServerDetail() {
               <dd>
                 {s.bindAddress && s.role === 'media' ? `${s.bindAddress}:` : ''}
                 {s.hostPort ?? '–'} →{' '}
-                {s.role === 'rpc' ? 50052 : s.role === 'media' ? 8100 : 11434}
+                {s.role === 'rpc' ? 50052 : s.role === 'media' ? 8000 : 11434}
               </dd>
               {s.role === 'rpc' || s.role === 'media' ? null : (
                 <>

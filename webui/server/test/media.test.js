@@ -83,17 +83,17 @@ test('addresses, origins and proxy URLs are parsed strictly', () => {
 })
 
 test('the playground link comes from the settings, never carries the key, and says when it cannot work', () => {
-  const loop = { bindAddress: '127.0.0.1', port: 8100, publicUrl: '' }
-  assert.deepEqual(mediaPlaygroundLink(loop, '127.0.0.1'), { url: 'http://127.0.0.1:8100/ui/', remote: false, note: null })
+  const loop = { bindAddress: '127.0.0.1', port: 8000, publicUrl: '' }
+  assert.deepEqual(mediaPlaygroundLink(loop, '127.0.0.1'), { url: 'http://127.0.0.1:8000/ui/', remote: false, note: null })
   const remote = mediaPlaygroundLink(loop, 'box.lan')
   assert.equal(remote.url, null)
-  assert.match(remote.note, /ssh -L 8100:127\.0\.0\.1:8100/)
+  assert.match(remote.note, /ssh -L 8000:127\.0\.0\.1:8000/)
   assert.equal(mediaPlaygroundLink({ ...loop, publicUrl: 'https://media.lan' }, 'box.lan').url, 'https://media.lan/ui/')
   const lan = mediaPlaygroundLink({ ...loop, bindAddress: '0.0.0.0' }, 'box.lan')
-  assert.equal(lan.url, 'http://box.lan:8100/ui/')
+  assert.equal(lan.url, 'http://box.lan:8000/ui/')
   assert.match(lan.note, /Unverschlüsselt/)
-  assert.equal(mediaPlaygroundLink({ ...loop, bindAddress: '10.0.0.5' }, 'box.lan').url, 'http://10.0.0.5:8100/ui/')
-  assert.equal(mediaPlaygroundLink({ ...loop, bindAddress: '0.0.0.0' }, '::1').url, 'http://[::1]:8100/ui/')
+  assert.equal(mediaPlaygroundLink({ ...loop, bindAddress: '10.0.0.5' }, 'box.lan').url, 'http://10.0.0.5:8000/ui/')
+  assert.equal(mediaPlaygroundLink({ ...loop, bindAddress: '0.0.0.0' }, '::1').url, 'http://[::1]:8000/ui/')
 })
 
 test('profile state reads unsupported, ready, partial and missing apart', () => {
@@ -126,7 +126,7 @@ const FILES = { apiKey: '/cfg/media-api/api-key', sessionSecret: '/cfg/media-api
 const SPEC = {
   containerName: 'media-api',
   image: 'docker.io/st3v0rr/amd-strix-halo-toolboxes:media-api',
-  hostPort: 8100,
+  hostPort: 8000,
   modelsDir: '/home/u/media-models',
   dataDir: '/home/u/media-api-data',
   secretFiles: FILES,
@@ -140,7 +140,7 @@ test('the media argv carries the hardening of the documented command', () => {
   assert.deepEqual(argv.slice(argv.indexOf('--device'), argv.indexOf('--device') + 8), [
     '--device', '/dev/dri', '--device', '/dev/kfd', '--group-add', 'video', '--group-add', 'render',
   ])
-  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100')
+  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8000:8000')
   assert.ok(argv.includes('/home/u/media-models:/models:ro,z'))
   assert.ok(argv.includes('/home/u/media-api-data:/data:z'))
   assert.ok(argv.includes('/cfg/media-api/api-key:/run/secrets/media-api-key:ro,z'))
@@ -164,7 +164,7 @@ test('the argv is rootful like llama-server: no rootless-only flags, every harde
     '/cfg/media-api/session-secret:/run/secrets/media-api-session:ro,z',
     '/home/u/media-models:/models:ro,z',
   ]) assert.ok(argv.includes(value), value)
-  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8100:8100', 'loopback unless told otherwise')
+  assert.equal(argv[argv.indexOf('-p') + 1], '127.0.0.1:8000:8000', 'loopback unless told otherwise')
 
   // The GPU part is exactly llama-server's — whose argv dev/parity holds to
   // run-llama-server.sh: same devices, same groups.
@@ -206,7 +206,7 @@ test('a writable model mount and a token file only when asked for', () => {
   })
   assert.ok(argv.includes('/home/u/media-models:/models:z'))
   assert.ok(argv.includes('/cfg/media-api/hf-token:/run/secrets/hf-token.d:ro,z'))
-  assert.equal(argv[argv.indexOf('-p') + 1], '10.0.0.5:8100:8100')
+  assert.equal(argv[argv.indexOf('-p') + 1], '10.0.0.5:8000:8000')
 })
 
 test('the environment passes only what is set, and no memory check for mock', () => {
@@ -274,7 +274,7 @@ test('the fetch mounts a token file, never passes a token value or name, and nam
 test('the media role and its mounts survive a round trip through the labels', () => {
   const labels = buildMediaLabels({
     image: SPEC.image,
-    hostPort: 8100,
+    hostPort: 8000,
     bindAddress: '127.0.0.1',
     modelsDir: SPEC.modelsDir,
     modelsReadOnly: true,
@@ -288,7 +288,7 @@ test('the media role and its mounts survive a round trip through the labels', ()
   assert.equal(Object.keys(labels).some((k) => /rootful|runtime/.test(k)), false, 'no runtime-mode labels')
   const parsed = parseLabels(labels)
   assert.equal(parsed.role, ROLE.media)
-  assert.equal(parsed.hostPort, 8100)
+  assert.equal(parsed.hostPort, 8000)
   assert.equal(parsed.mediaModelsReadOnly, true)
   assert.equal(parsed.mediaAllowDownloads, false)
   assert.equal(parsed.mediaDataDir, SPEC.dataDir)

@@ -16,7 +16,7 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$HOME/.config/m
 podman run -d --name media-api \
   --device /dev/dri --device /dev/kfd --group-add video --group-add render \
   --cap-drop=all --security-opt=no-new-privileges --security-opt=seccomp=unconfined \
-  -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \
+  -p 127.0.0.1:8000:8000 -e MEDIA_HOST=0.0.0.0 \
   -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \
   -v "$HOME/.config/media-api/api-key:/run/secrets/media-api-key:ro,z" \
   -v "$HOME/media-api-models:/models:ro,z" -v "$HOME/media-api-data:/data:z" \
@@ -25,7 +25,7 @@ podman run -d --name media-api \
 
 This is how the appliance runs it: as root, on the host's rootful Podman — the same Podman,
 devices and `video`/`render` groups as its llama.cpp containers, with no Podman mode
-of its own to choose. Then open `http://127.0.0.1:8100/ui/`. Without a readable
+of its own to choose. Then open `http://127.0.0.1:8000/ui/`. Without a readable
 `MEDIA_API_KEY_FILE` or valid `MEDIA_API_KEY` (or with the commented `.env.example` placeholder)
 the container exits with status 2 — it never runs unprotected.
 
@@ -39,10 +39,10 @@ expose it (below).
 
 ### Remote access
 
-Publishing port 8100 beyond loopback sends API keys and login credentials over plain HTTP. On a
+Publishing port 8000 beyond loopback sends API keys and login credentials over plain HTTP. On a
 trusted LAN the web interface can do exactly that (**Im Netzwerk erreichbar** when starting it), and
-its Network page lets 8100 through for one source network only. For anything wider, keep
-`-p 127.0.0.1:8100:8100`, terminate HTTPS in a reverse proxy on the same host, and set
+its Network page lets 8000 through for one source network only. For anything wider, keep
+`-p 127.0.0.1:8000:8000`, terminate HTTPS in a reverse proxy on the same host, and set
 `MEDIA_COOKIE_SECURE=1`. Configure only explicit HTTPS CORS origins if cross-origin API access is
 needed. Prefer `MEDIA_API_KEY_FILE` and `MEDIA_SESSION_SECRET_FILE` mounted from mode-0600 files
 (or Podman secrets) instead of environment values.
@@ -106,7 +106,7 @@ at `GET /openapi.json` (authenticated).
 ```bash
 curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"prompt":"a lighthouse at dusk","profile":"lightning-4step","seed":42}' \
-  http://127.0.0.1:8100/api/v1/images/generations  # → 202 {"id":"job_…","status":"queued",…}
+  http://127.0.0.1:8000/api/v1/images/generations  # → 202 {"id":"job_…","status":"queued",…}
 ```
 
 Generation is asynchronous: `202` with a job id at once, then `queued → running →
@@ -193,14 +193,14 @@ swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for r
 - The appliance runs the container on rootful Podman, like its llama.cpp containers;
   it always gets `--cap-drop=all` and `--security-opt=no-new-privileges`, only `/data` is writable
   and models are mounted read-only. ROCm currently requires `seccomp=unconfined` — a documented
-  residual risk that, rootful, would make an escape root on the host; hence port 8100 stays on
+  residual risk that, rootful, would make an escape root on the host; hence port 8000 stays on
   loopback or goes to known sources only.
 
 ## Configuration
 
 Environment (all in [`.env.example`](.env.example)): `MEDIA_API_KEY` (or `…_FILE`),
 `MEDIA_SESSION_SECRET` (else derived from the key), `MEDIA_CONFIG`, `MEDIA_MODELS_DIR`,
-`MEDIA_OUTPUT_DIR`, `MEDIA_UPLOAD_DIR`, `MEDIA_STATE_DIR`, `MEDIA_HOST`, `MEDIA_PORT` (8100),
+`MEDIA_OUTPUT_DIR`, `MEDIA_UPLOAD_DIR`, `MEDIA_STATE_DIR`, `MEDIA_HOST`, `MEDIA_PORT` (8000),
 `MEDIA_BACKEND=real|mock`, `MEDIA_ALLOW_DOWNLOADS`, `MEDIA_DEVICE`, `MEDIA_MEMORY_CHECK`,
 `MEDIA_MEMORY_RESERVE_GB`, and the limits `MEDIA_MAX_UPLOAD_BYTES`,
 `MEDIA_MAX_ENCODED_UPLOAD_BYTES`, `MEDIA_MAX_UPLOAD_COUNT`, `MEDIA_MAX_TOTAL_UPLOAD_BYTES`,

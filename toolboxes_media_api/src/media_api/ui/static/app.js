@@ -233,6 +233,9 @@ async function init() {
   $("profile").addEventListener("change", applyProfile);
   for (const id of ["images", "start_image", "end_image", "references"]) $(id).addEventListener("change", () => preview(id));
   $("gen-form").addEventListener("submit", submit);
+  $("prompt").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !$("submit").disabled) $("gen-form").requestSubmit();
+  });
   $("cancel").addEventListener("click", async () => {
     if (!currentJob) return;
     try { showJob(await api(`/api/v1/jobs/${currentJob.id}/cancel`, { method: "POST" })); } catch (error) { $("form-error").textContent = error.message; }

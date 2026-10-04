@@ -47,8 +47,13 @@ CSP = (
     "style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; "
     "object-src 'none'"
 )
-STATIC_FILES = {"app.js": "text/javascript", "style.css": "text/css", "login.css": "text/css"}
-PUBLIC_STATIC = {"login.css"}
+STATIC_FILES = {
+    "app.js": "text/javascript",
+    "style.css": "text/css",
+    "login.css": "text/css",
+    "favicon.svg": "image/svg+xml",
+}
+PUBLIC_STATIC = {"login.css", "favicon.svg"}
 
 
 class BodyLimit:

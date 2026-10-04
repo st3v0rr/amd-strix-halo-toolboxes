@@ -69,7 +69,7 @@ class Settings:
     session_secret: bytes = field(repr=False)
     backend: Literal["real", "mock"] = "real"
     host: str = "127.0.0.1"
-    port: int = 8100
+    port: int = 8000
     models_dir: Path = Path("/models")
     output_dir: Path = Path("/data/outputs")
     upload_dir: Path = Path("/data/uploads")

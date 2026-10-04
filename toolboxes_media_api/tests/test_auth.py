@@ -88,6 +88,9 @@ def test_playground_requires_login(client):
     assert response.status_code == 303 and response.headers["location"] == "/ui/login"
     assert client.get("/ui/static/app.js").status_code == 401
     assert client.get("/ui/static/login.css").status_code == 200
+    icon = client.get("/ui/static/favicon.svg")
+    assert icon.status_code == 200 and icon.headers["content-type"].startswith("image/svg+xml")
+    assert 'rel="icon"' in client.get("/ui/login").text
 
 
 def test_login_wrong_key_sets_no_cookie(client):
@@ -164,7 +167,7 @@ def test_lan_login_accepts_different_origin_when_api_key_is_valid(client):
     response = client.post(
         "/ui/login",
         data={"api_key": API_KEY},
-        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8100"},
+        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8000"},
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -176,7 +179,7 @@ def test_lan_login_rejects_invalid_api_key(client):
     response = client.post(
         "/ui/login",
         data={"api_key": "definitely-wrong-key"},
-        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8100"},
+        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8000"},
         follow_redirects=False,
     )
     assert response.status_code == 401

@@ -41,7 +41,7 @@ Hardened localhost start (as root, on rootful Podman like the llama.cpp containe
   podman run -d --name media-api \\
     --device /dev/dri --device /dev/kfd --group-add video --group-add render \\
     --cap-drop=all --security-opt=no-new-privileges --security-opt=seccomp=unconfined \\
-    -p 127.0.0.1:8100:8100 -e MEDIA_HOST=0.0.0.0 \\
+    -p 127.0.0.1:8000:8000 -e MEDIA_HOST=0.0.0.0 \\
     -e MEDIA_API_KEY_FILE=/run/secrets/media-api-key \\
     -v "\$HOME/.config/media-api/api-key:/run/secrets/media-api-key:ro,z" \\
     -v "\$HOME/media-api-models:/models:ro,z" \\
