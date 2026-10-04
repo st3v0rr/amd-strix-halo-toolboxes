@@ -454,8 +454,8 @@ def create_app(
 
     @app.post("/ui/login", include_in_schema=False)
     async def login(request: Request) -> Response:
-        if not same_origin(request.headers.get("origin"), _own_host(request)):
-            raise Forbidden("Cross-origin login refused.", code="csrf_failed")
+        # Login is gated by the API key itself. Permit LAN clients whose browser
+        # Origin differs from the appliance Host; do not use cookie auth here.
         client = _client(request)
         if throttle.blocked(client):
             refused = page("login.html", error="Too many failed attempts. Wait a few minutes.")

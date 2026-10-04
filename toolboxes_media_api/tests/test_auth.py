@@ -160,9 +160,27 @@ def test_forged_or_tampered_cookie(client):
     assert client.get("/api/v1/models").status_code == 401
 
 
-def test_cross_origin_login_refused(client):
-    response = client.post("/ui/login", data={"api_key": API_KEY}, headers={"Origin": "https://evil.example"})
-    assert response.status_code == 403
+def test_lan_login_accepts_different_origin_when_api_key_is_valid(client):
+    response = client.post(
+        "/ui/login",
+        data={"api_key": API_KEY},
+        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8100"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/ui/"
+    assert "media_session=" in response.headers["set-cookie"]
+
+
+def test_lan_login_rejects_invalid_api_key(client):
+    response = client.post(
+        "/ui/login",
+        data={"api_key": "definitely-wrong-key"},
+        headers={"Origin": "http://10.7.7.25:5173", "Host": "10.7.7.74:8100"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 401
+    assert "media_session=" not in response.headers.get("set-cookie", "")
 
 
 def test_failed_attempts_are_throttled(make_client):

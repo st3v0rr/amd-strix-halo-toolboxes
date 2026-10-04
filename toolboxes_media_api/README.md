@@ -177,9 +177,10 @@ swapping. MiniMax-H3 keeps one transformer partition resident and swaps it for r
 
 - The key is compared in constant time (SHA-256 digests), never logged, stored or echoed;
   failed attempts are throttled per client (429).
-- Playground login exchanges the key for a random server-side session: an `HttpOnly`,
+- Playground login exchanges the API key for a random server-side session: an `HttpOnly`,
   `SameSite=Strict` cookie with an HMAC-signed id — no key material. Logout and restarts end
-  sessions. Any remote use requires a TLS reverse proxy and `MEDIA_COOKIE_SECURE=1`.
+  sessions. LAN login is permitted from another origin; the key is required to create the session.
+  Any remote use requires a TLS reverse proxy and `MEDIA_COOKIE_SECURE=1`.
 - Cookie-authenticated state changes need the session's CSRF token (`X-CSRF-Token`) and a
   same-origin `Origin`. The playground itself and its script are behind the login.
 - Uploads: request and re-encoded PNG size caps, pixel limits, atomic aggregate count/byte quotas,
