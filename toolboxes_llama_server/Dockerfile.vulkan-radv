@@ -20,7 +20,14 @@ COPY llama-grammar.patch /tmp/llama-grammar.patch
 # build
 RUN git clean -xdf \
   && git submodule update --recursive \
-  && patch -p1 < /tmp/llama-grammar.patch \
+  && if grep -Fqx '#define MAX_REPETITION_THRESHOLD 100000' src/llama-grammar.cpp; then \
+       echo "llama.cpp grammar threshold is already 100000"; \
+     elif git apply --check --unidiff-zero /tmp/llama-grammar.patch; then \
+       git apply --unidiff-zero /tmp/llama-grammar.patch; \
+     else \
+       echo "ERROR: llama.cpp grammar threshold patch no longer applies"; \
+       exit 1; \
+     fi \
   && cmake -S . -B build -G Ninja \
   -DGGML_VULKAN=ON \
   -DCMAKE_BUILD_TYPE=Release \

@@ -147,9 +147,14 @@ RUN git clean -xdf \
        echo "ERROR: llama.cpp #25992 workaround no longer applies; review upstream #25863 and #26225"; \
        exit 1; \
      fi \
-  && (patch -p1 -N --fuzz=3 < /tmp/llama-grammar.patch || \
-      grep -q 'MAX_REPETITION_THRESHOLD 100000' src/llama-grammar.cpp || \
-      { echo "ERROR: grammar patch no longer applies to ${REPO} ${BRANCH}"; exit 1; }) \
+  && if grep -Fqx '#define MAX_REPETITION_THRESHOLD 100000' src/llama-grammar.cpp; then \
+       echo "${REPO} grammar threshold is already 100000"; \
+     elif git apply --check --unidiff-zero /tmp/llama-grammar.patch; then \
+       git apply --unidiff-zero /tmp/llama-grammar.patch; \
+     else \
+       echo "ERROR: grammar patch no longer applies to ${REPO} ${BRANCH}"; \
+       exit 1; \
+     fi \
   && cmake -S . -B build \
   -G Ninja \
   -DGGML_HIP=ON \

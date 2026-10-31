@@ -48,7 +48,14 @@ RUN git clean -xdf \
        echo "ERROR: llama.cpp #25992 workaround no longer applies; review upstream #25863 and #26225"; \
        exit 1; \
      fi \
-  && patch -p1 < /tmp/llama-grammar.patch \
+  && if grep -Fqx '#define MAX_REPETITION_THRESHOLD 100000' src/llama-grammar.cpp; then \
+       echo "llama.cpp grammar threshold is already 100000"; \
+     elif git apply --check --unidiff-zero /tmp/llama-grammar.patch; then \
+       git apply --unidiff-zero /tmp/llama-grammar.patch; \
+     else \
+       echo "ERROR: llama.cpp grammar threshold patch no longer applies"; \
+       exit 1; \
+     fi \
   && cmake -S . -B build \
   -DGGML_HIP=ON \
   -DAMDGPU_TARGETS=gfx1151 \
