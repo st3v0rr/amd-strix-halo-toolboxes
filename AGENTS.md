@@ -6,7 +6,7 @@ Upstream's own parts — the interactive toolboxes, the benchmark suite, the Git
 
 ## Core Technologies
 *   **Containers**: Podman (Docker for building) runs every image as a server container; the web interface drives it as a `systemd --user` service. Toolbx and Distrobox belong to upstream's interactive toolboxes, which this fork does not carry.
-*   **Inference Engines**: [Llama.cpp](https://github.com/ggerganov/llama.cpp) (`llama-server`, RPC workers) for text; PyTorch + diffusers on ROCm (gfx1151 nightly wheels) for the media API's image and video generation.
+*   **Inference Engines**: [Llama.cpp](https://github.com/ggerganov/llama.cpp) (`llama-server`, RPC workers) for text; PyTorch + diffusers on ROCm (AMD's released gfx1151 wheels, pinned) for the media API's image and video generation.
 *   **Hardware / Drivers**: AMD "Strix Halo" APUs (Gfx1151). The `llama-server` images are built on Fedora 44 against ROCm 10.0 (`rocm-10.0`, `rocm-10.0-strix-llama`) and ROCm 10.1 (`rocm-10.1`) and Vulkan via Mesa RADV (`vulkan-radv`). `vulkan-amdvlk`, `rocm-6.4.4` and `rocm-7.14` are no longer built.
 
 ## Repository Structure Overview

@@ -31,7 +31,7 @@ const DESCRIPTIONS = {
   'rocm-10.0-strix-llama':
     'strix-llama.cpp mit eigener ROCm-Runtime für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API, experimentell.',
   'media-api':
-    'Media API mit diffusers und ROCm-Torch für gfx1151 (Fedora rawhide). Bild- und Videogenerierung per API.',
+    'Media API mit diffusers und ROCm-Torch für gfx1151 (Fedora 44). Bild- und Videogenerierung per API.',
 }
 
 /**

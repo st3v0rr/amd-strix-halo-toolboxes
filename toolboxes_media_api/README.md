@@ -12,7 +12,7 @@ cache, outputs, uploads and job state live in mounts.
 install -d -m 700 "$HOME/.config/media-api"
 umask 077
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$HOME/.config/media-api/api-key"
-./build.sh                                   # → media-api-local (TheRock ROCm torch, gfx1151)
+./build.sh                                   # → media-api-local (AMD ROCm 10.1 torch, gfx1151)
 podman run -d --name media-api \
   --device /dev/dri --device /dev/kfd --group-add video --group-add render \
   --cap-drop=all --security-opt=no-new-privileges --security-opt=seccomp=unconfined \

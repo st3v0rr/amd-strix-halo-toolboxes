@@ -1,7 +1,7 @@
 # Media API: image and video generation behind an authenticated HTTP API.
 #
-# Fedora with Python 3.13 in /opt/venv and TheRock's multi-arch PyTorch scoped
-# to gfx1151. No model weights: models, the Hugging Face cache, outputs,
+# Fedora 44 with Python 3.13 in /opt/venv and AMD's released PyTorch for ROCm
+# 10.1, scoped to gfx1151. No model weights: models, the Hugging Face cache, outputs,
 # uploads and job state all live in mounts.
 #
 # TORCH_INDEX_URL / TORCH_PACKAGES exist only so the image can be built locally
@@ -9,7 +9,7 @@
 # multi-gigabyte ROCm wheels take (./build.sh --cpu-torch). Such an image is
 # never published; published images always use the defaults.
 
-FROM registry.fedoraproject.org/fedora:rawhide
+FROM registry.fedoraproject.org/fedora:44
 
 # Compilers and Python headers stay for Triton's runtime launcher builds. FFmpeg comes with PyAV's wheel (it has libx264 and aac).
 RUN dnf -y install --setopt=install_weak_deps=False --nodocs \
@@ -22,12 +22,16 @@ ENV PATH=/opt/venv/bin:$PATH
 ENV PIP_NO_CACHE_DIR=1
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# ROCm + PyTorch (TheRock multi-arch release, scoped to Strix Halo gfx1151).
+# ROCm + PyTorch from AMD's stable index, pinned so a rebuild gets the same
+# stack: torch's ROCm runtime (rocm, rocm-sdk-*, triton) is pinned by torch
+# itself. torchvision does not pin torch, hence both here; for ROCm 10.1 AMD
+# publishes torchvision only as 0.29.0a0. The index redirects each package to
+# its pytorch/ or core/ subtree, so use this root, not one of those.
 # torchvision: Qwen3-VL's processor needs it. torchaudio is not needed: the API
 # takes no audio references.
-ARG TORCH_INDEX_URL=https://rocm.nightlies.amd.com/whl-multi-arch/
-ARG TORCH_PACKAGES="torch[device-gfx1151] torchvision[device-gfx1151]"
-RUN python -m pip install --index-url "${TORCH_INDEX_URL}" --pre ${TORCH_PACKAGES}
+ARG TORCH_INDEX_URL=https://stable.repo.amd.com/rocm/whl-next/
+ARG TORCH_PACKAGES="torch[device-gfx1151]==2.14.0+rocm10.1.0 torchvision[device-gfx1151]==0.29.0a0+rocm10.1.0"
+RUN python -m pip install --index-url "${TORCH_INDEX_URL}" ${TORCH_PACKAGES}
 
 WORKDIR /opt/media-api
 COPY requirements/ requirements/

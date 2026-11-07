@@ -4,7 +4,7 @@
 #
 # Usage: ./build.sh [image-tag] [--cpu-torch]
 #   image-tag    what to tag locally (default: media-api-local)
-#   --cpu-torch  PyTorch's CPU wheels instead of TheRock's gfx1151 ones: only
+#   --cpu-torch  PyTorch's CPU wheels instead of AMD's gfx1151 ones: only
 #                for trying the image in mock mode (MEDIA_BACKEND=mock) on a
 #                machine without the bandwidth or disk for ROCm. Never publish
 #                such an image.

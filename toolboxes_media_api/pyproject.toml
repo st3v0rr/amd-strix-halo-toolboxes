@@ -7,7 +7,7 @@ name = "media-api"
 version = "0.1.0"
 description = "Authenticated image and video generation API for AMD Strix Halo (gfx1151)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 # The API itself. The inference stack (torch from the ROCm index, diffusers,
 # transformers, ...) is the `inference` extra, so tests and the mock backend
@@ -25,7 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 inference = [
-  "diffusers==0.40.0",
+  "diffusers==0.42.1",
   "transformers==5.17.0",
   "accelerate>=1.10",
   "peft>=0.17",
@@ -52,7 +52,7 @@ filterwarnings = ["ignore::DeprecationWarning:torch.*", "ignore::FutureWarning",
 
 [tool.ruff]
 line-length = 110
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -73,7 +73,7 @@ ignore = [
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = ["src/media_api"]
 warn_unused_ignores = true
 warn_redundant_casts = true

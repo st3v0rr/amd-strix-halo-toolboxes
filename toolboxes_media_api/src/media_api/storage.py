@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from .errors import ApiError, NotFound, PayloadTooLarge, UnsupportedMediaType
 
@@ -217,7 +217,14 @@ class UploadStore:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("error", Image.DecompressionBombWarning)
-                probe = Image.open(io.BytesIO(data))
+                # Only the declared format's decoder may parse the header: a file
+                # claiming to be PNG never reaches Pillow's other format plugins.
+                try:
+                    probe = Image.open(io.BytesIO(data), formats=[expected_format])
+                except UnidentifiedImageError:
+                    raise UnsupportedMediaType(
+                        f"The file content is not the declared {expected_format}."
+                    ) from None
                 if probe.format != expected_format:
                     raise UnsupportedMediaType(
                         f"The file content is {probe.format or 'not an image'}, not the declared "

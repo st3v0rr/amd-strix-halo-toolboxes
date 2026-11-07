@@ -5,7 +5,7 @@ uvicorn==0.54.0
 pydantic==2.13.5
 python-multipart==0.0.32
 PyYAML==6.0.3
-pillow==12.3.0
-numpy==2.4.6
+pillow==13.0.0
+numpy==2.5.4
 # Bundles an FFmpeg with libx264 and aac, which the MP4 output needs.
 av==18.1.0

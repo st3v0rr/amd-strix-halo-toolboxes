@@ -35,6 +35,26 @@ def test_bad_uploads_rejected(client, data, ctype, status):
     assert response.status_code == status, response.text
 
 
+@pytest.mark.parametrize("fmt", ["TIFF", "GIF", "BMP", "JPEG"])
+def test_only_the_declared_decoder_parses_the_upload(client, monkeypatch, fmt):
+    # A file declared as PNG never reaches Pillow's other format plugins.
+    Image.init()
+    factory, accept = Image.OPEN[fmt]
+    called = []
+
+    def spy(*args, **kwargs):
+        called.append(fmt)
+        return factory(*args, **kwargs)
+
+    monkeypatch.setitem(Image.OPEN, fmt, (spy, accept))
+    response = client.post(
+        "/api/v1/uploads", headers=AUTH, files={"file": ("x.png", png_bytes(fmt=fmt), "image/png")}
+    )
+    assert response.status_code == 415
+    assert "not the declared PNG" in response.text
+    assert called == []
+
+
 def test_upload_size_limit(make_client):
     client = make_client(MEDIA_MAX_UPLOAD_BYTES="2048")
     big = png_bytes((256, 256))
