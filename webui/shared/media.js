@@ -28,6 +28,7 @@ export const MEDIA_PLACEHOLDER_KEYS = Object.freeze([
 export const MEDIA_MODEL_IDS = Object.freeze([
   'qwen-image-2512',
   'qwen-image-edit-2511',
+  'qwen-image-2.1',
   'minimax-h3',
   'whisper-large-v3-turbo',
   'qwen3-asr-1.7b',

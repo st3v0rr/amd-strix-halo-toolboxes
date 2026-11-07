@@ -19,7 +19,7 @@ from ..errors import JobCancelled
 from ..jobs import JobContext
 from .base import Artifact, GenerationRequest, Provider
 from .loaders import DTYPES, TensorSource, load_streaming, lora_deltas, meta_model
-from .media import as_uint8_frames, encode_video
+from .media import as_uint8_frames, encode_video, open_rgb
 
 PARTITION = {
     "text-to-video": "transformer",
@@ -129,7 +129,6 @@ class MiniMaxH3Provider(Provider):
     def generate(self, request: GenerationRequest, ctx: JobContext) -> Artifact:
         import torch
         from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3ImageReference
-        from PIL import Image
 
         transformer = self._ensure_partition(request.task, ctx)
         ctx.report("generating", 0.0)
@@ -141,9 +140,7 @@ class MiniMaxH3Provider(Provider):
             calls["n"] += 1
             ctx.report("generating", min(1.0, calls["n"] / request.steps))
 
-        def rgb(path):
-            with Image.open(path) as image:
-                return image.convert("RGB")
+        rgb = open_rgb
 
         args: dict[str, Any] = dict(
             prompt=request.prompt,

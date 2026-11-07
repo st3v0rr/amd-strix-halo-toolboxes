@@ -36,10 +36,41 @@ def _codec(candidates: Sequence[str]) -> str:
     raise RuntimeError(f"none of the encoders {list(candidates)} is available in this FFmpeg build")
 
 
+def has_transparency(image: Image.Image) -> bool:
+    if image.mode in ("RGBA", "LA", "PA"):
+        low, _ = image.getchannel("A").getextrema()
+        return isinstance(low, int) and low < 255
+    return image.mode == "P" and "transparency" in image.info
+
+
+def flatten(image: Image.Image) -> Image.Image:
+    """RGB, with transparent areas composited over white (as the uploads used to be)."""
+    if not has_transparency(image):
+        return image.convert("RGB")
+    rgba = image.convert("RGBA")
+    background = Image.new("RGB", rgba.size, (255, 255, 255))
+    background.paste(rgba, mask=rgba.getchannel("A"))
+    return background
+
+
+def open_rgb(path: Path | str) -> Image.Image:
+    """A stored upload for a model that takes RGB: transparency over white."""
+    with Image.open(path) as image:
+        return flatten(image)
+
+
+def open_rgba(path: Path | str) -> Image.Image:
+    with Image.open(path) as image:
+        return image.convert("RGBA")
+
+
 def save_image(image: Image.Image, directory: Path, output_format: str) -> tuple[Path, str]:
+    """PNG and WebP keep an alpha channel when the image has transparent areas;
+    JPEG has none, so those areas are composited over white."""
     pil_format, content_type = IMAGE_FORMATS[output_format]
     path = directory / f"output.{'jpg' if output_format == 'jpeg' else output_format}"
-    image = image.convert("RGB")
+    keep_alpha = output_format in ("png", "webp") and has_transparency(image)
+    image = image.convert("RGBA") if keep_alpha else flatten(image)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=path.suffix)
     os.close(fd)
     try:

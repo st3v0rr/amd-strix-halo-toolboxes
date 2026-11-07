@@ -35,6 +35,7 @@ def test_check_json_needs_no_key_and_reports_every_profile(cli_env: Path, capsys
     assert set(models) == {
         "qwen-image-2512",
         "qwen-image-edit-2511",
+        "qwen-image-2.1",
         "minimax-h3",
         "whisper-large-v3-turbo",
         "qwen3-asr-1.7b",

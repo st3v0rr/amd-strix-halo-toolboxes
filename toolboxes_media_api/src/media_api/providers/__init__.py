@@ -27,6 +27,10 @@ def create_provider(settings: Settings, model: ModelSpec, profile: ProfileSpec) 
         from .qwen_image import QwenImageEditProvider
 
         return QwenImageEditProvider(settings, model, profile)
+    if model.provider == "qwen-image-21":
+        from .qwen_image21 import QwenImage21Provider
+
+        return QwenImage21Provider(settings, model, profile)
     if model.provider == "minimax-h3":
         from .minimax_h3 import MiniMaxH3Provider
 

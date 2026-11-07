@@ -23,7 +23,7 @@ from .loaders import (
     lora_deltas,
     meta_model,
 )
-from .media import save_image
+from .media import open_rgb, save_image
 
 # ModelTC/Qwen-Image-Lightning's diffusers settings: the LoRAs were distilled at shift 3.
 LIGHTNING_SCHEDULER = {
@@ -167,7 +167,6 @@ class QwenImageProvider(Provider):
 
     def generate(self, request: GenerationRequest, ctx: JobContext) -> Artifact:
         import torch
-        from PIL import Image
 
         steps = request.steps
 
@@ -189,11 +188,7 @@ class QwenImageProvider(Provider):
         if request.width and request.height:
             args.update(width=request.width, height=request.height)
         if self.edit:
-            images = []
-            for path in request.images:
-                with Image.open(path) as image:
-                    images.append(image.convert("RGB"))
-            args["image"] = images
+            args["image"] = [open_rgb(path) for path in request.images]
         with torch.inference_mode():
             image = self.pipe(**args).images[0]
         ctx.report("encoding", 1.0)

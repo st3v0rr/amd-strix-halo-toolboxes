@@ -1,7 +1,8 @@
 # Media API — image, video and speech-to-text for Strix Halo
 
 An authenticated HTTP API plus a browser playground for **Qwen-Image-2512** (text → image),
-**Qwen-Image-Edit-2511** (image edit) and **MiniMax-H3** (text/image/start-end/reference → video
+**Qwen-Image-Edit-2511** (image edit), **Qwen-Image-2.1** (text → image and edit in one model,
+with transparency) and **MiniMax-H3** (text/image/start-end/reference → video
 with stereo audio), and for speech-to-text with **Whisper large-v3-turbo** and **Qwen3-ASR**,
 on AMD Ryzen AI Max "Strix Halo" (gfx1151). A Python service on diffusers and transformers.
 The image holds no weights: models, the Hugging Face
@@ -97,7 +98,7 @@ read-only file named by `HF_TOKEN_PATH`. The web interface (`webui/`) manages th
 service this way. **Media API starten** on its Servers page asks for a container name, a host
 port, whether to publish beyond loopback and — optionally — a key of one's own, then runs the
 command above; key and session secret are 0600 files mounted read-only and never shown. The page
-**MediaAPI-Modelle** lists the curated models (Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3)
+**MediaAPI-Modelle** lists the curated models (Qwen-Image-2512, Qwen-Image-Edit-2511, Qwen-Image-2.1, MiniMax-H3, Whisper, Qwen3-ASR)
 with their profiles, fetches what a profile lacks only when asked and deletes a profile after
 showing the `--dry-run` plan, in a separate one-shot
 container while the service keeps its read-only mount (new files appear at their paths only when
@@ -198,6 +199,9 @@ real checkpoint headers (`tests/fixtures/checkpoint_keys.json.gz`).
 | qwen-image-2512 lightning-4step (fast) | fp8 + lightx2v Qwen-Image-2512 Lightning 4-step LoRA (never the Edit LoRA) | LoRA fused, requantized per row | 36 |
 | qwen-image-edit-2511 **fp8mixed** (default) | Comfy-Org `fp8mixed` | FP8 layers with their scales, BF16 layers stay BF16 | 36 |
 | qwen-image-edit-2511 bf16 / lightning-4step | as above, with the dedicated Edit-2511 Lightning LoRA | | 64 / 36 |
+| qwen-image-2.1 **bf16** (default) | Comfy-Org `qwen_image_2.1_bf16` (fused gate/up split on load) + `qwen3vl_8b_bf16` + official VAE | BF16; 40 steps, no CFG | 48 |
+| qwen-image-2.1 turbo-8step (fast) | bf16 + Comfy-Org's Turbo LoRA (extracted from Qwen-Image-2.1-Turbo), Turbo's own 8 sigmas | LoRA fused (low-rank pairs and full norm diffs) | 48 |
+| qwen-image-2.1 lightning-4step (fastest) | bf16 + lightx2v Qwen-Image-2.1 Lightning v2-RL 4-step LoRA (rank 64), its own 4 sigmas | LoRA fused | 48 |
 | minimax-h3 **int8** (default) | MiniMaxAI/MiniMax-H3 diffusers BF16 | INT8 per row while streaming from disk (transformer + Qwen3-VL), BF16 video VAE, FP32 audio VAE | 86 |
 | minimax-h3 turbo (fast) | int8 + larryvrh Turbo LoRA v4 (fused before quantizing), 6 steps; t2v/i2v/start-end only | | 86 |
 
@@ -220,6 +224,20 @@ torchao, no bitsandbytes, no FP8 matmul. Tensors are copied out of the file mapp
 - *Qwen-Image-Edit-2511 `int8_convrot`* — ComfyUI-only layout.
 - *MiniMax-H3 Turbo for reference-to-video* — the Turbo LoRA was trained on the fl2va partition;
   lightx2v's ref2v LoRA carries `alpha: 8` metadata that conflicts with its own usage notes.
+
+Qwen-Image-2.1 facts: one model for `text-to-image` and `image-edit` (up to ten input images;
+`MEDIA_MAX_EDIT_IMAGES`, 3 by default, caps it), sides multiples of 32 up to Qwen's 2752 × 1536
+(`MEDIA_MAX_WIDTH`/`MEDIA_MAX_HEIGHT`, 2048 by default, cap it), sampled without CFG unless
+`guidance` > 1 with a negative prompt. Its license is the **Qwen Research License** (research
+use, not commercial). The model draws RGBA: a result with transparent areas keeps its alpha
+channel in PNG and WebP (JPEG composites it over white), and an uploaded image keeps its alpha
+for 2.1 to edit — the other models get uploads composited over white, as before. Turbo and
+Lightning sample their release's fixed schedule (`scheduler: fixed-sigmas` with the profile's
+`sigmas`, no dynamic shifting): `steps` is 8 resp. 4 or omitted (`fixed_steps` in
+`/api/v1/models`). Both are LoRAs rather than the distilled checkpoints, so one set of base
+weights on disk serves all three profiles. The Comfy file fuses each block's SwiGLU gate and up projections into one
+`gate_up` matrix (gate rows first, as diffusers' own converter reads it); the loader splits it,
+and LoRAs made for that layout are split alike.
 
 MiniMax-H3 facts the API enforces (from diffusers' pipeline): 24 fps only, 5–15 s with frames
 snapped up to `17n+5` (124…345), sides multiples of 32 up to 1344×768 pixels, aspect 1:4–4:1,

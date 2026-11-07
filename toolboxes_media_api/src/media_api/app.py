@@ -342,6 +342,8 @@ def create_app(
                 }
                 if profile.reason:
                     entry["reason"] = profile.reason
+                if profile.sigmas:
+                    entry["fixed_steps"] = len(profile.sigmas)
                 if profile.usable:
                     if settings.backend == "mock":
                         entry["available"], entry["missing"] = True, []

@@ -9,6 +9,7 @@ fails in the HTTP response, not twenty minutes later in the worker.
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import json
 import re
 from dataclasses import dataclass, field
@@ -32,15 +33,28 @@ TASKS = (
 IMAGE_TASKS = frozenset({"text-to-image", "image-edit"})
 AUDIO_TASKS = frozenset({"speech-to-text"})
 VIDEO_TASKS = frozenset(TASKS) - IMAGE_TASKS - AUDIO_TASKS
-PROVIDERS = frozenset({"qwen-image", "qwen-image-edit", "minimax-h3", "whisper", "qwen3-asr"})
+PROVIDERS = frozenset(
+    {"qwen-image", "qwen-image-edit", "qwen-image-21", "minimax-h3", "whisper", "qwen3-asr"}
+)
 # "transformers": a model directory transformers loads with from_pretrained.
 # Without a `file` it is the model's base itself; with one, a second
 # repository (such as Qwen3-ASR's forced aligner) in a directory of its own.
 COMPONENT_FORMATS = frozenset(
-    {"diffusers", "comfy-single-file", "comfy-scaled-fp8", "comfy-qwen2.5-vl", "gguf", "transformers"}
+    {
+        "diffusers",
+        "comfy-single-file",
+        "comfy-scaled-fp8",
+        "comfy-qwen2.5-vl",
+        "comfy-qwen3-vl",
+        "gguf",
+        "transformers",
+    }
 )
 STORAGE = frozenset({"bf16", "fp16", "fp32", "fp8", "int8", "gguf"})
 STATUSES = ("supported", "experimental", "unsupported")
+# lightning: Qwen-Image Lightning's shift-3 schedule; fixed-sigmas: a distilled
+# model's own sigma list (the profile's `sigmas`), used as given.
+SCHEDULERS = ("default", "lightning", "fixed-sigmas")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -264,6 +278,9 @@ class ProfileSpec:
     lora: LoraSpec | None
     scheduler: str
     defaults: dict[str, Any]
+    # A fixed sampling schedule (a distilled model's own sigmas): the step
+    # count is its length and nothing else.
+    sigmas: tuple[float, ...] = ()
 
     @property
     def usable(self) -> bool:
@@ -362,8 +379,17 @@ def _parse_profile(model_id: str, model_tasks: tuple[str, ...], data: Any, where
         if transformer is not None and transformer.format == "gguf":
             raise ConfigError(f"{where}: LoRA fusion into a GGUF transformer is not supported")
     scheduler = data.get("scheduler", "default")
-    if scheduler not in ("default", "lightning"):
-        raise ConfigError(f"{where}.scheduler: {scheduler!r} is not default or lightning")
+    if scheduler not in SCHEDULERS:
+        raise ConfigError(f"{where}.scheduler: {scheduler!r} is not one of {SCHEDULERS}")
+    raw_sigmas = data.get("sigmas") or ()
+    try:
+        sigmas = tuple(float(x) for x in raw_sigmas)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{where}.sigmas: expected a list of numbers") from None
+    if sigmas and (not all(0 < x <= 1 for x in sigmas) or any(b >= a for a, b in itertools.pairwise(sigmas))):
+        raise ConfigError(f"{where}.sigmas: expected strictly decreasing values in (0, 1]")
+    if bool(sigmas) != (scheduler == "fixed-sigmas"):
+        raise ConfigError(f"{where}: 'sigmas' and scheduler 'fixed-sigmas' go together")
     return ProfileSpec(
         id=pid,
         label=str(data.get("label", pid)),
@@ -376,6 +402,7 @@ def _parse_profile(model_id: str, model_tasks: tuple[str, ...], data: Any, where
         lora=lora,
         scheduler=scheduler,
         defaults=dict(data.get("defaults") or {}),
+        sigmas=sigmas,
     )
 
 

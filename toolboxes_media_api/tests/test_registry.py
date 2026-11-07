@@ -18,6 +18,7 @@ def test_default_registry_is_valid():
     assert {m.id for m in registry.models} == {
         "qwen-image-2512",
         "qwen-image-edit-2511",
+        "qwen-image-2.1",
         "minimax-h3",
         "whisper-large-v3-turbo",
         "qwen3-asr-1.7b",

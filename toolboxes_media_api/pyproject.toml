@@ -92,5 +92,5 @@ follow_imports = "skip"
 [[tool.mypy.overrides]]
 # The adapters talk to libraries without usable stubs; their contract is
 # covered by tests/test_real_adapters.py instead.
-module = ["media_api.providers.qwen_image", "media_api.providers.minimax_h3", "media_api.providers.loaders", "media_api.providers.quant"]
+module = ["media_api.providers.qwen_image", "media_api.providers.qwen_image21", "media_api.providers.minimax_h3", "media_api.providers.loaders", "media_api.providers.quant"]
 disallow_untyped_defs = false

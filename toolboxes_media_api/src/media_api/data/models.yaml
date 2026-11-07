@@ -204,6 +204,110 @@ models:
           text_encoder: *qwen_te_fp8
           vae: *qwen_vae
 
+  - id: qwen-image-2.1
+    label: Qwen-Image-2.1
+    provider: qwen-image-21
+    license: Qwen Research License Agreement (research use, not commercial; read it before use)
+    description: >
+      Text-to-image and image editing in one model: a 7B single-stream DiT with a Qwen3-VL-8B
+      text encoder. Draws RGBA (transparent backgrounds) and edits from up to ten input images.
+      Sampled without CFG by default.
+    tasks: [text-to-image, image-edit]
+    default_profile: bf16
+    base:
+      path: diffusers/Qwen-Image-2.1
+      repo: Qwen/Qwen-Image-2.1
+      revision: d26bb61231c349cf6b7896fa83353113880e1ba3
+      include: [model_index.json, scheduler/*, processor/*, vae/*, transformer/config.json, text_encoder/config.json, text_encoder/generation_config.json]
+    constraints:
+      # The VAE compresses 16x and the transformer takes 2x2 latent groups.
+      size_multiple: 32
+      min_side: 256
+      # Qwen's own aspect-ratio table goes up to 2752 x 1536; MEDIA_MAX_WIDTH /
+      # MEDIA_MAX_HEIGHT (2048 by default) cap it below that.
+      max_side: 2752
+      max_pixels: 4227072
+      guidance: true
+      negative_prompt: true
+      max_input_images: 10
+    defaults:
+      width: 2048
+      height: 2048
+      steps: 40
+      guidance: 1.0
+    profiles:
+      - id: bf16
+        label: BF16 (recommended)
+        estimated_memory_gb: 48
+        description: >
+          Comfy-Org's BF16 transformer (its fused gate/up projections split on load) and BF16
+          Qwen3-VL-8B text encoder, VAE from the official repository. 40 steps without CFG.
+        components:
+          transformer: &q21_transformer
+            format: comfy-single-file
+            storage: bf16
+            file:
+              path: diffusion_models/qwen_image_2.1_bf16.safetensors
+              repo: Comfy-Org/Qwen-Image-2.1
+              filename: diffusion_models/qwen_image_2.1_bf16.safetensors
+              revision: aacf31a6d48e707f352ecba714cee0680da3479b
+          text_encoder: &q21_te
+            format: comfy-qwen3-vl
+            storage: bf16
+            file:
+              path: text_encoders/qwen3vl_8b_bf16.safetensors
+              repo: Comfy-Org/Qwen-Image-2.1
+              filename: text_encoders/qwen3vl_8b_bf16.safetensors
+              revision: aacf31a6d48e707f352ecba714cee0680da3479b
+          vae: &q21_vae
+            format: diffusers
+            subfolder: vae
+            storage: bf16
+      - id: turbo-8step
+        label: Turbo, 8 steps (fast)
+        estimated_memory_gb: 48
+        description: >
+          The bf16 profile with the Turbo LoRA fused in (Comfy-Org's extraction of
+          Qwen-Image-2.1-Turbo), sampled on Turbo's own eight sigmas without CFG.
+        scheduler: fixed-sigmas
+        # Qwen/Qwen-Image-2.1-Turbo model_index.json, sample_sigmas.
+        sigmas: [1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568]
+        defaults: {steps: 8, guidance: 1.0}
+        lora:
+          base_model: qwen-image-2.1
+          scale: 1.0
+          file:
+            path: loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors
+            repo: Comfy-Org/Qwen-Image-2.1
+            filename: loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors
+            revision: aacf31a6d48e707f352ecba714cee0680da3479b
+        components:
+          transformer: *q21_transformer
+          text_encoder: *q21_te
+          vae: *q21_vae
+      - id: lightning-4step
+        label: Lightning 4-step (fastest)
+        estimated_memory_gb: 48
+        description: >
+          The bf16 profile with lightx2v's Qwen-Image-2.1 Lightning v2-RL 4-step LoRA (rank 64)
+          fused in, sampled on its four released sigmas without CFG. Text-to-image and edit.
+        scheduler: fixed-sigmas
+        # lightx2v/Qwen-Image-2.1-Lightning-v2-RL inference_config.json, sample_sigmas.
+        sigmas: [1.0, 0.95418, 0.89508, 0.704534]
+        defaults: {steps: 4, guidance: 1.0}
+        lora:
+          base_model: qwen-image-2.1
+          scale: 1.0
+          file:
+            path: loras/qwen_image_21_lightning_v2_rl_4steps_lora_rank64.safetensors
+            repo: lightx2v/Qwen-Image-2.1-Lightning-v2-RL
+            filename: qwen_image_21_lightning_v2_rl_4steps_lora_rank64.safetensors
+            revision: 682b2529ffb5ae9ba39ceb81a31ce99e602da2ee
+        components:
+          transformer: *q21_transformer
+          text_encoder: *q21_te
+          vae: *q21_vae
+
   - id: minimax-h3
     label: MiniMax-H3
     provider: minimax-h3

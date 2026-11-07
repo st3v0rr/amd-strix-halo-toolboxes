@@ -188,7 +188,7 @@ aber nicht zur Wahl — dafür bleibt `--extra-args` offen.
 ## Media API
 
 Die [Media API](../toolboxes_media_api/README.md) — Qwen-Image-2512,
-Qwen-Image-Edit-2511 und MiniMax-H3, dazu Sprache → Text mit Whisper
+Qwen-Image-Edit-2511, Qwen-Image-2.1 und MiniMax-H3, dazu Sprache → Text mit Whisper
 large-v3-turbo und Qwen3-ASR, hinter einer API mit Schlüssel und einem
 Playground — läuft hier wie llama.cpp: als Container auf dem Podman
 der Box, angelegt auf der Seite **Server** und gestartet, gestoppt und entfernt
@@ -259,7 +259,7 @@ vollständigen Aufrufs als Label.
 ### MediaAPI-Modelle
 
 Eigene Seite wie bei llama.cpp, aber ohne freie Suche: Sie zeigt nur
-die kuratierten Modelle — Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3,
+die kuratierten Modelle — Qwen-Image-2512, Qwen-Image-Edit-2511, Qwen-Image-2.1, MiniMax-H3,
 Whisper large-v3-turbo und Qwen3-ASR 1.7B —
 mit ihren Profilen; was ein Image darüber hinaus meldet, fällt weg. Welche
 Profile es gibt, weiß das Image selbst: Die Übersicht ruft

@@ -175,7 +175,16 @@ def normalize(
         params["guidance"] = float(
             req.guidance if req.guidance is not None else defaults.get("guidance", 1.0)
         )
-    steps = req.steps if req.steps is not None else int(defaults.get("steps", 20))
+    if profile.sigmas:
+        fixed = len(profile.sigmas)
+        if req.steps is not None and req.steps != fixed:
+            raise CapabilityError(
+                f"Profile '{profile.id}' of '{model.id}' samples a fixed schedule of {fixed} steps.",
+                details={"model": model.id, "profile": profile.id, "steps": fixed},
+            )
+        steps = fixed
+    else:
+        steps = req.steps if req.steps is not None else int(defaults.get("steps", 20))
     if steps > limits.max_steps:
         raise ApiError(f"steps must not exceed {limits.max_steps}.", details={"field": "steps"})
     params["steps"] = steps

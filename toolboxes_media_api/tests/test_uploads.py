@@ -161,9 +161,29 @@ def test_unknown_upload_reference_is_rejected_before_queueing(client):
     assert client.get("/api/v1/jobs", headers=AUTH).json()["data"] == []
 
 
-def test_transparent_upload_is_flattened(client):
+def test_transparent_upload_keeps_alpha_and_rgb_models_see_white(client, tmp_path):
+    from media_api.providers.media import open_rgb, open_rgba
+
     buffer = io.BytesIO()
-    Image.new("RGBA", (32, 32), (0, 0, 0, 0)).save(buffer, format="PNG")
+    image = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    image.putpixel((1, 1), (200, 10, 10, 255))
+    image.save(buffer, format="PNG")
     info = upload(client, buffer.getvalue())
-    image = Image.open(io.BytesIO(client.get(info["url"], headers=AUTH).content))
-    assert image.mode == "RGB" and image.getpixel((0, 0)) == (255, 255, 255)
+    stored = Image.open(io.BytesIO(client.get(info["url"], headers=AUTH).content))
+    # Kept for Qwen-Image-2.1, which edits RGBA layers ...
+    assert stored.mode == "RGBA" and stored.getpixel((0, 0))[3] == 0
+    path = tmp_path / "stored.png"
+    stored.save(path)
+    assert open_rgba(path).getpixel((1, 1)) == (200, 10, 10, 255)
+    # ... while models that take RGB get it composited over white, as before.
+    flat = open_rgb(path)
+    assert flat.mode == "RGB" and flat.getpixel((0, 0)) == (255, 255, 255)
+    assert flat.getpixel((1, 1)) == (200, 10, 10)
+
+
+def test_opaque_upload_stays_rgb(client):
+    buffer = io.BytesIO()
+    Image.new("RGBA", (32, 32), (10, 20, 30, 255)).save(buffer, format="PNG")
+    info = upload(client, buffer.getvalue())
+    stored = Image.open(io.BytesIO(client.get(info["url"], headers=AUTH).content))
+    assert stored.mode == "RGB" and stored.getpixel((0, 0)) == (10, 20, 30)

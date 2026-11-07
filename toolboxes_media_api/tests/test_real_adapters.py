@@ -30,9 +30,11 @@ import av
 from accelerate import init_empty_weights
 from diffusers import (
     AutoencoderKLQwenImage,
+    AutoencoderKLQwenImage21,
     FlowMatchEulerDiscreteScheduler,
     MiniMaxH3ModularPipeline,
     MiniMaxH3Transformer3DModel,
+    QwenImage21Transformer2DModel,
     QwenImagePipeline,
     QwenImageTransformer2DModel,
 )
@@ -48,11 +50,14 @@ from media_api.config import load_settings
 from media_api.providers.base import GenerationRequest
 from media_api.providers.loaders import (
     COMFY_PREFIX,
+    SplitGateUpSource,
     TensorSource,
+    comfy_lora_deltas,
     legacy_qwen25vl_name,
     load_streaming,
     lora_deltas,
     meta_model,
+    qwen3vl_name,
 )
 from media_api.providers.quant import FP8, WeightOnlyLinear, quantize
 
@@ -157,6 +162,58 @@ def test_real_lora_layouts_land_on_existing_linears(real, lora, loader, factory_
     deltas = lora_deltas(loader.lora_state_dict(state), "transformer.", 1.0)
     linears = linears_of(lambda: factory.from_config(real["configs"][factory_cfg]))
     assert deltas and set(deltas) <= linears
+
+
+class HeaderSource:
+    """A TensorSource stand-in over a header: keys and dtypes, no tensors."""
+
+    def __init__(self, layout):
+        self._layout = layout
+        self.metadata = {}
+
+    def keys(self):
+        return list(self._layout)
+
+    def dtype(self, key):
+        return self._layout[key][0]
+
+    def close(self):
+        pass
+
+
+def test_qwen_image21_comfy_files_map_onto_diffusers_and_transformers(real):
+    ck, cfg = real["checkpoints"], real["configs"]
+    model = lambda: QwenImage21Transformer2DModel.from_config(cfg["qwen-image-2.1/transformer"])
+    expected = keys_of(model)
+    split = SplitGateUpSource(HeaderSource(ck["comfy/qwen_image_2.1_bf16"]))
+    assert set(split.keys()) == set(expected)
+    assert any(".img_mlp.gate_up." in k for k in ck["comfy/qwen_image_2.1_bf16"])  # really fused
+
+    te_config = cfg["qwen-image-2.1/text_encoder"]
+    te_model = lambda: Qwen3VLForConditionalGeneration(Qwen3VLConfig.from_dict(te_config))
+    assert {qwen3vl_name(k) for k in ck["comfy/qwen3vl_8b_bf16"]} == set(keys_of(te_model))
+
+
+def test_qwen_image21_lightning_lora_lands_on_linears(real):
+    layout = real["checkpoints"]["lora/qwen_image_21_lightning_v2_rl_4steps_lora_rank64"]
+    state = {k: torch.zeros(shape, dtype=torch.float32) for k, (_, shape) in layout.items()}
+    deltas = comfy_lora_deltas(state, 1.0)
+    factory = lambda: QwenImage21Transformer2DModel.from_config(real["configs"]["qwen-image-2.1/transformer"])
+    assert len(deltas) == 232 and set(deltas) <= linears_of(factory)
+    assert all(down is not None for down, _, _ in deltas.values())
+
+
+def test_qwen_image21_turbo_lora_lands_on_the_split_transformer(real):
+    layout = real["checkpoints"]["lora/qwen_image_2.1_turbo_lora_avg_rank_178_bf16"]
+    state = {k: torch.zeros(shape, dtype=torch.bfloat16) for k, (_, shape) in layout.items()}
+    deltas = comfy_lora_deltas(state, 1.0)
+    factory = lambda: QwenImage21Transformer2DModel.from_config(real["configs"]["qwen-image-2.1/transformer"])
+    weights = {k.removesuffix(".weight") for k in keys_of(factory) if k.endswith(".weight")}
+    linears = linears_of(factory)
+    assert set(deltas) == weights  # the extracted LoRA touches every weight, norms as full diffs
+    low_rank = {m for m, (down, _, _) in deltas.items() if down is not None}
+    assert low_rank <= linears and any(m.endswith(".img_mlp.gate_layer") for m in low_rank)
+    assert {m for m, (down, _, _) in deltas.items() if down is None} >= {"transformer_blocks.0.attn.norm_q"}
 
 
 # -- quantized linear and streaming loader ------------------------------------
@@ -385,6 +442,84 @@ def test_lora_fusion_matches_peft(tmp_path):
         assert torch.allclose(fused.get_submodule(target)(x), reference.get_submodule(target)(x), atol=1e-5)
 
 
+def tiny_qwen21_transformer():
+    torch.manual_seed(0)
+    return QwenImage21Transformer2DModel(
+        attention_head_dim=8,
+        axes_dims_rope=[2, 2, 4],
+        context_in_dim=16,
+        in_channels=8,
+        out_channels=8,
+        num_attention_heads=2,
+        num_layers=2,
+        mlp_ratio=3,
+        patch_size=1,
+        causal_condition=True,
+    ).eval()
+
+
+def comfy_fused(state):
+    """diffusers names → Comfy's Qwen-Image-2.1 layout (gate rows first, then up)."""
+    out = {}
+    for key, value in state.items():
+        if ".img_mlp.gate_layer." in key:
+            up = state[key.replace(".gate_layer.", ".proj.")]
+            out[key.replace(".gate_layer.", ".gate_up.")] = torch.cat([value, up]).contiguous()
+        elif ".img_mlp.proj." not in key:
+            out[key] = value.contiguous()
+    return out
+
+
+def test_qwen_image21_split_and_comfy_lora_fusion_are_exact(tmp_path):
+    model = tiny_qwen21_transformer()
+    state = model.state_dict()
+    path = tmp_path / "comfy.safetensors"
+    save_file(comfy_fused(state), path)
+    torch.manual_seed(3)
+    rank, alpha = 4, 2.0
+    lora = {
+        "diffusion_model.transformer_blocks.0.img_mlp.gate_up.lora_down.weight": torch.randn(rank, 16) * 0.1,
+        "diffusion_model.transformer_blocks.0.img_mlp.gate_up.lora_up.weight": torch.randn(96, rank) * 0.1,
+        "diffusion_model.transformer_blocks.0.img_mlp.gate_up.alpha": torch.tensor(alpha),
+        "diffusion_model.transformer_blocks.1.attn.to_q.lora_down.weight": torch.randn(rank, 16) * 0.1,
+        "diffusion_model.transformer_blocks.1.attn.to_q.lora_up.weight": torch.randn(16, rank) * 0.1,
+        "diffusion_model.transformer_blocks.0.attn.norm_q.diff": torch.randn(8) * 0.1,
+    }
+    loaded = load_streaming(
+        meta_model(lambda: QwenImage21Transformer2DModel.from_config(model.config)),
+        SplitGateUpSource(TensorSource([path])),
+        device="cpu",
+        compute_dtype=torch.float32,
+        storage="fp32",
+        deltas=comfy_lora_deltas(lora, 1.0),
+    ).state_dict()
+    down = lora["diffusion_model.transformer_blocks.0.img_mlp.gate_up.lora_down.weight"]
+    up = lora["diffusion_model.transformer_blocks.0.img_mlp.gate_up.lora_up.weight"]
+    mlp = "transformer_blocks.0.img_mlp"
+    fused = torch.cat([state[f"{mlp}.gate_layer.weight"], state[f"{mlp}.proj.weight"]])
+    fused = fused + up @ down * (alpha / rank)
+    assert torch.allclose(loaded["transformer_blocks.0.img_mlp.gate_layer.weight"], fused[:48], atol=1e-6)
+    assert torch.allclose(loaded["transformer_blocks.0.img_mlp.proj.weight"], fused[48:], atol=1e-6)
+    q = "transformer_blocks.1.attn.to_q"
+    q_up, q_down = lora[f"diffusion_model.{q}.lora_up.weight"], lora[f"diffusion_model.{q}.lora_down.weight"]
+    expected_q = state[f"{q}.weight"] + q_up @ q_down
+    assert torch.allclose(loaded[f"{q}.weight"], expected_q, atol=1e-6)  # no alpha: factor 1
+    norm = "transformer_blocks.0.attn.norm_q.weight"
+    diff = lora["diffusion_model.transformer_blocks.0.attn.norm_q.diff"]
+    assert torch.allclose(loaded[norm], state[norm] + diff)
+    untouched = "transformer_blocks.1.img_mlp.proj.weight"
+    assert torch.equal(loaded[untouched], state[untouched])
+
+
+def test_comfy_lora_rejects_unknown_tensors():
+    from media_api.providers.loaders import LoadError
+
+    with pytest.raises(LoadError, match="unsupported LoRA tensor"):
+        comfy_lora_deltas({"diffusion_model.x.dora_scale": torch.zeros(1)}, 1.0)
+    with pytest.raises(LoadError, match="not a down/up pair"):
+        comfy_lora_deltas({"diffusion_model.x.lora_down.weight": torch.zeros(1, 1)}, 1.0)
+
+
 # -- end to end through the providers ------------------------------------------
 
 
@@ -487,6 +622,131 @@ def test_qwen_text_to_image_provider_end_to_end(tmp_path):
     assert artifact.content_type == "image/png" and (artifact.width, artifact.height) == (32, 32)
     assert provider.generate(request, ctx).path.read_bytes() == first  # seeded, deterministic
     assert "generating" in ctx.stages
+
+
+@needs_tiny
+def test_qwen_image21_provider_end_to_end_text_and_edit_with_turbo(tmp_path):
+    from PIL import Image
+
+    from media_api.providers.qwen_image21 import QwenImage21Provider
+
+    base = tmp_path / "diffusers" / "Qwen-Image-2.1"
+    transformer = tiny_qwen21_transformer()
+    # One vision token per 32x32 pixels, like the real processor (patch 16, merge 2):
+    # the transformer drops 2x2 latent tokens (16 px each) into every image slot.
+    te_config = Qwen3VLConfig.from_pretrained(Path(TINY_H3) / "text_encoder")
+    te_config.vision_config.patch_size = 16
+    te = Qwen3VLForConditionalGeneration(te_config).eval()
+    (base / "transformer").mkdir(parents=True)
+    transformer.save_config(base / "transformer")
+    te.config.save_pretrained(base / "text_encoder")
+    torch.manual_seed(0)
+    AutoencoderKLQwenImage21(
+        base_dim=8,
+        decoder_base_dim=8,
+        z_dim=8,
+        dim_mult=[1, 1, 1, 1, 1],
+        num_res_blocks=1,
+        temperal_downsample=[False, True, True, True],
+        in_channels=4,
+        out_channels=4,
+        latents_mean=[0.0] * 8,
+        latents_std=[1.0] * 8,
+        attn_scales=[],
+        is_residual=True,
+    ).save_pretrained(base / "vae")
+    FlowMatchEulerDiscreteScheduler(use_dynamic_shifting=True, time_shift_type="exponential").save_pretrained(
+        base / "scheduler"
+    )
+    shutil.copytree(Path(TINY_H3) / "processor", base / "processor")
+    processor_config = json.loads((base / "processor" / "processor_config.json").read_text())
+    processor_config["image_processor"].update(
+        patch_size=16, size={"shortest_edge": 1024, "longest_edge": 16777216}
+    )
+    (base / "processor" / "processor_config.json").write_text(json.dumps(processor_config))
+    (base / "model_index.json").write_text('{"_class_name": "QwenImage21Pipeline"}')
+    (base / "text_encoder" / "generation_config.json").write_text("{}")
+    for folder in ("diffusion_models", "text_encoders", "loras"):
+        (tmp_path / folder).mkdir()
+    save_file(
+        comfy_fused({k: v.to(torch.bfloat16) for k, v in transformer.state_dict().items()}),
+        tmp_path / "diffusion_models" / "qwen_image_2.1_bf16.safetensors",
+    )
+    comfy_te = {
+        ("model." + k.split("model.language_model.", 1)[1]) if k.startswith("model.language_model.") else k: v
+        for k, v in te.state_dict().items()
+    }
+    save_file(
+        {k: v.to(torch.bfloat16).contiguous() for k, v in comfy_te.items()},
+        tmp_path / "text_encoders" / "qwen3vl_8b_bf16.safetensors",
+    )
+    torch.manual_seed(5)
+    block = "diffusion_model.transformer_blocks.0"
+    save_file(
+        {
+            f"{block}.img_mlp.gate_up.lora_down.weight": torch.randn(2, 16) * 0.01,
+            f"{block}.img_mlp.gate_up.lora_up.weight": torch.randn(96, 2) * 0.01,
+            f"{block}.attn.norm_q.diff": torch.randn(8) * 0.01,
+        },
+        tmp_path / "loras" / "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+    )
+
+    settings = settings_for(tmp_path)
+    model = settings.registry.get("qwen-image-2.1")
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    assert model.missing_files(model.profile("turbo-8step"), "image-edit", tmp_path) == []
+
+    provider = QwenImage21Provider(settings, model, model.profile("bf16"))
+    ctx = Ctx()
+    provider.load(ctx)
+    request = GenerationRequest(
+        task="text-to-image",
+        prompt="a sticker of a fox, transparent background",
+        negative_prompt=None,
+        width=64,
+        height=64,
+        steps=2,
+        guidance=1.0,
+        seed=7,
+        output_format="png",
+        output_dir=out,
+    )
+    artifact = provider.generate(request, ctx)
+    first = artifact.path.read_bytes()
+    assert (artifact.width, artifact.height) == (64, 64)
+    assert provider.generate(request, ctx).path.read_bytes() == first  # seeded, deterministic
+
+    turbo = QwenImage21Provider(settings, model, model.profile("turbo-8step"))
+    turbo.load(ctx)
+    assert list(turbo.pipe.config.sample_sigmas) == list(model.profile("turbo-8step").sigmas)
+    assert turbo.pipe.scheduler.config.use_dynamic_shifting is False
+    layer = Image.new("RGBA", (64, 48), (255, 0, 0, 0))
+    layer.paste((0, 0, 255, 255), (8, 8, 40, 40))
+    source = tmp_path / "layer.png"
+    layer.save(source)
+    ctx.stages.clear()
+    edit = turbo.generate(
+        GenerationRequest(
+            task="image-edit",
+            prompt="make the square green",
+            negative_prompt=None,
+            width=64,
+            height=64,
+            steps=8,
+            guidance=1.0,
+            seed=1,
+            output_format="webp",
+            output_dir=out,
+            images=(source,),
+        ),
+        ctx,
+    )
+    assert edit.content_type == "image/webp" and ctx.stages.count("generating") == 8
+    assert not torch.equal(  # the Turbo LoRA really changed the weights
+        turbo.pipe.transformer.transformer_blocks[0].img_mlp.gate_layer.weight.float(),
+        provider.pipe.transformer.transformer_blocks[0].img_mlp.gate_layer.weight.float(),
+    )
 
 
 @needs_tiny

@@ -252,11 +252,13 @@ class UploadStore:
             raise PayloadTooLarge(f"Image exceeds {self.max_pixels} pixels.") from None
         except Exception:
             raise UnsupportedMediaType("The file is not a readable PNG, JPEG or WebP image.") from None
-        if probe.mode in ("RGBA", "LA") or (probe.mode == "P" and "transparency" in probe.info):
+        # Transparency is kept (Qwen-Image-2.1 edits RGBA layers); models that
+        # take RGB composite it over white when they open the file (media.open_rgb).
+        if probe.mode in ("RGBA", "LA", "PA") or (probe.mode == "P" and "transparency" in probe.info):
             rgba = probe.convert("RGBA")
-            background = Image.new("RGB", rgba.size, (255, 255, 255))
-            background.paste(rgba, mask=rgba.getchannel("A"))
-            return background
+            low, _ = rgba.getchannel("A").getextrema()
+            if isinstance(low, int) and low < 255:
+                return rgba
         return probe.convert("RGB")
 
     def get(self, upload_id: str) -> UploadInfo:

@@ -19,7 +19,14 @@ The key mappings were checked name for name against the real files' headers
   matmul hardware and are dropped.
 - Comfy's Qwen2.5-VL files use the pre-v5 transformers names (`model.layers.*`,
   `visual.*`), which transformers 5 nests under `model.language_model` and
-  `model.visual`.
+  `model.visual`. Its Qwen3-VL file (Qwen-Image-2.1) already says `model.visual.*`
+  and only flattens the language model.
+- Comfy's Qwen-Image-2.1 transformer fuses each block's SwiGLU gate and up
+  projections into one `img_mlp.gate_up` matrix, gate rows first (diffusers'
+  own single-file converter splits it the same way); SplitGateUpSource
+  presents the two halves under diffusers' names. LoRAs made for that layout
+  (kohya `lora_down`/`lora_up`/`alpha`, plus full `.diff` tensors for norms)
+  are split alike by comfy_lora_deltas.
 """
 
 from __future__ import annotations
@@ -94,6 +101,118 @@ class TensorSource:
         self._handles.clear()
 
 
+def qwen3vl_name(key: str) -> str:
+    """Comfy's Qwen3-VL names (or transformers' own) → transformers 5 names."""
+    if key.startswith(("model.language_model.", "model.visual.")):
+        return key
+    if key.startswith("visual."):
+        return "model.visual." + key[len("visual.") :]
+    if key.startswith("model."):
+        return "model.language_model." + key[len("model.") :]
+    return key
+
+
+GATE_UP = ".img_mlp.gate_up"
+GATE, UP = ".img_mlp.gate_layer", ".img_mlp.proj"
+
+
+class SplitGateUpSource:
+    """A TensorSource view with every fused `img_mlp.gate_up.weight` shown as
+    diffusers' `img_mlp.gate_layer.weight` (first half of the rows) and
+    `img_mlp.proj.weight` (second half). Other keys pass through."""
+
+    def __init__(self, inner: TensorSource) -> None:
+        self._inner = inner
+        self.metadata = inner.metadata
+        self._map: dict[str, tuple[str, int | None]] = {}
+        for key in inner.keys():  # noqa: SIM118 - TensorSource is not a mapping
+            plain = key.removeprefix(COMFY_PREFIX)
+            if plain.endswith(GATE_UP + ".weight"):
+                self._map[key.replace(GATE_UP, GATE)] = (key, 0)
+                self._map[key.replace(GATE_UP, UP)] = (key, 1)
+            elif GATE_UP + "." in plain:
+                raise LoadError(f"unexpected tensor {key} next to a fused gate_up weight")
+            else:
+                self._map[key] = (key, None)
+
+    def keys(self) -> list[str]:
+        return list(self._map)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._map
+
+    def dtype(self, key: str) -> str:
+        return self._inner.dtype(self._map[key][0])
+
+    def get(self, key: str) -> torch.Tensor:
+        real, half = self._map[key]
+        tensor = self._inner.get(real)
+        if half is None:
+            return tensor
+        return tensor.chunk(2, dim=0)[half].clone()
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+_LORA_SUFFIXES = {
+    ".lora_down.weight": "down",
+    ".lora_A.weight": "down",
+    ".lora_up.weight": "up",
+    ".lora_B.weight": "up",
+    ".alpha": "alpha",
+    ".diff": "diff",
+}
+
+
+def comfy_lora_deltas(
+    state_dict: dict[str, torch.Tensor],
+    scale: float,
+    prefixes: tuple[str, ...] = ("diffusion_model.", "transformer."),
+) -> dict[str, tuple[torch.Tensor | None, torch.Tensor, float]]:
+    """Module name → delta from a Comfy/kohya LoRA on a Qwen-Image-2.1 transformer.
+
+    Low-rank pairs become (A, B, alpha/rank · scale); `.diff` tensors (the
+    norms of an extracted LoRA) become (None, diff, scale). A fused gate_up
+    module is split into gate_layer and proj like the weights themselves.
+    """
+    parts: dict[str, dict[str, torch.Tensor]] = {}
+    for key, tensor in state_dict.items():
+        name = key
+        for prefix in prefixes:
+            if name.startswith(prefix):
+                name = name[len(prefix) :]
+                break
+        for suffix, kind in _LORA_SUFFIXES.items():
+            if name.endswith(suffix):
+                parts.setdefault(name[: -len(suffix)], {})[kind] = tensor
+                break
+        else:
+            raise LoadError(f"unsupported LoRA tensor {key}")
+    deltas: dict[str, tuple[torch.Tensor | None, torch.Tensor, float]] = {}
+    for module, found in parts.items():
+        if "diff" in found:
+            entries = [(None, found["diff"], scale)]
+        elif "down" in found and "up" in found:
+            down, up = found["down"], found["up"]
+            alpha = found.get("alpha")
+            factor = scale * (float(alpha) / down.shape[0] if alpha is not None else 1.0)
+            entries = [(down, up, factor)]
+        else:
+            raise LoadError(f"LoRA module {module} has {sorted(found)}, not a down/up pair")
+        if module.endswith(GATE_UP):
+            stem = module[: -len(GATE_UP)]
+            down, delta, factor = entries[0]
+            gate, up = delta.chunk(2, dim=0)
+            deltas[stem + GATE] = (down, gate, factor)
+            deltas[stem + UP] = (down, up, factor)
+        else:
+            deltas[module] = entries[0]
+    if not deltas:
+        raise LoadError("the LoRA has no weights")
+    return deltas
+
+
 def legacy_qwen25vl_name(key: str) -> str:
     if key.startswith("model."):
         return "model.language_model." + key[len("model.") :]
@@ -137,7 +256,7 @@ def lora_deltas(
 
 def load_streaming(
     model: nn.Module,
-    source: TensorSource,
+    source: TensorSource | SplitGateUpSource,
     *,
     device: torch.device | str,
     compute_dtype: torch.dtype,
@@ -248,6 +367,8 @@ def load_streaming(
 
 def _fuse(weight: torch.Tensor, delta, device) -> torch.Tensor:
     down, up, factor = delta
+    if down is None:  # a full difference (comfy `.diff`), e.g. for a norm weight
+        return weight + up.to(device=device, dtype=torch.float32).reshape(weight.shape) * factor
     return (
         weight
         + (up.to(device=device, dtype=torch.float32) @ down.to(device=device, dtype=torch.float32)) * factor

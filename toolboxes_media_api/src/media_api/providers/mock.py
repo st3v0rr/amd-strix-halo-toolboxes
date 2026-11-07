@@ -22,7 +22,7 @@ from ..errors import ProviderError
 from ..jobs import JobContext
 from ..speech import Segment, WindowResult, Word
 from .base import Artifact, GenerationRequest, Provider
-from .media import encode_video, save_image
+from .media import encode_video, open_rgb, save_image
 from .transcribe import SpeechProvider
 
 AUDIO_RATE = 32000
@@ -48,8 +48,7 @@ def _canvas(request: GenerationRequest, rng: np.random.Generator) -> np.ndarray:
 
 
 def _fit(path, size: tuple[int, int]) -> Image.Image:  # type: ignore[no-untyped-def]
-    with Image.open(path) as image:
-        return image.convert("RGB").resize(size, Image.Resampling.BILINEAR)
+    return open_rgb(path).resize(size, Image.Resampling.BILINEAR)
 
 
 class MockProvider(Provider):
