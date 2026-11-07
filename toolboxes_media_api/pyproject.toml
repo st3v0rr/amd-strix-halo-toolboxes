@@ -26,7 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 inference = [
   "diffusers==0.42.1",
-  "transformers==5.17.0",
+  "transformers==5.20.2",
+  "librosa>=1.0",
   "accelerate>=1.10",
   "peft>=0.17",
   "safetensors>=0.6",

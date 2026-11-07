@@ -39,6 +39,7 @@ def test_check_json_needs_no_key_and_reports_every_profile(cli_env: Path, capsys
         "minimax-h3",
         "whisper-large-v3-turbo",
         "qwen3-asr-1.7b",
+        "nemotron-3-diarization",
     }
     fp8 = next(p for p in models["qwen-image-2512"]["profiles"] if p["id"] == "fp8")
     assert fp8["default"] is True and fp8["available"] is False and fp8["downloadable"] is True

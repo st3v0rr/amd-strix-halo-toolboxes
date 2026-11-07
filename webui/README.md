@@ -260,7 +260,7 @@ vollständigen Aufrufs als Label.
 
 Eigene Seite wie bei llama.cpp, aber ohne freie Suche: Sie zeigt nur
 die kuratierten Modelle — Qwen-Image-2512, Qwen-Image-Edit-2511, Qwen-Image-2.1, MiniMax-H3,
-Whisper large-v3-turbo und Qwen3-ASR 1.7B —
+Whisper large-v3-turbo, Qwen3-ASR 1.7B und Nemotron-3-Diarization (Sprecher) —
 mit ihren Profilen; was ein Image darüber hinaus meldet, fällt weg. Welche
 Profile es gibt, weiß das Image selbst: Die Übersicht ruft
 `media-api-models check --json` auf — im laufenden Container per `podman exec`,

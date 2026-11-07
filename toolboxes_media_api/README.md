@@ -172,16 +172,34 @@ from the start.
 
 Fields: `audio_id`, `model`, `profile`, `language` (ISO code; omitted → detected per window),
 `prompt` (names and terms to bias spelling), `timestamps` (`segment`, or `word` where the model
-has it) and `output_format` — `json` (default: `text`, `language`, `duration_seconds`,
-`segments` with `start`/`end`/`text`, and `words` for word timestamps), `txt`, `srt` or `vtt`.
+has it), `diarize` (default `false`) and `output_format` — `json` (default: `text`, `language`,
+`duration_seconds`, `segments` with `start`/`end`/`text`, and `words` for word timestamps),
+`txt`, `srt` or `vtt`.
+
+**Speakers.** With `"diarize": true` the job also runs the registry's speaker-diarization
+model — `nemotron-3-diarization` (NVIDIA Nemotron-3-Diarization, OpenMDW-1.1, 0.4 GB, up to
+eight speakers) — once over the whole track, in its offline mode, which cuts the audio into
+30-second chunks itself and carries a speaker cache between them, so a speaker keeps their
+label across hours. Its per-10-ms activity becomes speaker turns (pauses under 0.3 s closed,
+blips under 0.2 s dropped); a segment takes the speaker who talks most during it, and with word
+timestamps every word takes its own and the segment the speaker of most of its words' time.
+Labels are `S1`, `S2`, … in order of appearance in the transcript; text with no diarized
+speech nearby gets `null`. JSON adds `speakers` and a `speaker` per segment and word, `txt` and
+`srt` prefix `[S1]`, `vtt` uses `<v S1>`. Without `diarize` nothing changes. The diarizer is a
+model of its own in the registry (task `speaker-diarization`, no endpoint), fetched and deleted
+like the others; a diarized request without its files fails before queueing. It stays loaded
+with the speech model. More than eight speakers are merged into existing labels, and several
+people sharing one microphone may come out as one speaker.
 
 | Model / profile | Weights | Timestamps | ≈ GB |
 | :--- | :--- | :--- | ---: |
 | whisper-large-v3-turbo **bf16** (default) | openai/whisper-large-v3-turbo, 100 languages | segment; OpenAI's temperature fallback against repetition loops | 4 |
 | qwen3-asr-1.7b **bf16** | Qwen/Qwen3-ASR-1.7B-hf + Qwen3-ForcedAligner-0.6B-hf, 30 languages | word and sentence for de, en, es, fr, it, ja, ko, pt, ru, zh, yue; one segment per window otherwise | 12 |
+| nemotron-3-diarization **fp32** (for `diarize`) | nvidia/Nemotron-3-Diarization `model.safetensors` | speaker per segment/word, ≤ 8 speakers | 2 |
 
 Both load through transformers alone (`Qwen3ASRForConditionalGeneration` and
-`Qwen3ASRForTokenClassification` are native in the image's transformers 5.17), from
+`Qwen3ASRForTokenClassification` are native in the image's transformers 5.20, as is
+`Nemotron3DiarizationForAudioFrameClassification`, whose feature extractor needs librosa), from
 `MEDIA_MODELS_DIR/speech/<repo name>/`. Text-to-speech is not offered: Qwen3-TTS needs its own
 package, which pins transformers 4.57 and a torchaudio that has no build for this torch.
 

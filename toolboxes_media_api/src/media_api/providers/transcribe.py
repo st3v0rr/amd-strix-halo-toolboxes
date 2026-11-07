@@ -22,6 +22,7 @@ from ..speech import (
     Segment,
     WindowResult,
     Word,
+    assign_speakers,
     majority_language,
     merge,
     sentences_from_words,
@@ -39,6 +40,18 @@ DTYPES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 
 
 class SpeechProvider(Provider):
+    _diarizer: Any = None
+
+    def diarizer(self) -> Any:
+        """Loaded on the first diarized job and kept with the ASR model (0.4 GB)."""
+        if self._diarizer is None:
+            from . import create_diarizer
+
+            diarizer = create_diarizer(self.settings)
+            diarizer.load()
+            self._diarizer = diarizer
+        return self._diarizer
+
     def run_batch(
         self, batch: list[np.ndarray], language: str | None, prompt: str | None, words: bool
     ) -> list[WindowResult]:
@@ -62,8 +75,15 @@ class SpeechProvider(Provider):
         windows, results = transcribe_windows(
             samples, window_seconds, batch_size, run, lambda done: ctx.report("transcribing", done)
         )
-        ctx.report("encoding", 1.0)
         segments = merge(windows, results)
+        speakers = None
+        if request.diarize:
+            ctx.check_cancelled()
+            ctx.report("diarizing", 0.0)
+            turns = self.diarizer().turns(samples)
+            speakers = assign_speakers(segments, turns)
+            ctx.report("diarizing", 1.0)
+        ctx.report("encoding", 1.0)
         language = request.language or majority_language(results)
         document = transcript_document(
             segments,
@@ -72,13 +92,18 @@ class SpeechProvider(Provider):
             language=language,
             duration=duration,
             words=words,
+            speakers=speakers,
         )
         path, content_type = write_transcript(document, request.output_dir, request.output_format)
         return Artifact(
             path,
             content_type,
             duration_seconds=duration,
-            summary={"language": language, "segments": len(segments)},
+            summary={
+                "language": language,
+                "segments": len(segments),
+                **({"speakers": len(speakers)} if speakers is not None else {}),
+            },
         )
 
 
@@ -112,7 +137,7 @@ class WhisperProvider(SpeechProvider):
         ctx.report("loading_model", 1.0)
 
     def unload(self) -> None:
-        for name in ("whisper", "processor"):
+        for name in ("whisper", "processor", "_diarizer"):
             self.__dict__.pop(name, None)
 
     def run_batch(
@@ -202,7 +227,7 @@ class Qwen3AsrProvider(SpeechProvider):
         ctx.report("loading_model", 1.0)
 
     def unload(self) -> None:
-        for name in ("asr", "processor", "aligner", "aligner_processor"):
+        for name in ("asr", "processor", "aligner", "aligner_processor", "_diarizer"):
             self.__dict__.pop(name, None)
 
     def run_batch(

@@ -183,6 +183,7 @@ def create_app(
             audio_input=audio.path(p["audio_id"]) if p.get("audio_id") else None,
             language=p.get("language"),
             timestamps=p.get("timestamps", "segment"),
+            diarize=bool(p.get("diarize", False)),
         )
 
     def ensure_files(model: ModelSpec, profile: ProfileSpec, task: str, ctx: JobContext) -> None:
@@ -413,10 +414,17 @@ def create_app(
                 raise ApiError(
                     f"Upload '{upload_id[:64]}' does not exist.", code="unknown_upload", status=422
                 ) from None
+        # A diarized transcription also needs the registry's diarizer (a
+        # CapabilityError when there is none) and, like the model, its files.
+        needed = [(model, profile, task)]
+        if params.get("diarize"):
+            diarizer = registry.default_for("speaker-diarization")
+            needed.append((diarizer, diarizer.profile(None), "speaker-diarization"))
         if settings.backend == "real" and not settings.allow_downloads:
-            missing = model.missing_files(profile, task, settings.models_dir)
-            if missing:
-                raise missing_files_error(model, profile, missing)
+            for spec, spec_profile, spec_task in needed:
+                missing = spec.missing_files(spec_profile, spec_task, settings.models_dir)
+                if missing:
+                    raise missing_files_error(spec, spec_profile, missing)
         job = Job(new_job_id(), task, model.id, profile.id, params, list(upload_ids))
         queue.submit(job)
         return JSONResponse(

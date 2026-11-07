@@ -478,3 +478,31 @@ models:
               repo: Qwen/Qwen3-ForcedAligner-0.6B-hf
               revision: c07281df297b9905d24a508279258cccf987a064
               include: [config.json, model.safetensors, processor_config.json, tokenizer.json, tokenizer_config.json, chat_template.jinja]
+
+  # Speaker diarization, for transcriptions with `diarize: true` (no endpoint of
+  # its own). Runs once over the whole track beside the ASR model.
+  - id: nemotron-3-diarization
+    label: Nemotron-3-Diarization
+    provider: nemotron-diarization
+    license: OpenMDW-1.1 (commercial use allowed)
+    description: >
+      NVIDIA's speaker diarization (Sortformer, ~100M parameters): who speaks when, up to eight
+      speakers numbered in order of appearance, kept across hours by its speaker cache.
+    tasks: [speaker-diarization]
+    default_profile: fp32
+    base:
+      path: speech/Nemotron-3-Diarization
+      repo: nvidia/Nemotron-3-Diarization
+      revision: f667ed73aee57d40cc39428eb768b4fd87a0a29e
+      include: [config.json, processor_config.json, model.safetensors]
+    constraints:
+      max_speakers: 8
+    profiles:
+      - id: fp32
+        label: FP32 (as released)
+        estimated_memory_gb: 2
+        description: The released FP32 weights (0.4 GB), offline mode over the whole recording.
+        components:
+          model:
+            format: transformers
+            storage: fp32

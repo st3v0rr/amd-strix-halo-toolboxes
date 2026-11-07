@@ -37,6 +37,8 @@ class GenerationRequest:
     audio_input: Path | None = None
     language: str | None = None
     timestamps: str = "segment"
+    # speech-to-text: label segments with speakers (the registry's diarizer).
+    diarize: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 

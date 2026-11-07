@@ -22,6 +22,7 @@ def test_default_registry_is_valid():
         "minimax-h3",
         "whisper-large-v3-turbo",
         "qwen3-asr-1.7b",
+        "nemotron-3-diarization",
     }
     for model in registry.models:
         assert model.profile(None).usable

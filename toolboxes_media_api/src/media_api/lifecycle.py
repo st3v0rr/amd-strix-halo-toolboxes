@@ -156,6 +156,9 @@ class ModelManager:
             key = (model.id, profile.id)
             if self._ensure_files is not None:
                 self._ensure_files(model, profile, job.task, ctx)
+                if job.params.get("diarize"):
+                    diarizer = self.settings.registry.default_for("speaker-diarization")
+                    self._ensure_files(diarizer, diarizer.profile(None), "speaker-diarization", ctx)
             if self._key != key:
                 self._unload_locked()
                 self.admit(profile)

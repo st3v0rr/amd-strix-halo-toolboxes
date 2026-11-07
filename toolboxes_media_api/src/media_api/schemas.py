@@ -247,6 +247,10 @@ class TranscriptionRequest(BaseModel):
     )
     timestamps: Literal["segment", "word"] = "segment"
     output_format: Literal["json", "txt", "srt", "vtt"] = "json"
+    diarize: bool = Field(
+        default=False,
+        description="Label every segment (and word) with its speaker, S1, S2, … in order of appearance.",
+    )
 
 
 def normalize_transcription(
@@ -274,4 +278,5 @@ def normalize_transcription(
         "prompt": prompt,
         "timestamps": req.timestamps,
         "output_format": req.output_format,
+        "diarize": req.diarize,
     }

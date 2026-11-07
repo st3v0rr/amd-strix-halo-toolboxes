@@ -8,6 +8,7 @@ its window); everything here is plain numpy.
 
 from __future__ import annotations
 
+import bisect
 import json
 import os
 import re
@@ -52,6 +53,7 @@ class Word:
     start: float
     end: float
     text: str
+    speaker: str | None = None
 
 
 @dataclass
@@ -60,6 +62,17 @@ class Segment:
     end: float
     text: str
     words: list[Word] = field(default_factory=list)
+    speaker: str | None = None
+
+
+@dataclass(frozen=True)
+class Turn:
+    """A stretch of one speaker's speech, seconds from the start; speakers are
+    numbered as the diarizer numbers them (in order of first appearance)."""
+
+    start: float
+    end: float
+    speaker: int
 
 
 @dataclass
@@ -71,7 +84,7 @@ class WindowResult:
     segments: list[Segment] = field(default_factory=list)
 
 
-def _frame_dbfs(samples: np.ndarray) -> np.ndarray:
+def frame_dbfs(samples: np.ndarray) -> np.ndarray:
     size = int(FRAME_SECONDS * SAMPLE_RATE)
     usable = samples[: samples.size // size * size]
     if usable.size == 0:
@@ -91,7 +104,7 @@ def split_windows(samples: np.ndarray, max_seconds: float) -> list[Window]:
     while start < total:
         # A window starts just before the first audible frame: leading silence
         # is where Whisper invents text, and it wastes the 30 seconds.
-        ahead = _frame_dbfs(samples[start : min(total, start + limit)])
+        ahead = frame_dbfs(samples[start : min(total, start + limit)])
         loud = np.flatnonzero(ahead >= SILENCE_DBFS)
         if loud.size == 0:
             start = min(total, start + limit)
@@ -100,7 +113,7 @@ def split_windows(samples: np.ndarray, max_seconds: float) -> list[Window]:
         end = min(total, start + limit)
         if end < total:
             search_from = max(start + frame, end - int(SEARCH_SECONDS * SAMPLE_RATE))
-            energy = _frame_dbfs(samples[search_from:end])
+            energy = frame_dbfs(samples[search_from:end])
             quietest = int(np.argmin(energy))
             end = search_from + quietest * frame + frame // 2
         windows.append(Window(start, end))
@@ -160,6 +173,105 @@ def sentences_from_words(text: str, words: Sequence[Word]) -> list[Segment]:
     return segments
 
 
+def turns_from_activity(
+    probs: np.ndarray,
+    frame_seconds: float,
+    threshold: float = 0.5,
+    min_gap: float = 0.3,
+    min_turn: float = 0.2,
+) -> list[Turn]:
+    """Speaker turns from a (frames, speakers) activity matrix.
+
+    A speaker is active where its probability exceeds `threshold`; pauses
+    shorter than `min_gap` inside one speaker's speech are closed, and what is
+    left shorter than `min_turn` (a click, a breath) is dropped. Overlapping
+    speech gives overlapping turns.
+    """
+    turns: list[Turn] = []
+    if probs.ndim != 2 or probs.shape[0] == 0:
+        return turns
+    for speaker in range(probs.shape[1]):
+        active = np.concatenate([[False], probs[:, speaker] > threshold, [False]])
+        edges = np.flatnonzero(np.diff(active.astype(np.int8)))
+        runs: list[list[float]] = []
+        for start, end in zip(edges[::2], edges[1::2], strict=True):
+            begin, finish = start * frame_seconds, end * frame_seconds
+            if runs and begin - runs[-1][1] < min_gap:
+                runs[-1][1] = finish
+            else:
+                runs.append([begin, finish])
+        turns.extend(Turn(round(a, 3), round(b, 3), speaker) for a, b in runs if b - a >= min_turn)
+    turns.sort(key=lambda t: (t.start, t.speaker))
+    return turns
+
+
+def _overlap(a0: float, a1: float, b0: float, b1: float) -> float:
+    return max(0.0, min(a1, b1) - max(a0, b0))
+
+
+class TurnIndex:
+    """Turns sorted by start, for looking up who speaks when without scanning
+    every turn for every word (a 4-hour meeting has tens of thousands)."""
+
+    def __init__(self, turns: Sequence[Turn]) -> None:
+        self.turns = sorted(turns, key=lambda t: (t.start, t.speaker))
+        self.starts = [t.start for t in self.turns]
+        self.longest = max((t.end - t.start for t in self.turns), default=0.0)
+
+    def speaker_at(self, start: float, end: float, reach: float = 0.5) -> int | None:
+        """The speaker who talks most during [start, end]; without overlap, the
+        nearest turn within `reach` seconds (word timestamps and turns are both
+        estimates); otherwise nobody."""
+        lo = bisect.bisect_left(self.starts, start - self.longest - reach)
+        hi = bisect.bisect_right(self.starts, end + reach)
+        shares: dict[int, float] = {}
+        nearest: tuple[float, int] | None = None
+        for turn in self.turns[lo:hi]:
+            shared = _overlap(start, end, turn.start, turn.end)
+            if shared > 0:
+                shares[turn.speaker] = shares.get(turn.speaker, 0.0) + shared
+            distance = max(turn.start - end, start - turn.end, 0.0)
+            if distance <= reach and (nearest is None or distance < nearest[0]):
+                nearest = (distance, turn.speaker)
+        if shares:
+            return max(shares, key=lambda k: shares[k])
+        return nearest[1] if nearest is not None else None
+
+
+def assign_speakers(segments: Sequence[Segment], turns: Sequence[Turn]) -> list[str]:
+    """Label every segment (and word) with its speaker: S1, S2, … in order of
+    first appearance in the transcript. Words, where the model gives them,
+    decide per word and the segment takes the speaker of most of its words'
+    time; otherwise the segment takes whoever talks most during it. Text with
+    no diarized speech around it keeps speaker None. Returns the labels used."""
+    index = TurnIndex(turns)
+    labels: dict[int, str] = {}
+
+    def label(speaker: int | None) -> str | None:
+        if speaker is None:
+            return None
+        if speaker not in labels:
+            labels[speaker] = f"S{len(labels) + 1}"
+        return labels[speaker]
+
+    for segment in segments:
+        if segment.words:
+            time: dict[int, float] = {}
+            for word in segment.words:
+                found = index.speaker_at(word.start, word.end)
+                if found is not None:
+                    time[found] = time.get(found, 0.0) + max(word.end - word.start, 0.01)
+            chosen = (
+                max(time, key=lambda k: time[k]) if time else index.speaker_at(segment.start, segment.end)
+            )
+            segment.speaker = label(chosen)
+            for word in segment.words:
+                word.speaker = label(index.speaker_at(word.start, word.end))
+        else:
+            segment.speaker = label(index.speaker_at(segment.start, segment.end))
+    return list(labels.values())
+
+
 def majority_language(results: Sequence[WindowResult]) -> str | None:
     counts: dict[str, int] = {}
     for result in results:
@@ -197,7 +309,9 @@ def transcript_document(
     language: str | None,
     duration: float,
     words: bool,
+    speakers: Sequence[str] | None = None,
 ) -> dict[str, Any]:
+    """`speakers` given (diarized): every segment and word says who spoke it."""
     data: dict[str, Any] = {
         "object": "transcription",
         "model": model,
@@ -209,9 +323,29 @@ def transcript_document(
             {"id": index, "start": s.start, "end": s.end, "text": s.text} for index, s in enumerate(segments)
         ],
     }
+    if speakers is not None:
+        data["speakers"] = list(speakers)
+        for entry, segment in zip(data["segments"], segments, strict=True):
+            entry["speaker"] = segment.speaker
     if words:
-        data["words"] = [{"start": w.start, "end": w.end, "text": w.text} for s in segments for w in s.words]
+        data["words"] = [
+            {
+                "start": w.start,
+                "end": w.end,
+                "text": w.text,
+                **({"speaker": w.speaker} if speakers is not None else {}),
+            }
+            for s in segments
+            for w in s.words
+        ]
     return data
+
+
+def _line(segment: dict[str, Any], voice_tag: bool = False) -> str:
+    speaker = segment.get("speaker")
+    if not speaker:
+        return str(segment["text"])
+    return f"<v {speaker}>{segment['text']}" if voice_tag else f"[{speaker}] {segment['text']}"
 
 
 def _clock(seconds: float, separator: str) -> str:
@@ -227,15 +361,16 @@ def render(document: dict[str, Any], output_format: str) -> str:
     if output_format == "json":
         return json.dumps(document, ensure_ascii=False, indent=1) + "\n"
     if output_format == "txt":
-        return "".join(f"{s['text']}\n" for s in segments)
+        return "".join(f"{_line(s)}\n" for s in segments)
     if output_format == "srt":
         return "\n".join(
-            f"{i + 1}\n{_clock(s['start'], ',')} --> {_clock(s['end'], ',')}\n{s['text']}\n"
+            f"{i + 1}\n{_clock(s['start'], ',')} --> {_clock(s['end'], ',')}\n{_line(s)}\n"
             for i, s in enumerate(segments)
         )
     if output_format == "vtt":
         body = "\n".join(
-            f"{_clock(s['start'], '.')} --> {_clock(s['end'], '.')}\n{s['text']}\n" for s in segments
+            f"{_clock(s['start'], '.')} --> {_clock(s['end'], '.')}\n{_line(s, voice_tag=True)}\n"
+            for s in segments
         )
         return "WEBVTT\n\n" + body
     raise ValueError(f"unknown transcript format {output_format!r}")

@@ -20,8 +20,18 @@ from PIL import Image, ImageDraw
 
 from ..errors import ProviderError
 from ..jobs import JobContext
-from ..speech import Segment, WindowResult, Word
+from ..speech import (
+    FRAME_SECONDS,
+    SILENCE_DBFS,
+    Segment,
+    Turn,
+    WindowResult,
+    Word,
+    frame_dbfs,
+    turns_from_activity,
+)
 from .base import Artifact, GenerationRequest, Provider
+from .diarize import Diarizer
 from .media import encode_video, open_rgb, save_image
 from .transcribe import SpeechProvider
 
@@ -157,3 +167,18 @@ class _MockSpeech(SpeechProvider):
                 WindowResult(text, language or "de", [Segment(0.0, seconds, text, spoken if words else [])])
             )
         return results
+
+
+class MockDiarizer(Diarizer):
+    """Diarization without a model: every stretch of sound between pauses of
+    at least a second is the next speaker of two, so a test can place speakers
+    with silence alone."""
+
+    def load(self) -> None:
+        pass
+
+    def turns(self, samples: np.ndarray) -> list[Turn]:
+        loud = (frame_dbfs(samples) >= SILENCE_DBFS).astype(np.float32)
+        frame = FRAME_SECONDS
+        runs = turns_from_activity(loud[:, None], frame, min_gap=1.0)
+        return [Turn(t.start, t.end, index % 2) for index, t in enumerate(runs)]

@@ -5,11 +5,13 @@
 # diffusers 0.40 is the first release with the MiniMax-H3 modular pipeline;
 # 0.42.1 fixes GHSA-4prv-5hj7-c2xr and, since 0.41, lets the MiniMax-H3 video
 # VAE decode in the BF16 it is loaded in (0.40 pinned all of it to FP32).
-# transformers 5.17 carries Qwen2.5-VL, Qwen3-VL, Whisper and Qwen3-ASR (with its
-# forced aligner) for speech-to-text. The key mappings in
-# providers/loaders.py were checked against these exact versions.
+# transformers 5.20 carries Qwen2.5-VL, Qwen3-VL, Whisper and Qwen3-ASR (with its
+# forced aligner) for speech-to-text, and since 5.18 Nemotron-3-Diarization for
+# speakers; its feature extractor builds the mel filters with librosa. The key
+# mappings in providers/loaders.py were checked against these exact versions.
 diffusers==0.42.1
-transformers==5.17.0
+transformers==5.20.2
+librosa==1.0.0
 accelerate==1.15.0
 peft==0.21.0
 safetensors==0.8.0

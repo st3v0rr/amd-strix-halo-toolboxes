@@ -29,12 +29,23 @@ TASKS = (
     "start-end-to-video",
     "reference-to-video",
     "speech-to-text",
+    "speaker-diarization",
 )
 IMAGE_TASKS = frozenset({"text-to-image", "image-edit"})
-AUDIO_TASKS = frozenset({"speech-to-text"})
+# speaker-diarization has no endpoint of its own: a transcription with
+# `diarize: true` runs the first model that offers it beside its ASR model.
+AUDIO_TASKS = frozenset({"speech-to-text", "speaker-diarization"})
 VIDEO_TASKS = frozenset(TASKS) - IMAGE_TASKS - AUDIO_TASKS
 PROVIDERS = frozenset(
-    {"qwen-image", "qwen-image-edit", "qwen-image-21", "minimax-h3", "whisper", "qwen3-asr"}
+    {
+        "qwen-image",
+        "qwen-image-edit",
+        "qwen-image-21",
+        "minimax-h3",
+        "whisper",
+        "qwen3-asr",
+        "nemotron-diarization",
+    }
 )
 # "transformers": a model directory transformers loads with from_pretrained.
 # Without a `file` it is the model's base itself; with one, a second

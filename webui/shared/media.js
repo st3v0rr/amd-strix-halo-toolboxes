@@ -32,6 +32,7 @@ export const MEDIA_MODEL_IDS = Object.freeze([
   'minimax-h3',
   'whisper-large-v3-turbo',
   'qwen3-asr-1.7b',
+  'nemotron-3-diarization',
 ])
 
 /** Only the curated entries of an inventory's model list, in its order. */
@@ -264,4 +265,5 @@ export const MEDIA_TASK_LABEL = Object.freeze({
   'start-end-to-video': 'Start/Ende → Video',
   'reference-to-video': 'Referenz → Video',
   'speech-to-text': 'Sprache → Text',
+  'speaker-diarization': 'Sprecher erkennen',
 })

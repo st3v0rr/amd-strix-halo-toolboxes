@@ -10,8 +10,9 @@ from .base import Artifact, GenerationRequest, Provider
 if TYPE_CHECKING:
     from ..config import Settings
     from ..registry import ModelSpec, ProfileSpec
+    from .diarize import Diarizer
 
-__all__ = ["Artifact", "GenerationRequest", "Provider", "create_provider"]
+__all__ = ["Artifact", "GenerationRequest", "Provider", "create_diarizer", "create_provider"]
 
 
 def create_provider(settings: Settings, model: ModelSpec, profile: ProfileSpec) -> Provider:
@@ -44,3 +45,18 @@ def create_provider(settings: Settings, model: ModelSpec, profile: ProfileSpec) 
 
         return Qwen3AsrProvider(settings, model, profile)
     raise ValueError(f"no provider for {model.provider}")
+
+
+def create_diarizer(settings: Settings) -> Diarizer:
+    """The registry's first speaker-diarization model, for `diarize: true`."""
+    model = settings.registry.default_for("speaker-diarization")
+    profile = model.profile(None)
+    if settings.backend == "mock":
+        from .mock import MockDiarizer
+
+        return MockDiarizer(settings, model, profile)
+    if model.provider == "nemotron-diarization":
+        from .diarize import NemotronDiarizer
+
+        return NemotronDiarizer(settings, model, profile)
+    raise ValueError(f"no diarizer for {model.provider}")
