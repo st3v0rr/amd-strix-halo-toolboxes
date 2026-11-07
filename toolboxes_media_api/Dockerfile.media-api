@@ -46,6 +46,7 @@ RUN python -m pip install --no-deps . && \
 # before publishing an image.
 RUN python -c 'import torch; print(torch.__version__)' && \
     python -c 'import diffusers, transformers; from diffusers import MiniMaxH3Blocks, QwenImageEditPlusPipeline, QwenImagePipeline; print(diffusers.__version__, transformers.__version__)' && \
+    python -c 'from transformers import Qwen3ASRForConditionalGeneration, Qwen3ASRForTokenClassification, WhisperForConditionalGeneration' && \
     MEDIA_API_KEY=build-check-0123456789abcdef python -c 'from media_api.config import load_settings; print(len(load_settings().registry.models), "models")'
 
 # Upstream's ROCm toolboxes export these two for login shells only (in

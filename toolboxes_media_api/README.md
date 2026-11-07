@@ -1,8 +1,9 @@
-# Media API — image and video generation for Strix Halo
+# Media API — image, video and speech-to-text for Strix Halo
 
 An authenticated HTTP API plus a browser playground for **Qwen-Image-2512** (text → image),
 **Qwen-Image-Edit-2511** (image edit) and **MiniMax-H3** (text/image/start-end/reference → video
-with stereo audio), on AMD Ryzen AI Max "Strix Halo" (gfx1151). A Python service on diffusers.
+with stereo audio), and for speech-to-text with **Whisper large-v3-turbo** and **Qwen3-ASR**,
+on AMD Ryzen AI Max "Strix Halo" (gfx1151). A Python service on diffusers and transformers.
 The image holds no weights: models, the Hugging Face
 cache, outputs, uploads and job state live in mounts.
 
@@ -99,6 +100,8 @@ at `GET /openapi.json` (authenticated).
 | `POST /api/v1/images/generations` | text → image |
 | `POST /api/v1/images/edits` | `image_ids` (1–3) + prompt → image |
 | `POST /api/v1/videos/generations` | text; `start_image_id`; `start_image_id`+`end_image_id` (or end only); `reference_image_ids` (≤ 9) |
+| `POST /api/v1/audio/uploads` | multipart `file` (WAV/MP3/M4A/AAC/FLAC/Ogg/WebM, or a video's sound) → `aud_…` id |
+| `POST /api/v1/audio/transcriptions` | `audio_id` → transcript (see [Speech-to-text](#speech-to-text)) |
 | `GET /api/v1/jobs`, `GET /api/v1/jobs/{id}` | job state |
 | `POST /api/v1/jobs/{id}/cancel` | cancel queued or running |
 | `GET /api/v1/jobs/{id}/result[?download=1]` | the file |
@@ -121,6 +124,39 @@ and answered with `{"error":{"code","message","details"}}` (`capability_unsuppor
 `validation_error`, `unknown_model`, `model_files_missing`, `queue_full`, …). One worker runs
 jobs in order; more than `MEDIA_MAX_QUEUED_JOBS` waiting → `429 queue_full`. Jobs survive a
 restart as records; ones that were unfinished come back as `failed/interrupted`.
+
+## Speech-to-text
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" -F 'file=@meeting.m4a;type=audio/mp4' \
+  http://127.0.0.1:8000/api/v1/audio/uploads           # → 201 {"id":"aud_…","duration_seconds":…}
+curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"audio_id":"aud_…","language":"de","prompt":"Projekt Phoenix, Frau Müller"}' \
+  http://127.0.0.1:8000/api/v1/audio/transcriptions    # → 202 job, result: output.json
+```
+
+The upload is decoded once, by the one FFmpeg demuxer its declared type allows and from its
+first audio stream only, to 16 kHz mono WAV — the original is not kept. It is limited to
+`MEDIA_MAX_AUDIO_UPLOAD_BYTES` (1 GiB) and `MEDIA_MAX_AUDIO_SECONDS` (4 h); decoding stops at
+the limit. A job cuts the recording at pauses into windows of at most 30 s, skips windows that
+are silence throughout (Whisper invents text for silence), transcribes them in batches with
+progress and cancellation between batches, and puts every segment on one timeline in seconds
+from the start.
+
+Fields: `audio_id`, `model`, `profile`, `language` (ISO code; omitted → detected per window),
+`prompt` (names and terms to bias spelling), `timestamps` (`segment`, or `word` where the model
+has it) and `output_format` — `json` (default: `text`, `language`, `duration_seconds`,
+`segments` with `start`/`end`/`text`, and `words` for word timestamps), `txt`, `srt` or `vtt`.
+
+| Model / profile | Weights | Timestamps | ≈ GB |
+| :--- | :--- | :--- | ---: |
+| whisper-large-v3-turbo **bf16** (default) | openai/whisper-large-v3-turbo, 100 languages | segment; OpenAI's temperature fallback against repetition loops | 4 |
+| qwen3-asr-1.7b **bf16** | Qwen/Qwen3-ASR-1.7B-hf + Qwen3-ForcedAligner-0.6B-hf, 30 languages | word and sentence for de, en, es, fr, it, ja, ko, pt, ru, zh, yue; one segment per window otherwise | 12 |
+
+Both load through transformers alone (`Qwen3ASRForConditionalGeneration` and
+`Qwen3ASRForTokenClassification` are native in the image's transformers 5.17), from
+`MEDIA_MODELS_DIR/speech/<repo name>/`. Text-to-speech is not offered: Qwen3-TTS needs its own
+package, which pins transformers 4.57 and a torchaudio that has no build for this torch.
 
 ## Models, profiles and what loads them
 
@@ -204,7 +240,8 @@ Environment (all in [`.env.example`](.env.example)): `MEDIA_API_KEY` (or `…_FI
 `MEDIA_BACKEND=real|mock`, `MEDIA_ALLOW_DOWNLOADS`, `MEDIA_DEVICE`, `MEDIA_MEMORY_CHECK`,
 `MEDIA_MEMORY_RESERVE_GB`, and the limits `MEDIA_MAX_UPLOAD_BYTES`,
 `MEDIA_MAX_ENCODED_UPLOAD_BYTES`, `MEDIA_MAX_UPLOAD_COUNT`, `MEDIA_MAX_TOTAL_UPLOAD_BYTES`,
-`MEDIA_MIN_FREE_DISK_BYTES`, `MEDIA_MAX_QUEUED_JOBS`,
+`MEDIA_MIN_FREE_DISK_BYTES`, `MEDIA_MAX_AUDIO_UPLOAD_BYTES`, `MEDIA_MAX_AUDIO_SECONDS`,
+`MEDIA_MAX_QUEUED_JOBS`,
 `MEDIA_MAX_PROMPT_CHARS`, `MEDIA_MAX_WIDTH/HEIGHT`, `MEDIA_MAX_FRAMES`, `MEDIA_MAX_STEPS`,
 `MEDIA_RESULT_TTL_HOURS`, `MEDIA_MAX_RETAINED_JOBS`. The YAML file takes the same settings
 under `server:`, `paths:`, `security:`, `limits:` plus `models:`; secrets in it are refused.

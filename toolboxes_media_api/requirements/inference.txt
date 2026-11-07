@@ -5,7 +5,8 @@
 # diffusers 0.40 is the first release with the MiniMax-H3 modular pipeline;
 # 0.42.1 fixes GHSA-4prv-5hj7-c2xr and, since 0.41, lets the MiniMax-H3 video
 # VAE decode in the BF16 it is loaded in (0.40 pinned all of it to FP32).
-# transformers 5.17 carries Qwen2.5-VL and Qwen3-VL. The key mappings in
+# transformers 5.17 carries Qwen2.5-VL, Qwen3-VL, Whisper and Qwen3-ASR (with its
+# forced aligner) for speech-to-text. The key mappings in
 # providers/loaders.py were checked against these exact versions.
 diffusers==0.42.1
 transformers==5.17.0

@@ -25,7 +25,15 @@ from .jobs import Job, JobContext, JobQueue, JobStatus, JobStore
 from .lifecycle import MemorySnapshot, ModelManager, missing_files_error, probe_memory
 from .providers import GenerationRequest, create_provider
 from .registry import ModelSpec, ProfileSpec
-from .schemas import ImageEditRequest, ImageGenerationRequest, VideoGenerationRequest, normalize, video_task
+from .schemas import (
+    ImageEditRequest,
+    ImageGenerationRequest,
+    TranscriptionRequest,
+    VideoGenerationRequest,
+    normalize,
+    normalize_transcription,
+    video_task,
+)
 from .security import (
     CSRF_HEADER,
     SESSION_COOKIE,
@@ -37,7 +45,7 @@ from .security import (
     csrf_ok,
     same_origin,
 )
-from .storage import OutputStore, UploadStore, check_job_id, new_job_id
+from .storage import AUDIO_ID_RE, AudioStore, OutputStore, UploadStore, check_job_id, new_job_id
 
 log = logging.getLogger("media_api")
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -59,16 +67,16 @@ PUBLIC_STATIC = {"login.css", "favicon.svg"}
 class BodyLimit:
     """Refuse request bodies over a limit while they stream in, before any parser buffers them."""
 
-    def __init__(self, app: ASGIApp, default_limit: int, upload_limit: int) -> None:
+    def __init__(self, app: ASGIApp, default_limit: int, path_limits: dict[str, int]) -> None:
         self.app = app
         self.default_limit = default_limit
-        self.upload_limit = upload_limit
+        self.path_limits = path_limits
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        limit = self.upload_limit if scope["path"] == "/api/v1/uploads" else self.default_limit
+        limit = self.path_limits.get(scope["path"], self.default_limit)
         for name, value in scope.get("headers", []):
             if name == b"content-length" and value.isdigit() and int(value) > limit:
                 await _send_error(
@@ -140,6 +148,14 @@ def create_app(
         settings.limits.max_total_upload_bytes,
         settings.limits.min_free_disk_bytes,
     )
+    audio = AudioStore(
+        settings.upload_dir / "audio",
+        settings.limits.max_audio_upload_bytes,
+        settings.limits.max_audio_seconds,
+        settings.limits.max_upload_count,
+        settings.limits.max_total_upload_bytes,
+        settings.limits.min_free_disk_bytes,
+    )
     outputs = OutputStore(settings.output_dir)
     store = JobStore(settings.state_dir)
     registry = settings.registry
@@ -148,13 +164,13 @@ def create_app(
         p = job.params
         return GenerationRequest(
             task=job.task,
-            prompt=p["prompt"],
+            prompt=p.get("prompt") or "",
             negative_prompt=p.get("negative_prompt"),
             width=p.get("width"),
             height=p.get("height"),
-            steps=p["steps"],
+            steps=p.get("steps", 0),
             guidance=p.get("guidance"),
-            seed=p["seed"],
+            seed=p.get("seed", 0),
             output_format=p["output_format"],
             output_dir=outputs.job_dir(job.id),
             images=tuple(uploads.path(u) for u in p.get("image_ids", [])),
@@ -164,6 +180,9 @@ def create_app(
             num_frames=p.get("num_frames"),
             fps=p.get("fps"),
             audio=p.get("audio", True),
+            audio_input=audio.path(p["audio_id"]) if p.get("audio_id") else None,
+            language=p.get("language"),
+            timestamps=p.get("timestamps", "segment"),
         )
 
     def ensure_files(model: ModelSpec, profile: ProfileSpec, task: str, ctx: JobContext) -> None:
@@ -206,7 +225,8 @@ def create_app(
         lifespan=lifespan,
         title="Strix Halo Media API",
         version="1.0.0",
-        description="Authenticated image and video generation. Every route except /healthz needs "
+        description="Authenticated image and video generation and speech-to-text. Every route except "
+        "/healthz needs "
         "`Authorization: Bearer <key>` (or `X-API-Key`), or a playground session.",
         docs_url=None,
         redoc_url=None,
@@ -214,6 +234,7 @@ def create_app(
     )
     app.state.settings, app.state.store, app.state.queue = settings, store, queue
     app.state.manager, app.state.uploads, app.state.sessions = manager, uploads, sessions
+    app.state.audio = audio
 
     # -- errors -------------------------------------------------------------
     @app.exception_handler(ApiError)
@@ -261,7 +282,12 @@ def create_app(
             allow_headers=["Authorization", "X-API-Key", "Content-Type"],
         )
     app.add_middleware(
-        BodyLimit, default_limit=JSON_BODY_LIMIT, upload_limit=settings.limits.max_upload_bytes + 64 * 1024
+        BodyLimit,
+        default_limit=JSON_BODY_LIMIT,
+        path_limits={
+            "/api/v1/uploads": settings.limits.max_upload_bytes + 64 * 1024,
+            "/api/v1/audio/uploads": settings.limits.max_audio_upload_bytes + 64 * 1024,
+        },
     )
 
     # -- authentication -----------------------------------------------------
@@ -350,6 +376,8 @@ def create_app(
                 "max_upload_bytes": settings.limits.max_upload_bytes,
                 "max_encoded_upload_bytes": settings.limits.max_encoded_upload_bytes,
                 "max_upload_count": settings.limits.max_upload_count,
+                "max_audio_upload_bytes": settings.limits.max_audio_upload_bytes,
+                "max_audio_seconds": settings.limits.max_audio_seconds,
                 "max_total_upload_bytes": settings.limits.max_total_upload_bytes,
                 "max_prompt_chars": settings.limits.max_prompt_chars,
                 "max_steps": settings.limits.max_steps,
@@ -369,10 +397,16 @@ def create_app(
 
     def submit(task: str, req: Any, upload_ids: list[str]) -> JSONResponse:
         model, profile = registry.resolve(task, req.model, req.profile)
-        params = normalize(req, task, model, profile, settings.limits)
+        if isinstance(req, TranscriptionRequest):
+            params = normalize_transcription(req, model, profile, settings.limits)
+        else:
+            params = normalize(req, task, model, profile, settings.limits)
         for upload_id in upload_ids:
             try:
-                uploads.get(upload_id)
+                if AUDIO_ID_RE.match(upload_id):
+                    audio.get(upload_id)
+                else:
+                    uploads.get(upload_id)
             except NotFound:
                 raise ApiError(
                     f"Upload '{upload_id[:64]}' does not exist.", code="unknown_upload", status=422
@@ -401,6 +435,25 @@ def create_app(
     def videos_generations(req: VideoGenerationRequest) -> JSONResponse:
         ids = [i for i in (req.start_image_id, req.end_image_id) if i] + list(req.reference_image_ids)
         return submit(video_task(req), req, ids)
+
+    @app.post("/api/v1/audio/uploads", status_code=201, dependencies=protected, tags=["audio"])
+    async def upload_audio(file: UploadFile = File(...)) -> dict[str, Any]:  # noqa: B008 - FastAPI's idiom
+        # Starlette has already spooled the body to a temporary file (BodyLimit
+        # capped it); the store copies it in chunks and decodes it off the loop.
+        info = await run_in_threadpool(audio.save, file.file, file.content_type, file.filename)
+        return info.public()
+
+    @app.get("/api/v1/audio/uploads/{audio_id}", dependencies=protected, tags=["audio"])
+    def get_audio(audio_id: str) -> FileResponse:
+        return FileResponse(audio.path(audio_id), media_type="audio/wav")
+
+    @app.post("/api/v1/audio/transcriptions", status_code=202, dependencies=protected, tags=["audio"])
+    def audio_transcriptions(req: TranscriptionRequest) -> JSONResponse:
+        if not AUDIO_ID_RE.match(req.audio_id):
+            raise ApiError(
+                f"'{req.audio_id[:64]}' is not an audio upload id.", code="unknown_upload", status=422
+            )
+        return submit("speech-to-text", req, [req.audio_id])
 
     @app.get("/api/v1/jobs", dependencies=protected, tags=["jobs"])
     def list_jobs(limit: int = 20) -> dict[str, Any]:
@@ -528,7 +581,9 @@ def create_app(
         for job_id in store.expired(limits.result_ttl_hours * 3600, limits.max_retained_jobs):
             outputs.remove(job_id)
             store.delete(job_id)
-        uploads.cleanup(limits.result_ttl_hours * 3600, store.active_upload_ids())
+        active = store.active_upload_ids()
+        uploads.cleanup(limits.result_ttl_hours * 3600, active)
+        audio.cleanup(limits.result_ttl_hours * 3600, active)
 
     def cleanup_loop() -> None:
         while not stop.wait(600):

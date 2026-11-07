@@ -218,3 +218,51 @@ def normalize(
             params["image_ids"] = list(req.image_ids)
     params["task"] = task
     return params
+
+
+class TranscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    audio_id: str = Field(description="Id from POST /api/v1/audio/uploads.")
+    model: str | None = Field(default=None, description="Model id; defaults to the first speech model.")
+    profile: str | None = Field(
+        default=None, description="Profile id; defaults to the model's default profile."
+    )
+    language: str | None = Field(
+        default=None,
+        pattern=r"^[a-z]{2,3}$",
+        description="ISO 639-1 code (de, en, ...). Omit to detect it per window.",
+    )
+    prompt: str | None = Field(
+        default=None, description="Context: names, terms, the topic. Biases spelling, not content."
+    )
+    timestamps: Literal["segment", "word"] = "segment"
+    output_format: Literal["json", "txt", "srt", "vtt"] = "json"
+
+
+def normalize_transcription(
+    req: TranscriptionRequest, model: ModelSpec, profile: ProfileSpec, limits: Limits
+) -> dict[str, Any]:
+    """The job's parameters for speech-to-text, checked against the model."""
+    c = model.constraints
+    languages = c.get("languages") or []
+    if req.language is not None and languages and req.language not in languages:
+        raise CapabilityError(
+            f"'{model.id}' does not transcribe '{req.language}'.",
+            details={"model": model.id, "language": req.language, "languages": list(languages)},
+        )
+    if req.timestamps == "word" and not c.get("word_timestamps", False):
+        raise CapabilityError(
+            f"'{model.id}' gives segment timestamps only; use timestamps=segment or a model with "
+            "word timestamps.",
+            details={"model": model.id},
+        )
+    prompt = _clean_text(req.prompt, limits.max_prompt_chars, "prompt") if req.prompt else None
+    return {
+        "task": "speech-to-text",
+        "audio_id": req.audio_id,
+        "language": req.language,
+        "prompt": prompt,
+        "timestamps": req.timestamps,
+        "output_format": req.output_format,
+    }

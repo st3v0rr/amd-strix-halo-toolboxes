@@ -20,8 +20,10 @@ from PIL import Image, ImageDraw
 
 from ..errors import ProviderError
 from ..jobs import JobContext
+from ..speech import Segment, WindowResult, Word
 from .base import Artifact, GenerationRequest, Provider
 from .media import encode_video, save_image
+from .transcribe import SpeechProvider
 
 AUDIO_RATE = 32000
 
@@ -68,6 +70,8 @@ class MockProvider(Provider):
             ctx.report("generating", (step + 1) / request.steps)
 
     def generate(self, request: GenerationRequest, ctx: JobContext) -> Artifact:
+        if request.task == "speech-to-text":
+            return _MockSpeech(self.settings, self.model, self.profile).generate(request, ctx)
         if request.width is None or request.height is None:
             # Like Qwen-Image-Edit without a size: follow the first input image.
             with Image.open(request.images[0]) as first:
@@ -126,3 +130,31 @@ class MockProvider(Provider):
             audio = np.stack([np.sin(2 * np.pi * tone * clock), np.sin(2 * np.pi * tone * 1.5 * clock)]) * 0.2
         path, ctype = encode_video(frames, fps, request.output_dir, request.output_format, audio, AUDIO_RATE)
         return Artifact(path, ctype, width, height, frames_n, fps, audio is not None)
+
+
+class _MockSpeech(SpeechProvider):
+    """Speech-to-text without a model: real windowing, invented words.
+
+    Each window becomes "mock window N" with one word per second of audio, so
+    the timeline, offsets and output formats are exercised end to end.
+    """
+
+    def load(self, ctx: JobContext) -> None:
+        pass
+
+    def run_batch(self, batch, language, prompt, words):  # type: ignore[no-untyped-def]
+        if prompt and "[mock:fail]" in prompt:
+            raise ProviderError("mock_failure", "The mock backend was asked to fail ([mock:fail]).")
+        if self.settings.mock_step_seconds:
+            time.sleep(self.settings.mock_step_seconds)
+        results = []
+        for samples in batch:
+            seconds = samples.size / 16000
+            count = max(1, int(seconds))
+            step = seconds / count
+            spoken = [Word(i * step, (i + 1) * step, f"w{i}") for i in range(count)]
+            text = f"mock {' '.join(w.text for w in spoken)}."
+            results.append(
+                WindowResult(text, language or "de", [Segment(0.0, seconds, text, spoken if words else [])])
+            )
+        return results

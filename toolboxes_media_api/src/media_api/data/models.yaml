@@ -297,3 +297,80 @@ models:
           text_encoder: *h3_text_encoder
           vae: *h3_vae
           audio_vae: *h3_audio_vae
+
+  # Speech-to-text. These run on transformers alone (no diffusers) and live in
+  # MEDIA_MODELS_DIR/speech/, one directory per repository as it ships. Audio is
+  # decoded to 16 kHz mono on upload, cut at pauses into windows of at most
+  # window_seconds, and windows that are silence throughout are skipped (Whisper
+  # invents text for silence); all timestamps are seconds from the start.
+  - id: whisper-large-v3-turbo
+    label: Whisper large-v3-turbo
+    provider: whisper
+    license: MIT
+    description: >
+      Speech-to-text in 100 languages with segment timestamps. large-v3 with a 4-layer decoder
+      (809M parameters): close to large-v3 in quality, several times faster.
+    tasks: [speech-to-text]
+    default_profile: bf16
+    base:
+      path: speech/whisper-large-v3-turbo
+      repo: openai/whisper-large-v3-turbo
+      revision: 41f01f3fe87f28c78e2fbf8b568835947dd65ed9
+      include: [config.json, generation_config.json, model.safetensors, preprocessor_config.json, tokenizer.json, tokenizer_config.json, vocab.json, merges.txt, normalizer.json, added_tokens.json, special_tokens_map.json]
+    constraints:
+      window_seconds: 30
+      word_timestamps: false
+      languages: [en, zh, de, es, ru, ko, fr, ja, pt, tr, pl, ca, nl, ar, sv, it, id, hi, fi, vi, he, uk, el, ms, cs, ro, da, hu, ta, no, th, ur, hr, bg, lt, la, mi, ml, cy, sk, te, fa, lv, bn, sr, az, sl, kn, et, mk, br, eu, is, hy, ne, mn, bs, kk, sq, sw, gl, mr, pa, si, km, sn, yo, so, af, oc, ka, be, tg, sd, gu, am, yi, lo, uz, fo, ht, ps, tk, nn, mt, sa, lb, my, bo, tl, mg, as, tt, haw, ln, ha, ba, jw, su, yue]
+    defaults:
+      batch_size: 8
+    profiles:
+      - id: bf16
+        label: BF16
+        estimated_memory_gb: 4
+        description: The official weights in BF16, eight 30-second windows per batch.
+        components:
+          model:
+            format: transformers
+            storage: bf16
+
+  - id: qwen3-asr-1.7b
+    label: Qwen3-ASR 1.7B
+    provider: qwen3-asr
+    license: Apache-2.0
+    description: >
+      Speech-to-text in 30 languages and 22 Chinese dialects, with word and sentence timestamps
+      from Qwen3-ForcedAligner (for de, en, es, fr, it, ja, ko, pt, ru, zh, yue; other languages
+      get one segment per window). The prompt biases it towards names and terms.
+    tasks: [speech-to-text]
+    default_profile: bf16
+    base:
+      path: speech/Qwen3-ASR-1.7B
+      repo: Qwen/Qwen3-ASR-1.7B-hf
+      revision: bcd2b5b7f32b480ab5790554cfa8347f246a14f3
+      include: [config.json, generation_config.json, model.safetensors, processor_config.json, tokenizer.json, tokenizer_config.json, chat_template.jinja]
+    constraints:
+      window_seconds: 30
+      word_timestamps: true
+      languages: [ar, yue, zh, cs, da, nl, en, fil, fi, fr, de, el, hi, hu, id, it, ja, ko, mk, ms, fa, pl, pt, ro, ru, es, sv, th, tr, vi]
+      aligned_languages: [yue, zh, en, fr, de, it, ja, ko, pt, ru, es]
+    defaults:
+      batch_size: 4
+    profiles:
+      - id: bf16
+        label: BF16 with forced aligner
+        estimated_memory_gb: 12
+        description: >
+          The official transformers weights in BF16, plus Qwen3-ForcedAligner-0.6B in BF16 for
+          the timestamps. Four 30-second windows per batch.
+        components:
+          model:
+            format: transformers
+            storage: bf16
+          aligner:
+            format: transformers
+            storage: bf16
+            file:
+              path: speech/Qwen3-ForcedAligner-0.6B
+              repo: Qwen/Qwen3-ForcedAligner-0.6B-hf
+              revision: c07281df297b9905d24a508279258cccf987a064
+              include: [config.json, model.safetensors, processor_config.json, tokenizer.json, tokenizer_config.json, chat_template.jinja]

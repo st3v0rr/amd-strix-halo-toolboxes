@@ -31,4 +31,12 @@ def create_provider(settings: Settings, model: ModelSpec, profile: ProfileSpec) 
         from .minimax_h3 import MiniMaxH3Provider
 
         return MiniMaxH3Provider(settings, model, profile)
+    if model.provider == "whisper":
+        from .transcribe import WhisperProvider
+
+        return WhisperProvider(settings, model, profile)
+    if model.provider == "qwen3-asr":
+        from .transcribe import Qwen3AsrProvider
+
+        return Qwen3AsrProvider(settings, model, profile)
     raise ValueError(f"no provider for {model.provider}")

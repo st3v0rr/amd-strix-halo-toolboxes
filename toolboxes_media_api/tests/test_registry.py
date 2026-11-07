@@ -15,7 +15,13 @@ from .conftest import unsupported_registry_models
 
 def test_default_registry_is_valid():
     registry = load_registry()
-    assert {m.id for m in registry.models} == {"qwen-image-2512", "qwen-image-edit-2511", "minimax-h3"}
+    assert {m.id for m in registry.models} == {
+        "qwen-image-2512",
+        "qwen-image-edit-2511",
+        "minimax-h3",
+        "whisper-large-v3-turbo",
+        "qwen3-asr-1.7b",
+    }
     for model in registry.models:
         assert model.profile(None).usable
         for profile in model.profiles:
@@ -171,4 +177,4 @@ def test_user_config_can_replace_a_model(tmp_path: Path):
     data[0]["label"] = "Custom label"
     registry = load_registry(yaml.safe_load(yaml.safe_dump([data[0]])))
     assert registry.get("qwen-image-2512").label == "Custom label"
-    assert len(registry.models) == 3
+    assert len(registry.models) == len(data)

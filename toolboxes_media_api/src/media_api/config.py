@@ -47,6 +47,10 @@ class Limits:
     max_upload_count: int = 1000
     max_total_upload_bytes: int = 2 * 1024 * 1024 * 1024
     min_free_disk_bytes: int = 1024 * 1024 * 1024
+    # Audio for speech-to-text: an hour of compressed speech is ~60 MB, of
+    # 48 kHz WAV ~550 MB. Stored decoded as 16 kHz mono WAV (~115 MB per hour).
+    max_audio_upload_bytes: int = 1024 * 1024 * 1024
+    max_audio_seconds: int = 4 * 3600
     max_queued_jobs: int = 16
     max_prompt_chars: int = 8000
     max_negative_prompt_chars: int = 2000
@@ -125,6 +129,8 @@ _LIMIT_BOUNDS: dict[str, tuple[type, float, float]] = {
     "max_upload_count": (int, 1, 1_000_000),
     "max_total_upload_bytes": (int, 1024, 1024 * 1024 * 1024 * 1024),
     "min_free_disk_bytes": (int, 0, 1024 * 1024 * 1024 * 1024),
+    "max_audio_upload_bytes": (int, 1024, 8 * 1024 * 1024 * 1024),
+    "max_audio_seconds": (int, 1, 24 * 3600),
     "max_queued_jobs": (int, 1, 10_000),
     "max_prompt_chars": (int, 1, 100_000),
     "max_negative_prompt_chars": (int, 0, 100_000),

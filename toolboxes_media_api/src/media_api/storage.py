@@ -23,7 +23,7 @@ import warnings
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from PIL import Image, UnidentifiedImageError
 
@@ -31,6 +31,7 @@ from .errors import ApiError, NotFound, PayloadTooLarge, UnsupportedMediaType
 
 JOB_ID_RE = re.compile(r"^job_[0-9a-f]{32}$")
 UPLOAD_ID_RE = re.compile(r"^upl_[0-9a-f]{32}$")
+AUDIO_ID_RE = re.compile(r"^aud_[0-9a-f]{32}$")
 ALLOWED_UPLOAD_TYPES = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 
 
@@ -46,6 +47,16 @@ def check_job_id(job_id: str) -> str:
     if not JOB_ID_RE.match(job_id):
         raise NotFound("Job not found.")
     return job_id
+
+
+def new_audio_id() -> str:
+    return f"aud_{secrets.token_hex(16)}"
+
+
+def check_audio_id(audio_id: str) -> str:
+    if not AUDIO_ID_RE.match(audio_id):
+        raise NotFound(f"Audio upload '{audio_id[:64]}' not found.")
+    return audio_id
 
 
 def check_upload_id(upload_id: str) -> str:
@@ -302,6 +313,184 @@ class _CappedBuffer(io.BytesIO):
         if self.tell() + len(data) > self.limit:
             raise PayloadTooLarge(f"Re-encoded upload exceeds {self.limit} bytes.")
         return super().write(data)
+
+
+@dataclass(frozen=True)
+class AudioInfo:
+    id: str
+    filename: str
+    source_type: str
+    content_type: str
+    duration_seconds: float
+    sample_rate: int
+    bytes: int
+    sha256: str
+    created_at: float
+
+    def public(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["url"] = f"/api/v1/audio/uploads/{self.id}"
+        return data
+
+
+class AudioStore:
+    """Validated audio for speech-to-text, stored decoded as 16 kHz mono WAV.
+
+    The upload arrives as a file (never wholly in memory), is decoded by the
+    one demuxer its declared type allows, and only the decoded WAV is kept.
+    """
+
+    CHUNK = 1024 * 1024
+
+    def __init__(
+        self,
+        root: Path,
+        max_bytes: int,
+        max_seconds: int,
+        max_count: int,
+        max_total_bytes: int,
+        min_free_disk_bytes: int,
+    ) -> None:
+        self.root = root
+        self.max_bytes = max_bytes
+        self.max_seconds = max_seconds
+        self.max_count = max_count
+        self.max_total_bytes = max_total_bytes
+        self.min_free_disk_bytes = min_free_disk_bytes
+        self._lock = threading.RLock()
+        root.mkdir(parents=True, exist_ok=True)
+        self._count = 0
+        self._total_bytes = 0
+        self._reconcile()
+
+    def save(self, source: BinaryIO, declared_type: str | None, filename: str | None) -> AudioInfo:
+        from .audio import SAMPLE_RATE, decode_to_wav, demuxer_for
+
+        declared = (declared_type or "").split(";")[0].strip().lower()
+        demuxer = demuxer_for(declared)
+        worst_case = self.max_seconds * SAMPLE_RATE * 2 + 44
+        with self._lock:
+            if self._count >= self.max_count or self._total_bytes >= self.max_total_bytes:
+                raise ApiError(
+                    "Audio storage quota is full; wait for older uploads to expire.",
+                    code="upload_quota_exceeded",
+                    status=429,
+                )
+        if shutil.disk_usage(self.root).free - self.max_bytes - worst_case < self.min_free_disk_bytes:
+            raise ApiError(
+                "Not enough free disk space to store this upload.", code="insufficient_storage", status=507
+            )
+        audio_id = new_audio_id()
+        wav_path = self.root / f"{audio_id}.wav"
+        meta_path = self.root / f"{audio_id}.json"
+        fd, raw = tempfile.mkstemp(dir=self.root, prefix=".tmp-", suffix=".upload")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                size = 0
+                while chunk := source.read(self.CHUNK):
+                    size += len(chunk)
+                    if size > self.max_bytes:
+                        raise PayloadTooLarge(f"Upload exceeds {self.max_bytes} bytes.")
+                    handle.write(chunk)
+            duration = decode_to_wav(Path(raw), wav_path, demuxer, self.max_seconds)
+        finally:
+            Path(raw).unlink(missing_ok=True)
+        try:
+            digest = hashlib.sha256()
+            with wav_path.open("rb") as handle:
+                while block := handle.read(self.CHUNK):
+                    digest.update(block)
+            stored = wav_path.stat().st_size
+            info = AudioInfo(
+                id=audio_id,
+                filename=sanitize_filename(filename, "audio"),
+                source_type=declared,
+                content_type="audio/wav",
+                duration_seconds=round(duration, 3),
+                sample_rate=SAMPLE_RATE,
+                bytes=stored,
+                sha256=digest.hexdigest(),
+                created_at=time.time(),
+            )
+            with self._lock:
+                if self._count >= self.max_count or self._total_bytes + stored > self.max_total_bytes:
+                    raise ApiError(
+                        "Audio storage quota is full; wait for older uploads to expire.",
+                        code="upload_quota_exceeded",
+                        status=429,
+                    )
+                atomic_write_json(meta_path, asdict(info))
+                self._count += 1
+                self._total_bytes += stored
+        except BaseException:
+            wav_path.unlink(missing_ok=True)
+            meta_path.unlink(missing_ok=True)
+            raise
+        return info
+
+    def _reconcile(self) -> None:
+        with self._lock:
+            valid: set[str] = set()
+            total = 0
+            for meta in self.root.glob("aud_*.json"):
+                audio_id = meta.stem
+                wav = self.root / f"{audio_id}.wav"
+                try:
+                    if not AUDIO_ID_RE.match(audio_id):
+                        raise ValueError("invalid audio id")
+                    info = AudioInfo(**json.loads(meta.read_text(encoding="utf-8")))
+                    if info.id != audio_id or not wav.is_file() or wav.stat().st_size != info.bytes:
+                        raise ValueError("inconsistent audio record")
+                except (OSError, TypeError, ValueError, KeyError):
+                    meta.unlink(missing_ok=True)
+                    wav.unlink(missing_ok=True)
+                    continue
+                valid.add(audio_id)
+                total += info.bytes
+            for wav in self.root.glob("aud_*.wav"):
+                if wav.stem not in valid:
+                    wav.unlink(missing_ok=True)
+            for temporary in self.root.glob(".tmp-*"):
+                temporary.unlink(missing_ok=True)
+            self._count = len(valid)
+            self._total_bytes = total
+
+    def get(self, audio_id: str) -> AudioInfo:
+        check_audio_id(audio_id)
+        meta = confined(self.root, f"{audio_id}.json")
+        try:
+            info = AudioInfo(**json.loads(meta.read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError):
+            raise NotFound(f"Audio upload '{audio_id}' not found.") from None
+        if info.id != audio_id:
+            raise NotFound(f"Audio upload '{audio_id}' not found.")
+        return info
+
+    def path(self, audio_id: str) -> Path:
+        self.get(audio_id)
+        path = confined(self.root, f"{audio_id}.wav")
+        if not path.is_file():
+            raise NotFound(f"Audio upload '{audio_id}' not found.")
+        return path
+
+    def cleanup(self, max_age_seconds: float, keep: Iterable[str]) -> int:
+        keep_set = set(keep)
+        cutoff = time.time() - max_age_seconds
+        removed = 0
+        with self._lock:
+            for meta in self.root.glob("aud_*.json"):
+                audio_id = meta.stem
+                if audio_id in keep_set or not AUDIO_ID_RE.match(audio_id):
+                    continue
+                try:
+                    if meta.stat().st_mtime < cutoff:
+                        (self.root / f"{audio_id}.wav").unlink(missing_ok=True)
+                        meta.unlink(missing_ok=True)
+                        removed += 1
+                except OSError:
+                    continue
+            self._reconcile()
+        return removed
 
 
 class OutputStore:

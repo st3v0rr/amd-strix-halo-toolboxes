@@ -25,7 +25,13 @@ export const MEDIA_PLACEHOLDER_KEYS = Object.freeze([
  * page and the fetch route offer these and nothing else, whatever an image
  * reports — with custom images allowed, that could be anything.
  */
-export const MEDIA_MODEL_IDS = Object.freeze(['qwen-image-2512', 'qwen-image-edit-2511', 'minimax-h3'])
+export const MEDIA_MODEL_IDS = Object.freeze([
+  'qwen-image-2512',
+  'qwen-image-edit-2511',
+  'minimax-h3',
+  'whisper-large-v3-turbo',
+  'qwen3-asr-1.7b',
+])
 
 /** Only the curated entries of an inventory's model list, in its order. */
 export function curatedMediaModels(models) {
@@ -45,6 +51,8 @@ export const MEDIA_MAX_SECRET_LENGTH = 512
 export const MEDIA_LIMITS = Object.freeze([
   { key: 'maxQueuedJobs', env: 'MEDIA_MAX_QUEUED_JOBS', label: 'Wartende Aufträge', min: 1, max: 10_000, int: true },
   { key: 'maxUploadBytes', env: 'MEDIA_MAX_UPLOAD_BYTES', label: 'Upload-Größe (Bytes)', min: 1024, max: 512 * 1024 * 1024, int: true },
+  { key: 'maxAudioUploadBytes', env: 'MEDIA_MAX_AUDIO_UPLOAD_BYTES', label: 'Audio-Upload-Größe (Bytes)', min: 1024, max: 8 * 1024 * 1024 * 1024, int: true },
+  { key: 'maxAudioSeconds', env: 'MEDIA_MAX_AUDIO_SECONDS', label: 'Audio-Länge (s)', min: 1, max: 24 * 3600, int: true },
   { key: 'maxPromptChars', env: 'MEDIA_MAX_PROMPT_CHARS', label: 'Prompt-Länge (Zeichen)', min: 1, max: 100_000, int: true },
   { key: 'maxWidth', env: 'MEDIA_MAX_WIDTH', label: 'Breite (px)', min: 64, max: 8192, int: true },
   { key: 'maxHeight', env: 'MEDIA_MAX_HEIGHT', label: 'Höhe (px)', min: 64, max: 8192, int: true },
@@ -254,4 +262,5 @@ export const MEDIA_TASK_LABEL = Object.freeze({
   'image-to-video': 'Bild → Video',
   'start-end-to-video': 'Start/Ende → Video',
   'reference-to-video': 'Referenz → Video',
+  'speech-to-text': 'Sprache → Text',
 })

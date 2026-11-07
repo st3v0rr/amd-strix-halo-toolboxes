@@ -27,12 +27,17 @@ TASKS = (
     "image-to-video",
     "start-end-to-video",
     "reference-to-video",
+    "speech-to-text",
 )
 IMAGE_TASKS = frozenset({"text-to-image", "image-edit"})
-VIDEO_TASKS = frozenset(TASKS) - IMAGE_TASKS
-PROVIDERS = frozenset({"qwen-image", "qwen-image-edit", "minimax-h3"})
+AUDIO_TASKS = frozenset({"speech-to-text"})
+VIDEO_TASKS = frozenset(TASKS) - IMAGE_TASKS - AUDIO_TASKS
+PROVIDERS = frozenset({"qwen-image", "qwen-image-edit", "minimax-h3", "whisper", "qwen3-asr"})
+# "transformers": a model directory transformers loads with from_pretrained.
+# Without a `file` it is the model's base itself; with one, a second
+# repository (such as Qwen3-ASR's forced aligner) in a directory of its own.
 COMPONENT_FORMATS = frozenset(
-    {"diffusers", "comfy-single-file", "comfy-scaled-fp8", "comfy-qwen2.5-vl", "gguf"}
+    {"diffusers", "comfy-single-file", "comfy-scaled-fp8", "comfy-qwen2.5-vl", "gguf", "transformers"}
 )
 STORAGE = frozenset({"bf16", "fp16", "fp32", "fp8", "int8", "gguf"})
 STATUSES = ("supported", "experimental", "unsupported")
@@ -219,6 +224,11 @@ class ComponentSpec:
             if file is not None or not subfolder:
                 raise ConfigError(f"{where}: a diffusers component names a 'subfolder' of the model's base")
             subfolder = _safe_relative(subfolder, f"{where}.subfolder")
+        elif fmt == "transformers":
+            if subfolder is not None:
+                raise ConfigError(f"{where}: a transformers component is the base or one 'file' directory")
+            if file is not None and not (isinstance(file, dict) and file.get("include")):
+                raise ConfigError(f"{where}.file: a transformers component is a directory ('include')")
         elif file is None or subfolder is not None:
             raise ConfigError(f"{where}: a {fmt} component names one 'file'")
         options = data.get("options") or {}

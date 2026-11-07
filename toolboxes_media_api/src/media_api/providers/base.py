@@ -32,6 +32,11 @@ class GenerationRequest:
     num_frames: int | None = None
     fps: int | None = None
     audio: bool = True
+    # speech-to-text: the stored 16 kHz WAV, an ISO language code (None: detect)
+    # and "segment" or "word" timestamps. `prompt` then carries optional context.
+    audio_input: Path | None = None
+    language: str | None = None
+    timestamps: str = "segment"
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -39,11 +44,13 @@ class GenerationRequest:
 class Artifact:
     path: Path
     content_type: str
-    width: int
-    height: int
+    width: int | None = None
+    height: int | None = None
     frames: int | None = None
     fps: int | None = None
     has_audio: bool = False
+    duration_seconds: float | None = None
+    summary: dict[str, Any] = field(default_factory=dict)  # e.g. a transcript's language
 
     def describe(self, job_id: str) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -51,9 +58,12 @@ class Artifact:
             "filename": self.path.name,
             "content_type": self.content_type,
             "bytes": self.path.stat().st_size,
-            "width": self.width,
-            "height": self.height,
         }
+        if self.width is not None and self.height is not None:
+            data.update(width=self.width, height=self.height)
+        if self.duration_seconds is not None:
+            data["duration_seconds"] = round(self.duration_seconds, 3)
+        data.update(self.summary)
         if self.frames is not None:
             data.update(
                 frames=self.frames,

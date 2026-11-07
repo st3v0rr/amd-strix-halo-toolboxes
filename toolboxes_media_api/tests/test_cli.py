@@ -44,10 +44,20 @@ def test_check_json_needs_no_key_and_reports_every_profile(cli_env: Path, capsys
     assert doc["version"] == 1
     assert doc["models_dir"] == str(cli_env)
     models = {m["id"]: m for m in doc["models"]}
-    assert set(models) == {"qwen-image-2512", "qwen-image-edit-2511", "minimax-h3"}
+    assert set(models) == {
+        "qwen-image-2512",
+        "qwen-image-edit-2511",
+        "minimax-h3",
+        "whisper-large-v3-turbo",
+        "qwen3-asr-1.7b",
+    }
     fp8 = next(p for p in models["qwen-image-2512"]["profiles"] if p["id"] == "fp8")
     assert fp8["default"] is True and fp8["available"] is False and fp8["downloadable"] is True
     assert "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors" in fp8["missing"]
+    asr = models["qwen3-asr-1.7b"]["profiles"][0]
+    assert asr["available"] is False and asr["downloadable"] is True
+    assert "speech/Qwen3-ASR-1.7B/model.safetensors" in asr["missing"]
+    assert "speech/Qwen3-ForcedAligner-0.6B/model.safetensors" in asr["missing"]
 
 
 def test_check_json_reports_an_unsupported_profile_without_availability(
