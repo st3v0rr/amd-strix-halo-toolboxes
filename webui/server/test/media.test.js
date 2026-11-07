@@ -36,12 +36,14 @@ import {
 } from '../src/media/config.js'
 import { explainCheckFailure, parseInventory } from '../src/media/models.js'
 import { MediaFetchProgress, rateMeter } from '../src/media/progress.js'
+import { parseRemoval } from '../src/media/remove.js'
 import { createMediaSecrets } from '../src/media/secrets.js'
 import {
   MEDIA_FETCH_LABEL,
   buildMediaCheckArgv,
   buildMediaExecCheckArgv,
   buildMediaFetchArgv,
+  buildMediaRemoveArgv,
   buildMediaRunArgv,
   buildRunArgv,
   mediaContainerEnv,
@@ -267,6 +269,37 @@ test('the fetch mounts a token file, never passes a token value or name, and nam
   ])
   const bare = buildMediaFetchArgv({ image: 'i', modelsDir: '/m', model: 'x', profile: 'p', name })
   assert.ok(!bare.some((a) => a.includes('hf-token') || a.startsWith('HF_TOKEN')))
+})
+
+test('a removal runs without network or secrets, read-only for the dry run, writable only to delete', () => {
+  const dry = buildMediaRemoveArgv({ image: 'img', modelsDir: '/m', model: 'qwen-image-2512', profile: 'bf16', dryRun: true })
+  for (const value of ['--rm', '--network=none', '--cap-drop=all', '--security-opt=no-new-privileges', '/m:/models:ro,z']) {
+    assert.ok(dry.includes(value), value)
+  }
+  assert.deepEqual(dry.slice(-8), [
+    'img', 'media-api-models', 'remove', 'qwen-image-2512', '--profile', 'bf16', '--dry-run', '--json',
+  ])
+  const real = buildMediaRemoveArgv({ image: 'img', modelsDir: '/m', model: 'qwen-image-2512', profile: 'bf16' })
+  assert.ok(real.includes('/m:/models:z') && !real.includes('--dry-run') && real.includes('--network=none'))
+  for (const argv of [dry, real]) {
+    assert.ok(!argv.some((a) => a.includes('secrets') || a.startsWith('HF_') || a === '/dev/kfd'))
+  }
+})
+
+test('the removal document is parsed only in the known shape, and failures say why', () => {
+  const doc = {
+    version: 1, dry_run: false, model: 'm', profile: 'p', files: ['a'], partials: [],
+    kept: [{ path: 'b', used_by: ['m/q'] }], skipped: [], bytes: 3,
+  }
+  assert.deepEqual(parseRemoval(0, `noise\n${JSON.stringify(doc)}\n`, ''), doc)
+  assert.equal(parseRemoval(0, '{"version": 2}', '').code, 'bad_removal')
+  assert.equal(parseRemoval(0, 'kein json', '').code, 'bad_removal')
+  const refused = parseRemoval(1, '{"event": "error", "message": "Unknown model \'x\'."}', '')
+  assert.equal(refused.status, 502)
+  assert.match(refused.message, /Unknown model 'x'/)
+  const old = parseRemoval(2, '', "media-api-models: error: argument command: invalid choice: 'remove'")
+  assert.equal(old.status, 424)
+  assert.match(old.message, /neu/)
 })
 
 /* --------------------------------- labels --------------------------------- */

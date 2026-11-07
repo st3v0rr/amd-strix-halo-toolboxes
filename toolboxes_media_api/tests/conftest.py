@@ -56,6 +56,18 @@ def unsupported_config(env: dict[str, str], tmp_path: Path) -> dict[str, str]:
 
 
 @pytest.fixture
+def cli_env(env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> Path:
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    # The model tool reads the registry and the tree, never a credential.
+    monkeypatch.delenv("MEDIA_API_KEY", raising=False)
+    monkeypatch.delenv("MEDIA_API_KEY_FILE", raising=False)
+    models = Path(env["MEDIA_MODELS_DIR"])
+    models.mkdir(parents=True)
+    return models
+
+
+@pytest.fixture
 def make_client(env: dict[str, str]) -> Iterator[Callable[..., TestClient]]:
     clients: list[TestClient] = []
 

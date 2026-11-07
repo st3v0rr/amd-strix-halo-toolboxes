@@ -593,6 +593,25 @@ export const tools = [
     run: (args, api) => api('POST', '/media/fetch', { body: args }),
   },
   {
+    name: 'remove_media_model',
+    title: 'Media-API-Modell löschen',
+    description:
+      'Löscht die Dateien eines Profils aus dem Modellverzeichnis der Media API — nur, was die Registry des Images diesem Profil zuordnet, samt Download-Resten. Dateien, die ein anderes vollständig vorhandenes Profil nutzt (gemeinsame Basis, VAE, Text-Encoder), bleiben. Abgelehnt, solange ein Download läuft oder der laufende Dienst einen offenen Auftrag mit dem Modell hat bzw. sich nicht fragen lässt. Mit dryRun=true nur zeigen, was gelöscht und was behalten würde.',
+    inputSchema: obj(
+      {
+        model: str('Modell-ID aus list_media_models, z. B. "qwen-image-2512".'),
+        profile: str('Profil-ID, z. B. "bf16".'),
+        dryRun: bool('Nur den Plan zeigen, nichts löschen.'),
+      },
+      ['model', 'profile'],
+    ),
+    annotations: DESTRUCTIVE,
+    run: ({ model, profile, dryRun }, api) =>
+      dryRun
+        ? api('GET', `/media/models/${enc(model)}/profiles/${enc(profile)}/removal`)
+        : api('DELETE', `/media/models/${enc(model)}/profiles/${enc(profile)}`),
+  },
+  {
     name: 'resume_media_fetch',
     title: 'Media-API-Download fortsetzen',
     description: 'Setzt einen abgebrochenen, fehlgeschlagenen oder unterbrochenen Media-API-Download fort; Vorhandenes bleibt.',
@@ -837,7 +856,7 @@ Vorgehen:
 - Mit get_overview beginnen.
 - Modell starten: list_models → estimate_vram für die gewünschte Kontextgröße → create_llama_server (oder launch_profile) → get_server_health, bis das Modell geladen ist; bei Problemen get_server_logs.
 - Modell besorgen: search_huggingface → list_huggingface_files → download_model → wait_for_job.
-- Media API: get_media_api → list_media_models → fetch_media_models → wait_for_job → create_media_api. Nach configure_media_api einen vorhandenen Container ausdrücklich mit delete_server entfernen und dann neu anlegen; direktes Ersetzen ist absichtlich gesperrt. Modelle werden nur auf ausdrücklichen Aufruf geladen, und nur die kuratierten. Den API-Schlüssel der Media API bekommt ein Agent nie zu sehen; generieren lässt sich über ihre eigene API mit dem Schlüssel des Besitzers.
+- Media API: get_media_api → list_media_models → fetch_media_models → wait_for_job → create_media_api. Nach configure_media_api einen vorhandenen Container ausdrücklich mit delete_server entfernen und dann neu anlegen; direktes Ersetzen ist absichtlich gesperrt. Modelle werden nur auf ausdrücklichen Aufruf geladen, und nur die kuratierten. Platz schafft remove_media_model (erst mit dryRun=true ansehen, was es löscht). Den API-Schlüssel der Media API bekommt ein Agent nie zu sehen; generieren lässt sich über ihre eigene API mit dem Schlüssel des Besitzers.
 - Downloads, Image-Pulls und Updates laufen als Jobs im Hintergrund; der Aufruf kehrt sofort mit der Job-ID zurück.
 - Flash Attention und no-mmap setzt die Box selbst; extraArgs normalerweise leer lassen.
 - Fehlermeldungen kommen auf Deutsch und nennen meist den Ausweg (z. B. welcher Server ein Modell benutzt).`

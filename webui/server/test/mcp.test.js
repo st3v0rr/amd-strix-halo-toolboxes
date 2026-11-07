@@ -194,7 +194,7 @@ test('no MCP tool can read or change the media API secrets', () => {
     assert.ok(!String(tool.run).includes('/media/secrets'), `${tool.name} touches the media secrets`)
   }
   const names = tools.map((t) => t.name)
-  for (const name of ['get_media_api', 'configure_media_api', 'create_media_api', 'list_media_models', 'fetch_media_models', 'resume_media_fetch']) {
+  for (const name of ['get_media_api', 'configure_media_api', 'create_media_api', 'list_media_models', 'fetch_media_models', 'resume_media_fetch', 'remove_media_model']) {
     assert.ok(names.includes(name), name)
   }
 })
@@ -271,6 +271,28 @@ test('delete_model sends force only when asked — the API coerces "false" to tr
   assert.equal(calls[0].query.force, undefined)
   await tool('delete_model').run({ key: 'k', force: true }, api)
   assert.equal(calls[1].query.force, true)
+})
+
+test('remove_media_model looks first with dryRun and deletes only on a plain call', async () => {
+  const { api, calls } = fakeApi({
+    'GET /media/models/qwen-image-2512/profiles/bf16/removal': { plan: { files: [] } },
+    'DELETE /media/models/qwen-image-2512/profiles/bf16': { result: { files: ['x'] } },
+    'DELETE /media/models/a%2F..%2Fb/profiles/p': {},
+  })
+  const t = tool('remove_media_model')
+  assert.equal(t.annotations.destructiveHint, true)
+  assert.deepEqual(t.inputSchema.required, ['model', 'profile'])
+  await t.run({ model: 'qwen-image-2512', profile: 'bf16', dryRun: true }, api)
+  await t.run({ model: 'qwen-image-2512', profile: 'bf16' }, api)
+  await t.run({ model: 'a/../b', profile: 'p' }, api)
+  assert.deepEqual(
+    calls.map((c) => `${c.method} ${c.path}`),
+    [
+      'GET /media/models/qwen-image-2512/profiles/bf16/removal',
+      'DELETE /media/models/qwen-image-2512/profiles/bf16',
+      'DELETE /media/models/a%2F..%2Fb/profiles/p',
+    ],
+  )
 })
 
 test('container names are escaped into the path', async () => {

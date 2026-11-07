@@ -22,6 +22,39 @@ export const MEDIA_FETCH_LANE = 'media-fetch'
  */
 const reserved = new WeakSet()
 
+/**
+ * A removal in progress, per job manager. Fetch and removal exclude each
+ * other: a removal clears the fetch's staging directory, and a fetch must not
+ * write files a removal is deciding about.
+ */
+const removing = new WeakSet()
+
+/** Whether a fetch is running or being prepared; a removal must wait for it. */
+export function mediaFetchBusy(ctx) {
+  return activeFetch(ctx) ?? (reserved.has(ctx.jobs) ? { title: null, id: null } : null)
+}
+
+/**
+ * Hold the model tree for a removal: refused while a fetch runs or is being
+ * prepared, and no fetch starts until `fn` has finished.
+ */
+export async function withMediaTreeForRemoval(ctx, fn) {
+  const running = mediaFetchBusy(ctx)
+  if (running) {
+    throw conflict(
+      `Es läuft ein Download für die Media API${running.title ? ` (${running.title})` : ''} — löschen geht erst danach.`,
+      running.id ? { jobId: running.id } : undefined,
+    )
+  }
+  if (removing.has(ctx.jobs)) throw conflict('Es wird bereits ein Media-API-Modell gelöscht.')
+  removing.add(ctx.jobs)
+  try {
+    return await fn()
+  } finally {
+    removing.delete(ctx.jobs)
+  }
+}
+
 /** The unfinished fetch job, if any. There is only ever one. */
 function activeFetch(ctx) {
   return ctx.jobs
@@ -49,6 +82,9 @@ export async function startMediaFetch(ctx, request) {
       `Es läuft bereits ein Download für die Media API${running ? ` (${running.title})` : ''}.`,
       running ? { jobId: running.id } : undefined,
     )
+  }
+  if (removing.has(ctx.jobs)) {
+    throw conflict('Gerade wird ein Media-API-Modell gelöscht; der Download kann gleich danach starten.')
   }
   reserved.add(ctx.jobs)
   try {

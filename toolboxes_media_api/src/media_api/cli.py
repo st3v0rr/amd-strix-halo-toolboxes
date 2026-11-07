@@ -1,16 +1,22 @@
-"""`media-api-models`: see what a profile needs, and fetch it on request.
+"""`media-api-models`: see what a profile needs, fetch it on request, remove it again.
 
     media-api-models check                       # every model/profile: present or missing
     media-api-models check --json                # the same as one JSON document
     media-api-models fetch qwen-image-2512       # the default profile's files
     media-api-models fetch minimax-h3 --profile turbo --task text-to-video
     media-api-models fetch qwen-image-2512 --json   # progress as JSON lines on stdout
+    media-api-models remove qwen-image-2512 --profile bf16 --dry-run --json  # what would go
+    media-api-models remove qwen-image-2512 --profile bf16 --json            # delete it
 
 Fetching is always explicit: this command, or MEDIA_ALLOW_DOWNLOADS=1 for
 first use. Files land under MEDIA_MODELS_DIR at the paths the registry names,
 from the pinned revisions. HF_TOKEN is read by huggingface_hub itself and never
 printed. Neither command needs MEDIA_API_KEY: they read the registry and the
 model tree, not the API.
+
+`remove` deletes only what the registry attributes to that profile, keeps every
+file another profile that is on disk still uses, never leaves MEDIA_MODELS_DIR
+and takes huggingface_hub's leftovers for those files with it (removal.py).
 
 The `--json` forms are what the web interface reads (webui/server/src/media/).
 Their shape is versioned; change it only together with that side.
@@ -231,6 +237,8 @@ def fetch_profile(
 
 def inventory(settings: Settings) -> dict[str, Any]:
     """Every model and profile with what is on disk — the `check --json` document."""
+    from .removal import plan_removal
+
     models = []
     for model in settings.registry.models:
         profiles = []
@@ -255,6 +263,10 @@ def inventory(settings: Settings) -> dict[str, Any]:
                 entry["downloadable"] = all(
                     ref.repo for ref in profile_refs(model, profile) if ref.missing(settings.models_dir)
                 )
+                removal = plan_removal(settings.registry, settings.models_dir, model, profile)
+                entry["removable"] = not removal.empty
+                entry["removable_bytes"] = removal.bytes
+                entry["shared_with"] = sorted({user for users in removal.kept.values() for user in users})
             profiles.append(entry)
         models.append(
             {
@@ -286,6 +298,38 @@ def _print_check(settings: Settings) -> None:
             )
 
 
+def _remove(
+    settings: Settings,
+    model: ModelSpec,
+    profile: ProfileSpec,
+    *,
+    dry_run: bool,
+    as_json: bool,
+    fail: Callable[[str, int], int],
+) -> int:
+    from .removal import apply_removal, plan_removal
+
+    try:
+        plan = plan_removal(settings.registry, settings.models_dir, model, profile)
+        result = plan if dry_run else apply_removal(settings.models_dir, plan)
+    except OSError as exc:
+        return fail(f"{type(exc).__name__}: {exc}", 1)
+    if as_json:
+        print(
+            json.dumps({"version": JSON_VERSION, "dry_run": dry_run, **result.to_json()}, ensure_ascii=False)
+        )
+        return 0
+    verb = "would remove" if dry_run else "removed"
+    for path in result.files + result.partials:
+        print(f"{verb} {path}")
+    for path, users in sorted(result.kept.items()):
+        print(f"kept {path} (used by {', '.join(users)})")
+    for path, reason in sorted(result.skipped.items()):
+        print(f"skipped {path}: {reason}")
+    print(f"{verb} {result.bytes} bytes" if result.files or result.partials else "nothing to remove")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from .config import load_settings
     from .errors import ApiError, ConfigError
@@ -299,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--profile")
     fetch.add_argument("--task")
     fetch.add_argument("--json", action="store_true", help="progress as JSON lines on stdout")
+    remove = sub.add_parser("remove", help="delete a profile's files that no other profile on disk uses")
+    remove.add_argument("model")
+    remove.add_argument("--profile")
+    remove.add_argument("--dry-run", action="store_true", help="only say what would be deleted")
+    remove.add_argument("--json", action="store_true", help="one JSON document instead of text")
     args = parser.parse_args(argv)
     report: Reporter = _json_reporter if args.json else _silent
 
@@ -324,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
         profile = model.profile(args.profile)
         if not profile.usable:
             return fail(f"{model.id}/{profile.id} cannot be used: {profile.reason}", 1)
+        if args.command == "remove":
+            return _remove(settings, model, profile, dry_run=args.dry_run, as_json=args.json, fail=fail)
         if args.task and args.task not in profile.tasks:
             return fail(f"{model.id}/{profile.id} does not support {args.task}", 1)
     except ApiError as exc:

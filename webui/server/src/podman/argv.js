@@ -441,8 +441,9 @@ export function buildMediaExecCheckArgv(containerName) {
 /**
  * `media-api-models fetch … --json` in a throwaway container.
  *
- * The only place the model tree is mounted writable: the service keeps its
- * read-only mount, as toolboxes_media_api/README.md asks. The Hugging Face
+ * One of the two places the model tree is mounted writable (the other is
+ * buildMediaRemoveArgv): the service keeps its read-only mount, as
+ * toolboxes_media_api/README.md asks. The Hugging Face
  * token, if any, is a 0600 file of this one job, mounted read-only and named
  * by HF_TOKEN_PATH — never a value in the environment, so neither a process
  * list nor `podman inspect` shows it.
@@ -493,6 +494,38 @@ export function buildMediaFetchArgv(spec) {
   argv.push('-e', disableXet ? 'HF_HUB_DISABLE_XET=1' : 'HF_XET_HIGH_PERFORMANCE=1')
   argv.push(image, 'media-api-models', 'fetch', model, '--profile', profile)
   if (task) argv.push('--task', task)
+  argv.push('--json')
+  return argv
+}
+
+/**
+ * `media-api-models remove … --json` in a throwaway container.
+ *
+ * No network, no GPU, no secret. The tree is writable only for the real
+ * removal; `--dry-run` (what the confirmation shows) gets it read-only. Which
+ * files go is the image registry's decision, not this side's: `model` and
+ * `profile` are ids matched against the inventory, never paths.
+ *
+ * @param {{image: string, modelsDir: string, model: string, profile: string, dryRun?: boolean}} spec
+ */
+export function buildMediaRemoveArgv({ image, modelsDir, model, profile, dryRun = false }) {
+  const argv = [
+    'run',
+    '--rm',
+    '--network=none',
+    ...ONE_SHOT_HARDENING,
+    '-v',
+    `${modelsDir}:${MEDIA_CONTAINER_MODELS_DIR}:${dryRun ? 'ro,z' : 'z'}`,
+    '-e',
+    `MEDIA_MODELS_DIR=${MEDIA_CONTAINER_MODELS_DIR}`,
+    image,
+    'media-api-models',
+    'remove',
+    model,
+    '--profile',
+    profile,
+  ]
+  if (dryRun) argv.push('--dry-run')
   argv.push('--json')
   return argv
 }

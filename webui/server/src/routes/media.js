@@ -11,6 +11,7 @@ import {
 } from '../media/config.js'
 import { resumeMediaFetch, startMediaFetch } from '../media/fetch.js'
 import { invalidateMediaInventory, mediaInventory } from '../media/models.js'
+import { planMediaRemoval, removeMediaModel } from '../media/remove.js'
 import { mediaStatus } from '../media/service.js'
 import { createMediaServer } from '../podman/servers.js'
 
@@ -19,6 +20,7 @@ const ID = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
 const applyBody = z.object({ replace: z.boolean().optional() })
 const fetchBody = z.object({ model: ID, profile: ID.optional(), task: ID.optional() })
 const keyBody = z.object({ value: z.string().min(1).max(512) })
+const profileParams = z.object({ model: ID, profile: ID })
 
 /**
  * The media API: one service per box, run as a managed container.
@@ -28,7 +30,7 @@ const keyBody = z.object({ value: z.string().min(1).max(512) })
  * /api/servers/:name like every other container. What lives here is what only
  * this service has: its status, its full settings (for the API — the page
  * offers only the few the start dialog asks), its secrets, the model
- * inventory of its image and the fetches.
+ * inventory of its image, the fetches and removing a profile's files.
  */
 export function mediaRoutes(ctx) {
   const router = express.Router()
@@ -84,6 +86,24 @@ export function mediaRoutes(ctx) {
     try {
       assertMediaImageAllowed(ctx, ctx.media.data.image)
       res.json(await mediaInventory(ctx, { force: true }))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  /** What removing a profile would delete and keep, and whether it may run now. Deletes nothing. */
+  router.get('/models/:model/profiles/:profile/removal', validate({ params: profileParams }), async (req, res, next) => {
+    try {
+      res.json(await planMediaRemoval(ctx, req.params))
+    } catch (err) {
+      next(err)
+    }
+  })
+
+  /** Delete a profile's files; files another profile on disk still uses stay. */
+  router.delete('/models/:model/profiles/:profile', validate({ params: profileParams }), async (req, res, next) => {
+    try {
+      res.json(await removeMediaModel(ctx, req.params))
     } catch (err) {
       next(err)
     }

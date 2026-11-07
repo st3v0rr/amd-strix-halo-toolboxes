@@ -94,6 +94,40 @@ function mediaRegistry() {
   return JSON.parse(readFixture('media-registry.json', '{"models":[]}')).models
 }
 
+/**
+ * The mock's version of `remove`: a profile's files on disk, minus those
+ * another profile that is complete for some task still names.
+ */
+function mediaRemoval(modelsDir, modelId, profileId) {
+  const has = (rel) => Boolean(modelsDir) && fs.existsSync(path.join(modelsDir, rel))
+  const kept = new Map()
+  for (const m of mediaRegistry()) {
+    for (const p of m.profiles) {
+      if (!p.files || (m.id === modelId && p.id === profileId)) continue
+      if (!Object.values(p.files).some((files) => files.every(has))) continue
+      for (const f of new Set(Object.values(p.files).flat())) {
+        kept.set(f, [...(kept.get(f) ?? []), `${m.id}/${p.id}`])
+      }
+    }
+  }
+  const profile = mediaRegistry()
+    .find((m) => m.id === modelId)
+    ?.profiles.find((p) => p.id === profileId)
+  const all = [...new Set(Object.values(profile?.files ?? {}).flat())]
+  const own = all.filter(has)
+  const files = own.filter((f) => !kept.has(f))
+  return {
+    files,
+    // The fetch's leftovers, as the real tool finds them in .stage.
+    partials: all
+      .filter((f) => !kept.has(f))
+      .map((f) => path.join('.stage', `${f.split('/').pop()}.incomplete`))
+      .filter(has),
+    kept: own.filter((f) => kept.has(f)).map((f) => ({ path: f, used_by: kept.get(f) })),
+    bytes: files.reduce((sum, f) => sum + fs.statSync(path.join(modelsDir, f)).size, 0),
+  }
+}
+
 function mediaInventory(modelsDir) {
   const has = (rel) => Boolean(modelsDir) && fs.existsSync(path.join(modelsDir, rel))
   return {
@@ -123,12 +157,16 @@ function mediaInventory(modelsDir) {
         if (status === 'unsupported') return base
         const perTask = Object.entries(p.files).map(([task, files]) => [task, files.filter((f) => !has(f))])
         const missing = [...new Set(perTask.flatMap(([, files]) => files))].sort()
+        const removal = mediaRemoval(modelsDir, m.id, p.id)
         return {
           ...base,
           available: missing.length === 0,
           missing,
           tasks_available: Object.fromEntries(perTask.map(([task, files]) => [task, files.length === 0])),
           downloadable: true,
+          removable: removal.files.length + removal.partials.length > 0,
+          removable_bytes: removal.bytes,
+          shared_with: [...new Set(removal.kept.flatMap((k) => k.used_by))].sort(),
         }
       }),
     })),
@@ -142,6 +180,34 @@ function mediaCli(args, modelsDir) {
   const say = (event) => process.stdout.write(`${JSON.stringify(event)}\n`)
   if (args[0] === 'check') {
     out(JSON.stringify(mediaInventory(modelsDir)))
+    process.exit(0)
+  }
+  if (args[0] === 'remove') {
+    const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
+    const model = mediaRegistry().find((m) => m.id === args[1])
+    const profile = model?.profiles.find((p) => p.id === (flag('--profile') ?? model.default_profile))
+    if (!profile?.files) {
+      say({ event: 'error', message: `Unknown model or profile '${args[1]}'.` })
+      process.exit(1)
+    }
+    const dryRun = args.includes('--dry-run')
+    const removal = mediaRemoval(modelsDir, model.id, profile.id)
+    if (!dryRun) for (const f of removal.files) fs.rmSync(path.join(modelsDir, f))
+    const { partials } = removal
+    if (!dryRun) for (const f of partials) fs.rmSync(path.join(modelsDir, f))
+    out(
+      JSON.stringify({
+        version: 1,
+        dry_run: dryRun,
+        model: model.id,
+        profile: profile.id,
+        files: removal.files,
+        partials,
+        kept: removal.kept,
+        skipped: [],
+        bytes: removal.bytes,
+      }),
+    )
     process.exit(0)
   }
   if (args[0] !== 'fetch') fail(`mock media-api-models: unhandled '${args.join(' ')}'`, 2)

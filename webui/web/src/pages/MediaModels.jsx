@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { MEDIA_TASK_LABEL, mediaProfileState } from '../../../shared/media.js'
-import { get, post } from '../api/client.js'
+import { del, get, post } from '../api/client.js'
 import { PageHead } from '../components/Layout.jsx'
 import { ConfirmDialog } from '../components/Modal.jsx'
 import { useToast } from '../components/Toast.jsx'
@@ -19,7 +19,9 @@ import { ModelDownloadQueue } from './ModelDownloadQueue.jsx'
  * profile the stack cannot load is listed anyway. Nothing is fetched unless a
  * download is started and confirmed here; the fetch runs in a throwaway
  * container with the pinned revisions, and the service sees new files without
- * a restart.
+ * a restart. Deleting works the same way: the image decides which files belong
+ * to a profile, keeps those another profile on disk still uses, and the page
+ * shows that plan before anything goes.
  *
  * Starting the service itself is on the Servers page, like every container.
  */
@@ -28,6 +30,7 @@ export function MediaModels() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(null)
   const [pendingFetch, setPendingFetch] = useState(null)
+  const [pendingRemove, setPendingRemove] = useState(null)
 
   const models = useQuery({
     queryKey: ['media-models'],
@@ -54,6 +57,25 @@ export function MediaModels() {
     onError: (err) => {
       setPendingFetch(null)
       toast.error(err)
+    },
+  })
+
+  const removeModel = useMutation({
+    mutationFn: ({ model, profile }) =>
+      del(`/media/models/${encodeURIComponent(model)}/profiles/${encodeURIComponent(profile)}`),
+    onSuccess: (res) => {
+      const { files, partials, bytes } = res.result
+      toast.success(
+        `${res.label}: ${files.length + partials.length} Datei(en) gelöscht, ${formatBytes(bytes)} frei.`,
+      )
+      if (res.warning) toast.info(res.warning)
+      setPendingRemove(null)
+      queryClient.invalidateQueries({ queryKey: ['media-models'] })
+    },
+    onError: (err) => {
+      setPendingRemove(null)
+      toast.error(err)
+      queryClient.invalidateQueries({ queryKey: ['media-models'] })
     },
   })
 
@@ -131,8 +153,9 @@ export function MediaModels() {
                   model={model}
                   open={open}
                   onToggle={(key) => setOpen((cur) => (cur === key ? null : key))}
-                  busy={fetchModel.isPending}
+                  busy={fetchModel.isPending || removeModel.isPending}
                   onFetch={(profile) => setPendingFetch({ model, profile })}
+                  onRemove={(profile) => setPendingRemove({ model, profile })}
                 />
               ))}
             </tbody>
@@ -166,11 +189,23 @@ export function MediaModels() {
           onClose={() => setPendingFetch(null)}
         />
       ) : null}
+
+      {pendingRemove ? (
+        <RemoveDialog
+          model={pendingRemove.model}
+          profile={pendingRemove.profile}
+          busy={removeModel.isPending}
+          onConfirm={() =>
+            removeModel.mutate({ model: pendingRemove.model.id, profile: pendingRemove.profile.id })
+          }
+          onClose={() => setPendingRemove(null)}
+        />
+      ) : null}
     </>
   )
 }
 
-function ModelRows({ model, open, onToggle, busy, onFetch }) {
+function ModelRows({ model, open, onToggle, busy, onFetch, onRemove }) {
   return (
     <>
       <tr>
@@ -190,6 +225,7 @@ function ModelRows({ model, open, onToggle, busy, onFetch }) {
             onToggle={() => onToggle(key)}
             busy={busy}
             onFetch={() => onFetch(profile)}
+            onRemove={() => onRemove(profile)}
           />
         )
       })}
@@ -197,8 +233,20 @@ function ModelRows({ model, open, onToggle, busy, onFetch }) {
   )
 }
 
-function ProfileRow({ profile, state, expanded, onToggle, busy, onFetch }) {
+/**
+ * Whether a profile has anything on disk worth a delete button. Images from
+ * before `media-api-models remove` report neither field; there a ready or
+ * partial profile gets the button and the server explains if the image is too old.
+ */
+function canOfferRemove(profile, state) {
+  if (state.key === 'unsupported') return false
+  if (profile.removable !== undefined) return profile.removable || Boolean(profile.shared_with?.length)
+  return state.key === 'ready' || state.key === 'partial'
+}
+
+function ProfileRow({ profile, state, expanded, onToggle, busy, onFetch, onRemove }) {
   const unsupported = state.key === 'unsupported'
+  const shared = profile.shared_with ?? []
   return (
     <>
       <tr>
@@ -257,6 +305,23 @@ function ProfileRow({ profile, state, expanded, onToggle, busy, onFetch }) {
                 Laden
               </button>
             ) : null}
+            {canOfferRemove(profile, state) ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                disabled={busy || profile.removable === false}
+                title={
+                  profile.removable === false
+                    ? `Alles davon nutzt auch ${shared.join(', ')} — erst dort löschen.`
+                    : profile.removable_bytes
+                      ? `Gibt etwa ${formatBytes(profile.removable_bytes)} frei`
+                      : undefined
+                }
+                onClick={onRemove}
+              >
+                Löschen
+              </button>
+            ) : null}
           </div>
         </td>
       </tr>
@@ -280,5 +345,86 @@ function ProfileRow({ profile, state, expanded, onToggle, busy, onFetch }) {
         </tr>
       ) : null}
     </>
+  )
+}
+
+/**
+ * The confirmation for a removal, with the image's own dry run: what goes,
+ * what stays because another profile uses it, and whether the running
+ * service or a download stands in the way.
+ */
+function RemoveDialog({ model, profile, busy, onConfirm, onClose }) {
+  const plan = useQuery({
+    queryKey: ['media-removal', model.id, profile.id],
+    queryFn: () =>
+      get(`/media/models/${encodeURIComponent(model.id)}/profiles/${encodeURIComponent(profile.id)}/removal`),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  })
+  const data = plan.data
+  const files = data ? [...data.plan.files, ...data.plan.partials] : []
+  const keptBy = new Map()
+  for (const k of data?.plan.kept ?? []) {
+    for (const user of k.used_by) keptBy.set(user, (keptBy.get(user) ?? 0) + 1)
+  }
+  const blocked = plan.isError ? plan.error.message : data?.blocked
+  const nothing = data && files.length === 0
+
+  return (
+    <ConfirmDialog
+      title="Modell löschen"
+      confirmLabel="Löschen"
+      danger
+      busy={busy || plan.isLoading || Boolean(blocked) || Boolean(nothing)}
+      message={
+        <div className="stack-sm">
+          <p>
+            <strong>
+              {model.label} · {profile.label}
+            </strong>{' '}
+            aus dem Modellverzeichnis löschen?
+          </p>
+          {plan.isLoading ? <p className="small faint">Prüft, welche Dateien dazugehören …</p> : null}
+          {data ? (
+            nothing ? (
+              <p className="small">Nichts zu löschen — alles davon nutzt noch ein anderes Profil.</p>
+            ) : (
+              <>
+                <p className="small">
+                  {data.plan.files.length} Datei(en)
+                  {data.plan.partials.length ? ` und ${data.plan.partials.length} Download-Rest(e)` : ''}, zusammen{' '}
+                  {formatBytes(data.plan.bytes)}.
+                </p>
+                <details className="small">
+                  <summary>Dateien</summary>
+                  <ul className="mono" style={{ margin: 0 }}>
+                    {files.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </details>
+              </>
+            )
+          ) : null}
+          {keptBy.size ? (
+            <p className="small muted">
+              Bleiben, weil sie noch gebraucht werden:{' '}
+              {[...keptBy].map(([user, n]) => `${n} Datei(en) von ${user}`).join(', ')}.
+            </p>
+          ) : null}
+          {data?.plan.skipped.length ? (
+            <p className="small muted">
+              Nicht angefasst (außerhalb des Modellverzeichnisses oder ein Link):{' '}
+              {data.plan.skipped.map((s) => s.path).join(', ')}.
+            </p>
+          ) : null}
+          {data?.warning ? <div className="alert alert-warn small">{data.warning}</div> : null}
+          {blocked ? <div className="alert alert-danger small">{blocked}</div> : null}
+        </div>
+      }
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
   )
 }

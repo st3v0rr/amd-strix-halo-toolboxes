@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import http from 'node:http'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -350,6 +351,100 @@ test('two fetch requests at once: one job, one refusal', async () => {
   assert.deepEqual([a.status, b.status].sort(), [202, 409])
   const winner = a.status === 202 ? a : b
   assert.equal((await waitForJob(winner.body.jobId)).job.status, 'done')
+})
+
+/** Stands in for the running media API on its port: health, resident model and job list. */
+function fakeService(state) {
+  const srv = http.createServer((req, res) => {
+    const send = (body) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(body))
+    }
+    if (req.url === '/healthz') return send({ status: 'ok' })
+    if (req.url.startsWith('/api/v1/models')) return send({ backend: 'mock', resident: state.resident, limits: {} })
+    if (req.url.startsWith('/api/v1/jobs')) return send({ data: state.jobs })
+    res.writeHead(404).end()
+  })
+  return new Promise((resolve) => srv.listen(mediaPort, '127.0.0.1', () => resolve(srv)))
+}
+
+const LORA = 'loras/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors'
+const FP8_TRANSFORMER = 'diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors'
+
+test('removing a profile: refused while the service cannot say it is idle, shared files stay', async () => {
+  for (const rel of [FP8_TRANSFORMER, LORA, 'diffusers/Qwen-Image-2512/model_index.json',
+    'text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors']) {
+    fs.mkdirSync(path.dirname(path.join(mediaModels, rel)), { recursive: true })
+    fs.writeFileSync(path.join(mediaModels, rel), 'w')
+  }
+  fs.mkdirSync(path.join(mediaModels, '.stage'), { recursive: true })
+  fs.writeFileSync(path.join(mediaModels, '.stage', 'Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors.incomplete'), 'p')
+  const target = '/media/models/qwen-image-2512/profiles/lightning-4step'
+
+  assert.equal((await api('DELETE', '/media/models/..%2Fetc/profiles/fp8')).status, 400)
+  assert.equal((await api('DELETE', '/media/models/stray-model/profiles/fp8')).status, 404)
+  assert.equal((await api('DELETE', '/media/models/qwen-image-2512/profiles/nf4-bitsandbytes')).status, 400)
+
+  // The service runs on this tree but nothing answers on its port: no guessing.
+  const blind = await api('DELETE', target)
+  assert.equal(blind.status, 409, JSON.stringify(blind.body))
+  assert.match(blind.body.error.message, /lässt sich aber nicht fragen/)
+  const plan = await api('GET', `${target}/removal`)
+  assert.equal(plan.status, 200, JSON.stringify(plan.body))
+  assert.equal(plan.body.plan.dry_run, true)
+  assert.deepEqual(plan.body.plan.files, [LORA])
+  assert.match(plan.body.blocked, /lässt sich aber nicht fragen/)
+  assert.ok(fs.existsSync(path.join(mediaModels, LORA)), 'a dry run deletes nothing')
+  const oneshot = JSON.parse(fs.readFileSync(path.join(root, 'media-oneshot.json'), 'utf8')).argv
+  assert.ok(oneshot.includes(`${fs.realpathSync(mediaModels)}:/models:ro,z`), 'the dry run mounts read-only')
+  assert.ok(oneshot.includes('--network=none'))
+
+  const state = {
+    resident: { model: 'qwen-image-2512', profile: 'lightning-4step' },
+    jobs: [{ id: 'j1', task: 'text-to-image', model: 'qwen-image-2512', profile: 'lightning-4step', status: 'running' }],
+  }
+  const service = await fakeService(state)
+  try {
+    await new Promise((r) => setTimeout(r, 3100)) // past the service-info cache
+    const busy = await api('DELETE', target)
+    assert.equal(busy.status, 409)
+    assert.match(busy.body.error.message, /offenen Auftrag/)
+    assert.deepEqual(busy.body.error.details.jobs, ['j1'])
+
+    state.jobs = [{ ...state.jobs[0], status: 'succeeded' }]
+    await new Promise((r) => setTimeout(r, 3100))
+    const removed = await api('DELETE', target)
+    assert.equal(removed.status, 200, JSON.stringify(removed.body))
+    assert.deepEqual(removed.body.result.files, [LORA])
+    assert.equal(removed.body.result.partials.length, 1, 'the fetch leftover goes too')
+    assert.ok(removed.body.result.kept.some((k) => k.path === FP8_TRANSFORMER && k.used_by.includes('qwen-image-2512/fp8')))
+    assert.match(removed.body.warning, /geladen/)
+    assert.ok(!fs.existsSync(path.join(mediaModels, LORA)))
+    assert.ok(fs.existsSync(path.join(mediaModels, FP8_TRANSFORMER)), 'shared with fp8: kept')
+    const argv = JSON.parse(fs.readFileSync(path.join(root, 'media-oneshot.json'), 'utf8')).argv
+    assert.ok(argv.includes(`${fs.realpathSync(mediaModels)}:/models:z`) && !argv.includes('--dry-run'))
+
+    const { body } = await api('GET', '/media/models')
+    const qwen = body.models.find((m) => m.id === 'qwen-image-2512')
+    const fp8 = qwen.profiles.find((p) => p.id === 'fp8')
+    assert.equal(fp8.available, true)
+    assert.equal(qwen.profiles.find((p) => p.id === 'lightning-4step').removable, false)
+    const again = await api('DELETE', target)
+    assert.equal(again.status, 409)
+    assert.match(again.body.error.message, /Nichts zu löschen: .* nutzt auch qwen-image-2512\/fp8/)
+  } finally {
+    await new Promise((r) => service.close(r))
+  }
+})
+
+test('no removal while a fetch runs', async () => {
+  const started = await api('POST', '/media/fetch', { body: { model: 'minimax-h3', profile: 'int8' } })
+  assert.equal(started.status, 202, JSON.stringify(started.body))
+  const refused = await api('DELETE', '/media/models/qwen-image-2512/profiles/fp8')
+  assert.equal(refused.status, 409)
+  assert.match(refused.body.error.message, /Download/)
+  assert.equal(refused.body.error.details.jobId, started.body.jobId)
+  assert.equal((await waitForJob(started.body.jobId)).job.status, 'done')
 })
 
 test('with the models moved, inventory and fetch follow the saved settings, not the running container', async () => {

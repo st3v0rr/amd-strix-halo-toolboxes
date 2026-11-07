@@ -59,11 +59,36 @@ podman exec media-api media-api-models check                        # what each 
 podman exec media-api media-api-models check --json                 # the same, machine-readable
 ```
 
+Removing a profile is just as explicit, and needs the tree writable — so, like a fetch, in a
+one-shot container while the service keeps its read-only mount:
+
+```bash
+podman run --rm --network=none -v "$HOME/media-api-models:/models:z" -e MEDIA_MODELS_DIR=/models \
+  docker.io/st3v0rr/amd-strix-halo-toolboxes:media-api \
+  media-api-models remove qwen-image-2512 --profile bf16 --dry-run   # what would go, what stays
+```
+
+`remove` deletes only the files the registry attributes to that profile (the same entries a
+fetch writes, matched file by file) plus what huggingface_hub left for them — the
+`.cache/huggingface` bookkeeping and `.incomplete` partials of a snapshot directory, a single
+file's leftovers in `.stage/`. A file that another profile *complete for at least one task*
+still uses stays and is reported as kept: the profiles of a model share their `diffusers/` base,
+fp8 and Lightning share the transformer, the Qwen-Image models their text encoder. A profile
+that is only partly on disk protects nothing, otherwise two profiles sharing a file could never
+be removed. Nothing outside `MEDIA_MODELS_DIR` is touched: a path whose directory resolves
+outside the tree is skipped, a symlinked snapshot directory is not followed, a symlinked file is
+removed as a link. Emptied snapshot directories are removed, the role directories stay; the
+shared Xet chunk cache under `huggingface/` belongs to no model and stays too. `remove` does not
+know whether a service is using the files — stop it, or let the web interface check its jobs.
+
 `media-api-models` reads the registry and the model tree, never the API, so it needs no
 `MEDIA_API_KEY` and runs in a one-shot container too. `check --json` prints one document
-(`version: 1`, per profile `available`, `missing`, `tasks_available`, `downloadable`);
+(`version: 1`, per profile `available`, `missing`, `tasks_available`, `downloadable`, and
+`removable`, `removable_bytes`, `shared_with` for what `remove` would free);
 `fetch … --json` prints JSON lines — a `plan` with sizes from the Hub, then `file`/`fetched`
-per entry, `done` or `error`. Every fetch (and the first-use download of `MEDIA_ALLOW_DOWNLOADS`)
+per entry, `done` or `error`. `remove … --json` prints one document (`version: 1`, `dry_run`,
+`files`, `partials`, `kept` with `used_by`, `skipped` with `reason`, `bytes`) or an `error`
+event. Every fetch (and the first-use download of `MEDIA_ALLOW_DOWNLOADS`)
 first requires the files plus `MEDIA_MIN_FREE_DISK_BYTES` plus headroom (2 %, at least 1 GiB) to be
 free. The CLI also runs a guard that ends the process (status 3, partials kept) once free space
 drops below the reserve; only with that guard does it accept entries whose size the Hub does not
@@ -73,7 +98,8 @@ service this way. **Media API starten** on its Servers page asks for a container
 port, whether to publish beyond loopback and — optionally — a key of one's own, then runs the
 command above; key and session secret are 0600 files mounted read-only and never shown. The page
 **MediaAPI-Modelle** lists the curated models (Qwen-Image-2512, Qwen-Image-Edit-2511, MiniMax-H3)
-with their profiles and fetches what a profile lacks only when asked, in a separate one-shot
+with their profiles, fetches what a profile lacks only when asked and deletes a profile after
+showing the `--dry-run` plan, in a separate one-shot
 container while the service keeps its read-only mount (new files appear at their paths only when
 complete, so it needs no restart); the token reaches that container only as a per-job read-only
 file.

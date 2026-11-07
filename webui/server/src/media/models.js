@@ -42,6 +42,10 @@ const profileSchema = z
     missing: z.array(z.string()).optional(),
     tasks_available: z.record(z.boolean()).optional(),
     downloadable: z.boolean().optional(),
+    // From images with `media-api-models remove`; older ones leave them out.
+    removable: z.boolean().optional(),
+    removable_bytes: z.number().optional(),
+    shared_with: z.array(z.string()).optional(),
   })
   .passthrough()
 

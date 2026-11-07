@@ -269,7 +269,7 @@ zeigt je Profil Speicherbedarf, Aufgaben, was fehlt (auch je Aufgabe) und bei
 nicht unterstützten Formaten den Grund.
 
 **Laden** fragt nach und startet dann `media-api-models fetch --json` in einem
-Wegwerf-Container, dem einzigen mit beschreibbarem Modellbaum; der Dienst behält
+Wegwerf-Container mit beschreibbarem Modellbaum (den hat sonst nur das Löschen); der Dienst behält
 seinen schreibgeschützten Mount und sieht neue Dateien ohne Neustart. Von selbst
 lädt nichts etwas herunter. Fortschritt, Abbrechen und Fortsetzen laufen über
 dieselbe Download-Liste wie bei den GGUFs; es läuft immer nur einer, auf einer
@@ -280,6 +280,32 @@ nicht in `podman inspect` —, und wird mit dem Ende des Jobs gelöscht, auch be
 Abbruch. Übersicht und Laden beziehen sich immer auf die *gespeicherten*
 Einstellungen; läuft der Container noch mit einem anderen Image oder Modellbaum,
 sagt die Seite das dazu.
+
+**Löschen** entfernt die Dateien eines Profils wieder. Welche das sind, entscheidet
+das Image: Der Bestätigungsdialog zeigt vorher, was `media-api-models remove
+--dry-run --json` (Wegwerf-Container ohne Netz, Modellbaum schreibgeschützt)
+löschen und was es behalten würde; erst „Löschen“ startet denselben Befehl ohne
+`--dry-run` mit beschreibbarem Baum. Dateien, die ein anderes Profil braucht, das
+für mindestens eine Aufgabe vollständig da ist — die gemeinsame `diffusers/`-Basis
+eines Modells, der Transformer von FP8 und Lightning, der Text-Encoder beider
+Qwen-Image-Modelle —, bleiben liegen; ist ein Profil ganz Teil eines anderen,
+ist der Knopf gesperrt und nennt es. Mit weg sind die Download-Reste dieser
+Dateien (`.incomplete`, `.cache/huggingface`, `.stage/`); nichts außerhalb des
+Modellverzeichnisses wird angefasst, Links werden nicht verfolgt. Abgelehnt wird:
+
+- solange ein Download läuft oder vorbereitet wird — und umgekehrt startet keiner,
+  solange gelöscht wird;
+- wenn die Media API auf demselben Modellbaum läuft und einen offenen Auftrag
+  (`queued`/`running`) mit diesem Modell hat;
+- wenn sie dort läuft, sich aber nicht fragen lässt (startet noch, nicht
+  erreichbar, Schlüssel gewechselt, aber nicht neu angelegt, oder ein zweiter
+  Media-Container auf demselben Baum) — dann erst stoppen.
+
+Ist das Profil im Dienst gerade geladen, ohne dass ein Auftrag läuft, wird
+gelöscht und gewarnt: Er arbeitet aus dem Speicher weiter, bis er das Modell
+wechselt. Über die API: `GET /api/media/models/:model/profiles/:profile/removal`
+(nur der Plan) und `DELETE /api/media/models/:model/profiles/:profile`; per MCP
+`remove_media_model` (mit `dryRun`).
 
 - **Platz.** Vor dem Download prüft `media-api-models fetch` die Größen beim Hub:
   frei sein müssen die Dateien, die Reserve des Dienstes

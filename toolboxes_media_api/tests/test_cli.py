@@ -16,18 +16,6 @@ from media_api.__main__ import main as serve
 from .conftest import API_KEY
 
 
-@pytest.fixture
-def cli_env(env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> Path:
-    for name, value in env.items():
-        monkeypatch.setenv(name, value)
-    # The model tool reads the registry and the tree, never a credential.
-    monkeypatch.delenv("MEDIA_API_KEY", raising=False)
-    monkeypatch.delenv("MEDIA_API_KEY_FILE", raising=False)
-    models = Path(env["MEDIA_MODELS_DIR"])
-    models.mkdir(parents=True)
-    return models
-
-
 def _touch(root: Path, rel: str, data: bytes = b"x") -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
