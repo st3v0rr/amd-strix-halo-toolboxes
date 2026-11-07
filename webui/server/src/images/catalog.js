@@ -18,6 +18,7 @@ const SOURCES = [
 const FALLBACK_TAGS = [
   { tag: 'vulkan-radv', kind: 'llama' },
   { tag: 'rocm-10.0', kind: 'llama' },
+  { tag: 'rocm-10.1', kind: 'llama' },
   { tag: 'rocm-10.0-strix-llama', kind: 'llama' },
   { tag: 'media-api', kind: 'media' },
 ]
@@ -26,6 +27,7 @@ const FALLBACK_TAGS = [
 const DESCRIPTIONS = {
   'vulkan-radv': 'llama-server mit Vulkan (Mesa RADV) für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
   'rocm-10.0': 'llama-server mit ROCm 10.0 für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
+  'rocm-10.1': 'llama-server mit ROCm 10.1 für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API.',
   'rocm-10.0-strix-llama':
     'strix-llama.cpp mit eigener ROCm-Runtime für gfx1151 (Fedora 44). LLM-Inferenz per OpenAI-kompatibler API, experimentell.',
   'media-api':

@@ -8,9 +8,10 @@ This guide shows how to pull and run the AMD Strix Halo Llama Server Docker imag
 |-------|-------------|
 | `vulkan-radv` | Vulkan backend with RADV driver (Mesa, Fedora 44). Most stable and compatible — recommended for most models. |
 | `rocm-10.0` | ROCm 10.0 backend (Fedora 44). Current stable ROCm Core SDK build. |
+| `rocm-10.1` | ROCm 10.1 backend (Fedora 44). Same build on the newer ROCm Core SDK; built only by this fork. |
 | `rocm-10.0-strix-llama` | Experimental: `halo-box/strix-llama.cpp` on a custom retained-PM4 ROCr/HIP runtime. Upstream reports it as the fastest stack for Qwen3.8-Flash-Next. Rebuilt when its engine or runtime branch moves. |
 
-These mirror the stable backends of the upstream project
+Apart from `rocm-10.1`, these mirror the stable backends of the upstream project
 [`kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes),
 plus its experimental `rocm-10.0-strix-llama`, with `llama-server` as the
 container entrypoint instead of a shell. For that one, see

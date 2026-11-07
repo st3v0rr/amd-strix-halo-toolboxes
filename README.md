@@ -46,12 +46,13 @@ Qwen3.8-Flash-Next, TheRock nightlies, PR builds) and lives only upstream — se
 its [README](https://github.com/kyuz0/amd-strix-halo-toolboxes#supported-toolboxes)
 and [DockerHub tags](https://hub.docker.com/r/kyuz0/amd-strix-halo-toolboxes/tags).
 
-This fork builds those two, plus one of the experimental ones:
+This fork builds those two, `rocm-10.1` on AMD's newer ROCm release (not built upstream yet), and one of the experimental ones:
 
 | Tag | Backend | Notes |
 | :--- | :--- | :--- |
 | `vulkan-radv` | Vulkan (Mesa RADV, Fedora 44) | Most compatible. The default here, and the right first choice. |
 | `rocm-10.0` | ROCm 10.0 (Fedora 44) | Current ROCm Core SDK build for gfx1151. |
+| `rocm-10.1` | ROCm 10.1 (Fedora 44) | The same build on ROCm Core SDK 10.1. Fork-only: upstream still builds 10.0, so compare a few real prompts at `temp 0` against `rocm-10.0` before relying on it. |
 | `rocm-10.0-strix-llama` | ROCm 10.0 + custom ROCr/HIP (Experimental) | [`halo-box/strix-llama.cpp`](https://github.com/halo-box/strix-llama.cpp) on a retained-PM4 runtime built from [`pwilkin/rocm-systems:ilintar-experiments`](https://github.com/pwilkin/rocm-systems/tree/ilintar-experiments). Upstream measured 1207 t/s prompt processing and 43.9 t/s decode on Qwen3.8-Flash-Next Q4_K_XL with its MTP head. Rebuilt when either source branch moves (40–60 minutes); see [below](#the-strix-llama-image). |
 
 #### The strix-llama image
@@ -92,7 +93,7 @@ Hub keep working, they just stop receiving new llama.cpp builds.
 | Part | What it is |
 | :--- | :--- |
 | `toolboxes_llama_server/` | The same backends, rebuilt with `llama-server` as the container command instead of an interactive shell. Model, port, context size, GPU layers, threads and API key come from environment variables; the server listens on **11434** inside the container. The ROCm images carry upstream's workaround for [llama.cpp issue #25992](https://github.com/ggml-org/llama.cpp/issues/25992), and all of them keep RDMA support for llama.cpp RPC. |
-| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds `vulkan-radv` and `rocm-10.0` on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
+| Published images | [`docker.io/st3v0rr/amd-strix-halo-toolboxes`](https://hub.docker.com/r/st3v0rr/amd-strix-halo-toolboxes/tags) — this fork's own builds. CI polls llama.cpp every four hours and rebuilds `vulkan-radv`, `rocm-10.0` and `rocm-10.1` on a new commit, pushing both a moving tag (`vulkan-radv`) and an immutable one (`vulkan-radv_20260815T101500`). |
 | `run-llama-server.sh` | Starts one such container with podman: devices, groups, port mapping, model mount and restart policy in a single command. Documented in [RUN_LLAMA_SERVER.md](RUN_LLAMA_SERVER.md). |
 | `toolboxes_media_api/` | Image and video generation as an authenticated API: Qwen-Image-2512 (text → image), Qwen-Image-Edit-2511 (edit) and MiniMax-H3 (text/image/start-end/reference → video with audio) on diffusers, with a browser playground, a single-GPU job queue and lazy model loading. Its model tree is `~/media-api-models` by default, beside `~/media-api-data` for outputs and job state. Port **8000**, fails closed without `MEDIA_API_KEY`. Published as `:media-api`; see [its README](toolboxes_media_api/README.md). |
 | `webui/` | A browser interface for the whole box: an Express backend and a React frontend, installed as a systemd service. Runs llama-server, RPC workers and the media API — all three started from its Servers page on the box's own Podman, the media API through a small dialog, with its key and session secret as read-only files it never displays — and manages the model trees, including a **MediaAPI-Modelle** page for the curated Qwen-Image and MiniMax-H3 profiles, fetched only on request. The same app is an MCP server at `/mcp`, so Claude Desktop, Claude Code or Hermes Agent can run the box too. See [webui/README.md](webui/README.md). |
