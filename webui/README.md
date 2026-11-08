@@ -331,15 +331,15 @@ wechselt. Über die API: `GET /api/media/models/:model/profiles/:profile/removal
 ### Verzeichnisse der Media API
 
 Verzeichnisse, die den Container an Zugangsdaten ließen — das Home-Verzeichnis
-selbst, `~/.ssh`, `~/.gnupg`, `~/.config`, die Konfiguration dieses Webinterfaces,
+selbst und jedes versteckte Verzeichnis darin (`~/.ssh`, `~/.aws`, `~/.config` …), die Konfiguration dieses Webinterfaces,
 Podmans Speicher und Socket, Systemverzeichnisse —, werden als Modell- oder
 Datenverzeichnis abgelehnt, und zwar am aufgelösten Pfad: Ein symbolischer Link
 irgendwo im Pfad wird nicht verfolgt, sondern abgelehnt. Die einzige Ausnahme sind
 Links, die root in einem nur für root beschreibbaren Verzeichnis angelegt hat —
 das Systemlayout, etwa `/home` → `/var/home` auf Fedora Atomic und Bazzite.
-`/root` ist tabu, außer es ist das eigene Home des Dienstes: Bei der
-root-Installation liegen die Standardverzeichnisse dort (`/root/media-api-models`,
-`/root/media-api-data`), und es gelten dieselben Regeln wie für jedes Home. Kein
+Bei der root-Installation ist `/root` das Home des Dienstes; dort liegen die
+Standardverzeichnisse (`/root/media-api-models`, `/root/media-api-data`), und es
+gelten dieselben Regeln wie für jedes Home. Kein
 Verzeichnis auf dem Pfad darf für andere als den Benutzer des Dienstes und root
 beschreibbar sein (auch kein Sticky-Verzeichnis wie `/tmp`), sonst könnte ein
 fremder Prozess es austauschen. Gemountet wird der kanonische Pfad, und zwar in

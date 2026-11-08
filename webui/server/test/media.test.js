@@ -429,10 +429,10 @@ test("the service's own home may hold its directories, root's included — its c
     assert.equal(checkMediaDir('Das Datenverzeichnis', '/root/media-api-data/jobs/2026'), path.join(rootHome, 'media-api-data/jobs/2026'))
     assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/media-api-models'), path.join(rootHome, 'media-api-models'))
     assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/media-api-models/diffusers/qwen'), path.join(rootHome, 'media-api-models/diffusers/qwen'))
+    assert.equal(checkMediaDir('Das Modellverzeichnis', '/root/comfy-models'), path.join(rootHome, 'comfy-models'))
     for (const bad of [
       '/root',
       '/',
-      '/root/unrelated',
       '/root/.aws/credentials',
       '/root/.kube/config',
       '/root/.ssh/keys',
@@ -442,9 +442,6 @@ test("the service's own home may hold its directories, root's included — its c
     ]) {
       assert.throws(() => checkMediaDir('Das Datenverzeichnis', bad), { status: 400 }, bad)
     }
-    // Anyone else's service: root's home stays off limits altogether.
-    process.env.HOME = tmp('shx-home-')
-    assert.throws(() => checkMediaDir('Das Datenverzeichnis', '/root/media-api-data'), /liegt in \/root/)
   } finally {
     if (home === undefined) delete process.env.HOME
     else process.env.HOME = home

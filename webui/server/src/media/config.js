@@ -99,11 +99,8 @@ function assertNoForeignLinks(label, abs) {
  * resolved form. The data mount is writable — by container root, which on this
  * rootful appliance is root on the host: `$HOME` would hand it the WebUI's JWT
  * secret, `~/.ssh` an authorized_keys, /run/podman the podman socket itself.
- *
- * /root is always off limits, except for the two exact default trees of the
- * root-only appliance — and only there, where the service's own home is /root.
- * Any other service keeps root's home off limits altogether, and even on the
- * appliance no other subtree of /root becomes mountable.
+ * Every hidden directory right in the home (`~/.aws`, `~/.kube`, `~/.docker`
+ * …) is refused as well — that is where credentials live.
  */
 function protectedDirs() {
   const home = os.homedir()
@@ -128,24 +125,12 @@ function protectedDirs() {
       '/sbin',
       '/lib',
       '/lib64',
-      '/root',
       '/run/user',
       '/run/podman',
       '/run/containers',
       '/var/lib/containers',
     ]),
   }
-}
-
-const ROOT_MEDIA_TREES = ['/root/media-api-models', '/root/media-api-data']
-
-/**
- * Only the appliance defaults (and their descendants) may live under /root,
- * and only for a service whose home is /root itself.
- */
-function allowedRootMediaTree(candidate, home) {
-  if (canonicalOrSelf(home) !== canonicalOrSelf('/root')) return false
-  return ROOT_MEDIA_TREES.map(canonicalOrSelf).some((root) => inside(candidate, root))
 }
 
 /**
@@ -175,15 +160,20 @@ export function checkMediaDir(label, dir) {
     throw badRequest(`${label} ${abs} führt über einen Link ins Leere.`)
   }
   const { home, containing, within } = protectedDirs()
+  const homes = new Set([path.resolve(home), canonicalOrSelf(home)])
   for (const candidate of new Set([abs, real])) {
+    for (const h of homes) {
+      if (!inside(candidate, h) || candidate === h) continue
+      const first = path.relative(h, candidate).split(path.sep)[0]
+      if (first.startsWith('.')) {
+        throw badRequest(`${label} ${abs} liegt in ${path.join(h, first)}; das darf kein Container mounten.`)
+      }
+    }
     const exposed = containing.find((d) => inside(d, candidate))
     if (exposed) {
       throw badRequest(`${label} ${abs} enthält ${exposed} — der Container bekäme Zugriff darauf. Wähle einen eigenen Unterordner.`)
     }
-    const nested = within.find((d) => {
-      if (canonicalOrSelf(d) === canonicalOrSelf('/root') && allowedRootMediaTree(candidate, home)) return false
-      return inside(candidate, d)
-    })
+    const nested = within.find((d) => inside(candidate, d))
     if (nested) throw badRequest(`${label} ${abs} liegt in ${nested}; das darf kein Container mounten.`)
   }
   return real
